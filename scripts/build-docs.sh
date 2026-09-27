@@ -3,8 +3,9 @@
 set -euo pipefail
 project_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
 cd "$project_root"
-raco scribble --htmls --dest "$project_root/doc" \
+raco scribble --htmls --dest "$project_root/doc" --dest-base ../ \
   --redirect-main https://docs.racket-lang.org/ \
+  --redirect https://docs.racket-lang.org/local-redirect/index.html \
   ++xref-in setup/xref load-collections-xref \
   datasets-core/datasets/core-doc/datasets-core.scrbl \
   datasets/datasets/main-doc/datasets.scrbl

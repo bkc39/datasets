@@ -1,7 +1,7 @@
 #lang scribble/manual
 @(require (for-label racket/base datasets/core))
 
-@title[#:tag "datasets-core"]{Datasets Core}
+@title[#:tag '("top" "datasets-core") #:tag-prefix "(lib datasets/core-doc/datasets-core.scrbl)"]{Datasets Core}
 @author{datasets contributors}
 
 @racketmodname[datasets/core] provides bundled datasets as immutable Racket

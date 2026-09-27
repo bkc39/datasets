@@ -1,7 +1,7 @@
 #lang scribble/manual
 @(require (for-label racket/base datasets))
 
-@title[#:tag "datasets-manual"]{Datasets: Dataframes and Matrices}
+@title[#:tag '("top" "datasets-manual") #:tag-prefix "(lib datasets/main-doc/datasets.scrbl)"]{Datasets: Dataframes and Matrices}
 @author{datasets contributors}
 
 @racketmodname[datasets] brings small, attributed datasets into Racket programs.
