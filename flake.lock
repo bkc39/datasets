@@ -1,0 +1,99 @@
+{
+  "nodes": {
+    "al2-test-runner": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1598584755,
+        "narHash": "sha256-/sUmGp7odmi6baDsJeN8oN7AAa6ojWQD1aynA4UL2us=",
+        "owner": "alex-hhh",
+        "repo": "al2-test-runner",
+        "rev": "b6757271932151dff6507ee6f1b690d0268da808",
+        "type": "github"
+      },
+      "original": {
+        "owner": "alex-hhh",
+        "repo": "al2-test-runner",
+        "rev": "b6757271932151dff6507ee6f1b690d0268da808",
+        "type": "github"
+      }
+    },
+    "data-frame": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1787141646,
+        "narHash": "sha256-AE3M0JM2qQ2FIjDuunV3GEIuKyDyZw4qZYnSGLgGFJo=",
+        "owner": "alex-hhh",
+        "repo": "data-frame",
+        "rev": "ab3980c4da5a99d2b79172a32b9cb86b2c2b63b4",
+        "type": "github"
+      },
+      "original": {
+        "owner": "alex-hhh",
+        "repo": "data-frame",
+        "rev": "ab3980c4da5a99d2b79172a32b9cb86b2c2b63b4",
+        "type": "github"
+      }
+    },
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1787172299,
+        "narHash": "sha256-PShzS87awOlE5XWkxUGBd/58/F+AtE2ZMgFffKj4r8s=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "07e1d92cdc0ed416cfa11ff3ca40d17e61cfba7a",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "07e1d92cdc0ed416cfa11ff3ca40d17e61cfba7a",
+        "type": "github"
+      }
+    },
+    "nixpkgs_2": {
+      "locked": {
+        "lastModified": 1776329215,
+        "narHash": "sha256-a8BYi3mzoJ/AcJP8UldOx8emoPRLeWqALZWu4ZvjPXw=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "b86751bc4085f48661017fa226dee99fab6c651b",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "nixpkgs-unstable",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "polars": {
+      "inputs": {
+        "nixpkgs": "nixpkgs_2"
+      },
+      "locked": {
+        "lastModified": 1788391009,
+        "narHash": "sha256-7NvQk4vmn0hJ/4fDfBs+Ib5jgWYpuU6bv+5+h7kRB5A=",
+        "owner": "bkc39",
+        "repo": "rkt-polars",
+        "rev": "dfe17e1d94356f192fd4a547714324e81b465a7e",
+        "type": "github"
+      },
+      "original": {
+        "owner": "bkc39",
+        "repo": "rkt-polars",
+        "rev": "dfe17e1d94356f192fd4a547714324e81b465a7e",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "al2-test-runner": "al2-test-runner",
+        "data-frame": "data-frame",
+        "nixpkgs": "nixpkgs",
+        "polars": "polars"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}

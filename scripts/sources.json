@@ -1,0 +1,27 @@
+{
+  "R": {
+    "file": "datasets-R.tar.gz",
+    "url": "https://cran.r-project.org/src/base/R-4/R-4.3.3.tar.gz",
+    "sha256": "80851231393b85bf3877ee9e39b282e750ed864c5ec60cbd68e6e139f0520330"
+  },
+  "lars": {
+    "file": "datasets-lars.tar.gz",
+    "url": "https://cran.r-project.org/src/contrib/lars_1.3.tar.gz",
+    "sha256": "c69e6a8da6a3344c0915dd1fd4c78fec5cdf50c62cf6297476e9bb7dc10b549d"
+  },
+  "iris": {
+    "file": "datasets-iris.zip",
+    "url": "https://archive.ics.uci.edu/static/public/53/iris.zip",
+    "sha256": "d11fe30213d36434a0879aab7cb00ce3c812eb7ba2495874438abff7b7b762e9"
+  },
+  "wine": {
+    "file": "datasets-wine.zip",
+    "url": "https://archive.ics.uci.edu/static/public/109/wine.zip",
+    "sha256": "2bae62c4481220623579d4c4fb36b55652b6b75e06e49fa1981b8198362dfdab"
+  },
+  "breast-cancer": {
+    "file": "datasets-breast-cancer.zip",
+    "url": "https://archive.ics.uci.edu/static/public/17/breast+cancer+wisconsin+diagnostic.zip",
+    "sha256": "bc154869ef13f753f9e2b5a17e248cfe1ba4b6721db7c4da9f4880e40b05d3af"
+  }
+}

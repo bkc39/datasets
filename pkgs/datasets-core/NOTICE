@@ -1,0 +1,27 @@
+New code: Copyright (c) 2026 datasets contributors, Apache-2.0 OR MIT.
+Bundled observations are distributed separately under the upstream terms:
+- R 4.3.3 datasets: GPL-2.0-only OR GPL-3.0-only. R Core Team and
+  original dataset authors; see datasets/provenance/*.Rd for citations.
+  https://www.r-project.org/Licenses/
+- Diabetes from lars 1.3: GPL-2.0-only. Trevor Hastie and Brad Efron;
+  Efron, Hastie, Johnstone, Tibshirani, Least Angle Regression (2004).
+  https://CRAN.R-project.org/package=lars
+- Iris: R. A. Fisher (1936), UCI, doi:10.24432/C56C76. CC BY 4.0.
+- Wine: S. Aeberhard and M. Forina (1991), UCI, doi:10.24432/C5PC7J.
+  CC BY 4.0.
+- Breast Cancer Wisconsin (Diagnostic): W. Wolberg, O. Mangasarian,
+  N. Street and W. Street (1993), UCI, doi:10.24432/C5DW2B. CC BY 4.0.
+
+This records the accepted upstream redistribution basis, and does not assert
+independent original-owner permission. These authors do not endorse this work.
+
+Transformations: names normalized to kebab-case; R row names retained as model
+and state columns; factors rendered as labels with levels in metadata; R NA
+rendered as the dedicated missing sentinel; Titanic expanded without dropping
+zero cells; AirPassengers expanded to year/month/passenger count; standardized
+lars x and y retained; UCI bezdekIris.data selected; Wine class moved last;
+breast cancer ID and diagnosis moved after measurements. Source row order and
+numeric precision retained. Source versions, archive and normalized SHA-256
+hashes, variable descriptions, and dataset-specific notes are in the immutable
+registry (datasets/private/registry.rktd). Upstream documentation is retained in
+datasets/provenance; full data license texts are in datasets/licenses.

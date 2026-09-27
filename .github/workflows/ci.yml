@@ -1,0 +1,31 @@
+name: packages
+on: [push, pull_request]
+jobs:
+  nix:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-14]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+      - run: nix flake check --print-build-logs
+      - run: nix build .#core
+      - run: nix build
+  racket:
+    strategy:
+      matrix:
+        version: ['9.3', stable]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Bogdanp/setup-racket@v1.14
+        with:
+          version: ${{ matrix.version }}
+          distribution: full
+      - name: Prefetch sources (network phase)
+        run: bash scripts/prefetch.sh /tmp/datasets-dependencies
+      - name: Isolated offline installs, tests, documentation and dependency checks
+        run: |
+          sudo unshare --net --map-root-user env PATH="$PATH" bash scripts/install-check.sh /tmp/datasets-dependencies/sources core
+          sudo unshare --net --map-root-user env PATH="$PATH" bash scripts/install-check.sh /tmp/datasets-dependencies/sources full

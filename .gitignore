@@ -1,0 +1,6 @@
+compiled/
+doc/
+result
+result-*
+.racket-user/
+__pycache__/
