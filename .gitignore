@@ -1,6 +1,48 @@
+# Racket compilation and generated Scribble documentation.
 compiled/
 doc/
+*.zo
+*.dep
+
+# Nix build links and local development environments.
 result
 result-*
 .racket-user/
+.direnv/
+
+# Generated code, build products, and native binaries.
+generated/
+build/
+dist/
+target/
+coverage/
+*.o
+*.a
+*.so
+*.so.*
+*.dylib
+*.dll
+
+# Python tooling caches.
 __pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+
+# Downloaded source archives and maintainer staging directories.
+# Normalized bundled data, registry, provenance, and flake.lock are release inputs.
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.tar.xz
+/archive/
+/sources/
+/.cache/
+
+# Temporary editor and operating-system files.
+*.swp
+*~
+.DS_Store
