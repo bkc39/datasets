@@ -5,7 +5,7 @@ Pass an archive directory (offline), or --fetch DIRECTORY to download sources fi
 import csv, hashlib, io, json, re, subprocess, sys, tarfile, tempfile, urllib.request, zipfile
 from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT/'pkgs/datasets-core/datasets/private'
+OUT = ROOT/'datasets-core/datasets/private'
 SOURCES = json.loads((ROOT/'scripts/sources.json').read_text())
 fetch = '--fetch' in sys.argv
 cache = Path(sys.argv[-1]); cache.mkdir(parents=True,exist_ok=True)

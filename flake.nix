@@ -50,11 +50,11 @@
                 raco pkg install --batch --deps fail --copy --no-setup --scope user --name polars ${polars}/polars
                 raco setup --no-docs --pkgs tzdata polars data-frame
               ''}
-              raco pkg install --batch --deps fail --copy --no-setup --scope user --name datasets-core ./pkgs/datasets-core
+              raco pkg install --batch --deps fail --copy --no-setup --scope user --name datasets-core ./datasets-core
               ${pkgs.lib.optionalString full ''
                 # Exercise downstream integration before the adapter package exists.
                 racket examples/core-with-polars.rkt
-                raco pkg install --batch --deps fail --copy --no-setup --scope user --name datasets ./pkgs/datasets
+                raco pkg install --batch --deps fail --copy --no-setup --scope user --name datasets ./datasets
               ''}
               runHook postBuild
             '';
@@ -84,7 +84,7 @@
               cp -R ${self.packages.${system}.default}/share/racket-home/. "$PLTUSERHOME/"
               chmod -R u+w "$PLTUSERHOME"
               raco pkg update --batch --deps fail --no-setup --link --scope user \
-                "$PWD/pkgs/datasets-core" "$PWD/pkgs/datasets"
+                "$PWD/datasets-core" "$PWD/datasets"
               echo "Isolated Racket environment: $PLTUSERHOME"
             '';
           };

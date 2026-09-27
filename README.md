@@ -5,8 +5,8 @@ airquality, us-arrests, plant-growth, tooth-growth, titanic, air-passengers,
 diabetes, breast-cancer, and wine. No downloads occur when loading data.
 
 ```sh
-raco pkg install ./pkgs/datasets-core
-raco pkg install --auto ./pkgs/datasets
+raco pkg install ./datasets-core
+raco pkg install --auto ./datasets
 ```
 
 ```racket
@@ -25,6 +25,10 @@ Every `load-NAME` accepts the same keywords. Columns use lowercase kebab-case;
 source abbreviations such as `mpg` remain. Selection preserves requested order.
 Empty selections and duplicate names are rejected. Matrices require numeric,
 nonmissing values: categories are not encoded, nor missing values imputed.
+
+The repository has two top-level, independently installable package directories:
+`datasets-core/` and `datasets/`. Both declare `collection 'multi` and contribute
+distinct modules to the shared `datasets` collection.
 
 `datasets-core` contributes `datasets/core` and depends only on `base` at runtime.
 It provides `load-dataset-table`, `dataset-names`, `dataset-info`, table predicates
@@ -67,8 +71,8 @@ GPL-2 for [lars 1.3](https://CRAN.R-project.org/package=lars), and CC BY 4.0 for
 [Wine](https://archive.ics.uci.edu/dataset/109/wine), and
 [Breast Cancer Wisconsin (Diagnostic)](https://archive.ics.uci.edu/dataset/17/breast+cancer+wisconsin+diagnostic).
 This is a redistribution basis, not a claim of independent original-owner
-permission. See [NOTICE](pkgs/datasets-core/NOTICE), bundled license texts,
-and upstream documentation under `pkgs/datasets-core/datasets/provenance/`.
+permission. See [NOTICE](datasets-core/NOTICE), bundled license texts,
+and upstream documentation under `datasets-core/datasets/provenance/`.
 The registry records original spellings, units, descriptions, levels, identifiers,
 suggested targets, citations, transformation notes, and source/normalized SHA-256.
 Diabetes does not promise raw measurements or exact scikit-learn parity.
@@ -98,8 +102,24 @@ bash scripts/install-check.sh /tmp/datasets-dependencies/sources full
 ```
 
 The full checks require Polars' native library, either its packaged binary or
-`RKT_POLARS_COMPAT_LIB_PATH` pointing to the native derivation. The manuals are
-`datasets/core-doc/datasets-core.scrbl` and `datasets/main-doc/datasets.scrbl`.
+`RKT_POLARS_COMPAT_LIB_PATH` pointing to the native derivation. Both manuals have a narrative guide and a separate API reference, with evaluated
+examples and cross-references. The core manual also includes the generated catalog.
+Their entry points are [datasets-core.scrbl](datasets-core/datasets/core-doc/datasets-core.scrbl)
+and [datasets.scrbl](datasets/datasets/main-doc/datasets.scrbl).
+
+## Reading the guide and reference locally
+
+In the development shell, render both manuals and serve the ignored HTML output:
+
+```sh
+bash scripts/build-docs.sh
+python3 -m http.server 8765 --bind 127.0.0.1 --directory doc
+```
+
+Open <http://127.0.0.1:8765/datasets/datasets-guide.html> for the guide or
+<http://127.0.0.1:8765/datasets/datasets-reference.html> for the reference.
+The lightweight core manual is at <http://127.0.0.1:8765/datasets-core/index.html>.
+Examples are evaluated while building the manuals; generated HTML stays untracked.
 
 ## Reimporting (maintainers only)
 
@@ -125,12 +145,12 @@ Polars documentation must not depend on the adapter package `datasets`.
 For downstream Nix, fetch this repository as source:
 
 ```nix
-inputs.datasets-src = { url = "github:OWNER/datasets/REV"; flake = false; };
+inputs.datasets-src = { url = "github:bkc39/datasets/REV"; flake = false; };
 # In an existing Racket build, offline:
 # raco pkg install --batch --deps fail --copy --name datasets-core \
-#   ${datasets-src}/pkgs/datasets-core
+#   ${datasets-src}/datasets-core
 ```
 
-Replace OWNER/REV after publication. This does not import the complete flake
+Pin REV to the revision required by your downstream build. This does not import the complete flake
 or create a reverse native dependency. Downstream repositories are unchanged;
 GitHub/catalog publication and example migrations are separate work.

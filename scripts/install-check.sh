@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Dependencies come exclusively from prefetch.sh; run this phase without network.
 set -euo pipefail
+project_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
+cd "$project_root"
 sources=${1:?usage: install-check.sh PREFETCHED-SOURCES [core|full]}
 mode=${2:-full}
 export PLTUSERHOME=$(mktemp -d)
@@ -9,9 +11,9 @@ if [[ "$mode" == full ]]; then
   raco pkg install --batch --deps fail --copy --no-setup --scope user "$sources"/*/
   raco setup --no-docs --pkgs tzdata polars data-frame
 fi
-raco pkg install --batch --deps fail --copy --no-setup --scope user --name datasets-core ./pkgs/datasets-core
+raco pkg install --batch --deps fail --copy --no-setup --scope user --name datasets-core "$project_root/datasets-core"
 if [[ "$mode" == full ]]; then
   racket examples/core-with-polars.rkt
-  raco pkg install --batch --deps fail --copy --no-setup --scope user --name datasets ./pkgs/datasets
+  raco pkg install --batch --deps fail --copy --no-setup --scope user --name datasets "$project_root/datasets"
 fi
 bash scripts/check.sh "$mode"
