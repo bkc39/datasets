@@ -4,6 +4,9 @@
 @title[#:tag '("top" "datasets-core") #:tag-prefix "(lib datasets/core-doc/datasets-core.scrbl)"]{Datasets Core}
 @author{datasets contributors}
 
+@bold{Work in progress.} This manual covers the basic loading and table APIs.
+The explanations and worked examples are still being expanded.
+
 @racketmodname[datasets/core] provides bundled datasets as immutable Racket
 tables. Use it when you want ordinary Racket values, want to choose your own
 analysis library, or need data for another package's examples.

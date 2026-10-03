@@ -12,7 +12,12 @@ know which procedure you need, turn to the @secref["datasets-reference"].
 
 @section[#:tag "datasets-install"]{Installation and a first dataset}
 
-Use Racket 9.3 or later. From the repository root:
+Use Racket 9.3 or later. Install from the Racket catalog:
+
+@commandline{raco pkg install --auto datasets}
+
+This also installs @tt{datasets-core} and the adapter dependencies.
+From a checkout of the repository, install both packages from its root:
 
 @verbatim{raco pkg install ./datasets-core
 raco pkg install --auto ./datasets}

@@ -1,8 +1,19 @@
 # datasets
 
+The documentation is a work in progress. Basic loading, table access, metadata,
+and format conversion are documented; explanations and worked examples are
+still being expanded.
+
 Thirteen bundled datasets for Racket 9.3+: mtcars, iris, faithful, anscombe,
 airquality, us-arrests, plant-growth, tooth-growth, titanic, air-passengers,
 diabetes, breast-cancer, and wine. No downloads occur when loading data.
+
+```sh
+raco pkg install --auto datasets
+```
+
+For the lightweight table API alone, install `datasets-core` instead.
+From a checkout, install the two packages with:
 
 ```sh
 raco pkg install ./datasets-core
@@ -119,7 +130,13 @@ python3 -m http.server 8765 --bind 127.0.0.1 --directory doc
 Open <http://127.0.0.1:8765/datasets/datasets-guide.html> for the guide or
 <http://127.0.0.1:8765/datasets/datasets-reference.html> for the reference.
 The lightweight core manual is at <http://127.0.0.1:8765/datasets-core/index.html>.
-Examples are evaluated while building the manuals; generated HTML stays untracked.
+The preview uses Scribble's standard manual CSS, fonts, navigation, and API
+boxes. It rebuilds into a clean staging directory and checks local links and
+anchors before replacing `doc/`. Links between our manuals stay local; links to
+Racket and dependency manuals go directly to `docs.racket-lang.org` (and require
+internet access). Python 3, included in the development shell, performs the link
+checks. Examples are evaluated while building the manuals; generated HTML and
+preview screenshots stay untracked.
 
 ## Reimporting (maintainers only)
 

@@ -12,10 +12,12 @@ metadata describing their source and meaning.
 
 @section[#:tag "datasets-core-install"]{Installing and loading data}
 
-Use Racket 9.3 or later. From a checkout of the repository, install the core
-package with:
+Use Racket 9.3 or later. Install the core package from the Racket catalog:
 
-@verbatim{raco pkg install ./datasets-core}
+@commandline{raco pkg install --auto datasets-core}
+
+From a checkout of the repository, use
+@tt{raco pkg install ./datasets-core} instead.
 
 The repository contains two independently installable packages at its root:
 @tt{datasets-core/} and @tt{datasets/}. Each has an @tt{info.rkt} declaring a

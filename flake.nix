@@ -77,7 +77,7 @@
       devShells = each (system:
         let pkgs = pkgsFor system; in {
           default = pkgs.mkShell {
-            packages = [ pkgs.racket ];
+            packages = [ pkgs.racket pkgs.python3 ];
             RKT_POLARS_COMPAT_LIB_PATH = "${self.packages.${system}.native}";
             shellHook = ''
               export PLTUSERHOME=$(mktemp -d /tmp/datasets-dev.XXXXXXXX)

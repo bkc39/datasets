@@ -4,6 +4,9 @@
 @title[#:tag '("top" "datasets-manual") #:tag-prefix "(lib datasets/main-doc/datasets.scrbl)"]{Datasets: Dataframes and Matrices}
 @author{datasets contributors}
 
+@bold{Work in progress.} This manual covers basic dataset loading and format
+conversion. The explanations and worked examples are still being expanded.
+
 @racketmodname[datasets] brings small, attributed datasets into Racket programs.
 Start with @racket[load-iris] or choose a dataset with @racket[load-dataset]. The
 default result is a Polars dataframe; tables, matrices, and @tt{data-frame}
