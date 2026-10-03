@@ -2,7 +2,7 @@
 (require datasets/core (prefix-in pl: polars))
 (provide table->polars)
 (define (table->polars table)
-  (pl:dataframe-new
+  (pl:dataframe
    (for/list ([name (in-list (dataset-table-names table))]
               [column (in-vector (dataset-table-columns table))])
      (define values
