@@ -1,3 +1,3 @@
 #lang info
-(define compile-omit-paths (quote ("fixtures")))
-(define test-omit-paths (quote ("fixtures")))
+(define compile-omit-paths '("fixtures"))
+(define test-omit-paths '("fixtures"))

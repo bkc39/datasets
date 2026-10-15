@@ -1,2 +1,2 @@
 #lang info
-(define datasets-registries (quote ("registry.rktd" "remote.rktd")))
+(define datasets-registries '("registry.rktd" "remote.rktd"))

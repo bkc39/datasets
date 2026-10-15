@@ -1,3 +1,4 @@
 # Preserve upstream documents and license texts byte-for-byte.
 datasets-core/datasets/provenance/* -whitespace
 datasets-core/datasets/licenses/* -whitespace
+*.rktd.gz binary

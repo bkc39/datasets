@@ -1,9 +1,10 @@
 #lang racket/base
-(require (only-in datasets/core dataset-missing? dataset-table-columns dataset-table-names
+(require (for-syntax racket/base)
+         (only-in datasets/core dataset-missing? dataset-table-columns dataset-table-names
                   dataset-table-row-count dataset-table?)
          (only-in file/gunzip gunzip-through-ports)
          (only-in file/gzip gzip-through-ports)
-         (only-in racket/contract/base -> any/c contract-out hash/c listof)
+         (only-in racket/contract/base -> any any/c contract-out hash/c listof)
          (only-in racket/file delete-directory/files make-directory* make-temporary-directory)
          (only-in racket/port call-with-output-bytes)
          (only-in racket/runtime-path define-runtime-path))
