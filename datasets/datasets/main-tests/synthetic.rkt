@@ -68,6 +68,7 @@
   (test-case "exact: invalid arguments blame the caller"
     (define (violation form)
       (parameterize ([current-namespace (make-base-namespace)])
+        (namespace-attach-module (variable-reference->empty-namespace (#%variable-reference)) 'datasets)
         (eval `(module client racket/base (require datasets) ,form))
         (with-handlers ([exn:fail:contract:blame? exn-message]) (eval '(require 'client)) "no violation")))
     (for ([form (in-list '((make-moons #:format 'csv) (make-blobs #:centers '((0 0) (1)))

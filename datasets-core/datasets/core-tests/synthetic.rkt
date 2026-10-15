@@ -267,6 +267,7 @@
   (test-case "exact: invalid arguments are contract violations blaming the caller"
     (define (violation form)
       (parameterize ([current-namespace (make-base-namespace)])
+        (namespace-attach-module (variable-reference->empty-namespace (#%variable-reference)) 'datasets/synthetic)
         (eval `(module client racket/base (require datasets/synthetic) ,form))
         (with-handlers ([exn:fail:contract:blame? exn-message]) (eval '(require 'client)) "no violation")))
     (for ([form (in-list
