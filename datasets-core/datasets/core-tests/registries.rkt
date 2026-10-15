@@ -12,14 +12,17 @@
           (lambda () (dataset-info 'mtcars)) (lambda () (load-dataset-table 'mtcars))))
   (define (snapshot) (for/list ([n (in-list (dataset-names))]) (cons n (dataset-info n))))
 
-  (check-equal? (dataset-packages) '("datasets-core"))                 ; R0
-  (check-equal? (dataset-names) core-13)
+  (define installed (dataset-names))
+  (define installed-packages (dataset-packages))
+  (check-not-false (member "datasets-core" installed-packages))      ; R0
+  (check-false (for/or ([p (in-list installed-packages)])
+                 (member p '("datasets-fixture" "datasets-other" "datasets-duplicate"))))
   (check-equal? (dataset-names #:package "datasets-core") core-13)
 
   (call-with-registry-fixtures (list (registry-fixture "sibling"))     ; R1, R8, R12
     (lambda ()
-      (check-equal? (dataset-names) (sort (list* 'toy 'toy-remote core-13) symbol<?))
-      (check-equal? (dataset-packages) '("datasets-core" "datasets-fixture"))
+      (check-equal? (dataset-names) (sort (list* 'toy 'toy-remote installed) symbol<?))
+      (check-equal? (dataset-packages) (sort (cons "datasets-fixture" installed-packages) string<?))
       (check-equal? (dataset-names #:package "datasets-fixture") '(toy toy-remote))
       (define t (load-dataset-table 'toy))
       (check-equal? (dataset-table-names t) '("id" "group" "score"))
@@ -31,7 +34,7 @@
       (check-true (immutable? (hash-ref (dataset-info 'toy-remote) "fetch")))
       (check-exn (registry-error? #rx"fetch tier" #rx"toy-remote")
                  (lambda () (load-dataset-table 'toy-remote)))))
-  (check-equal? (dataset-names) core-13)                               ; R13
+  (check-equal? (dataset-names) installed)                             ; R13
 
   (define both (list (registry-fixture "sibling") (registry-fixture "other")))
   (check-equal? (call-with-registry-fixtures both snapshot)            ; R10
@@ -47,7 +50,7 @@
       (for ([call (in-list registry-calls)])
         (check-exn (registry-error? #rx"duplicate dataset" #rx"iris" #rx"datasets-core" #rx"datasets-duplicate")
                    call))))
-  (check-equal? (dataset-names) core-13)
+  (check-equal? (dataset-names) installed)
 
   (call-with-registry-fixtures (list (registry-fixture "duplicate"))   ; R5
     (lambda ()

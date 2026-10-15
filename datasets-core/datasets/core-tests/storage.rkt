@@ -40,7 +40,7 @@
     (check-equal? (hex (sha256-bytes (gunzip-file (data-file id)))) sha)
     (check-equal? (hash-ref (dataset-info id) "sha256") sha))
 
-  (for ([id (in-list (dataset-names))])                                ; S2
+  (for ([id (in-list (dataset-names #:package "datasets-core"))]) ; S2
     (define info (dataset-info id))
     (check-equal? (for/fold ([h info]) ([k (in-list '("tier" "package" "fetch"))]) (hash-remove h k))
                   (hash-ref old-registry (symbol->string id)))
@@ -52,13 +52,13 @@
     (match-define (list id digest) p)
     (check-equal? (table-digest (load-dataset-table id)) digest))
 
-  (for ([id (in-list (dataset-names))])                                ; S3b
+  (for ([id (in-list (dataset-names #:package "datasets-core"))]) ; S3b
     (define full (load-dataset-table id))
     (define picked (load-dataset-table id #:columns (reverse (dataset-table-names full))))
     (check-equal? (vector->list (dataset-table-columns picked))
                   (reverse (vector->list (dataset-table-columns full)))))
 
-  (for ([id (in-list (dataset-names))])                                ; S4
+  (for ([id (in-list (dataset-names #:package "datasets-core"))]) ; S4
     (define header (call-with-input-file (data-file id) (lambda (in) (read-bytes 10 in))))
     (check-equal? (subbytes header 0 3) (bytes #x1f #x8b 8))
     (check-equal? (bitwise-and (bytes-ref header 3) 8) 0)

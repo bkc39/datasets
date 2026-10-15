@@ -14,6 +14,7 @@ fi
 raco pkg install --batch --deps fail --copy --no-setup --scope user --name datasets-core "$project_root/datasets-core"
 if [[ "$mode" == full ]]; then
   racket examples/core-with-polars.rkt
+  raco pkg install --batch --deps fail --copy --no-setup --scope user --name datasets-r "$project_root/datasets-r"
   raco pkg install --batch --deps fail --copy --no-setup --scope user --name datasets "$project_root/datasets"
 fi
 bash scripts/check.sh "$mode"

@@ -16,14 +16,16 @@ Use Racket 9.3 or later. Install from the Racket catalog:
 
 @commandline{raco pkg install --auto datasets}
 
-This also installs @tt{datasets-core} and the adapter dependencies.
-From a checkout of the repository, install both packages from its root:
+This also installs @tt{datasets-core}, the data package @tt{datasets-r}, and the
+adapter dependencies. From a checkout of the repository, install the packages
+from its root:
 
-@verbatim{raco pkg install ./datasets-core
+@verbatim{raco pkg install ./datasets-core ./datasets-r
 raco pkg install --auto ./datasets}
 
-The two top-level directories are independently installable multi-collection
+The top-level directories are independently installable multi-collection
 packages. @tt{datasets-core} provides @racketmodname[datasets/core];
+@tt{datasets-r} adds datasets from CRAN packages to its catalog;
 @tt{datasets} adds the convenient loaders and adapters to the same collection.
 The Polars package supplies its native library. With Nix, @tt{nix develop}
 prepares an isolated environment containing both packages and that library.
@@ -55,6 +57,32 @@ Column names are strings. A selection preserves the order you give and retains
 all source rows. Identifiers such as @racket["model"] are real columns, so they
 can be kept for display or left out of a numeric matrix. Duplicate names, empty
 selections, and unknown columns are reported as errors.
+
+@section[#:tag "datasets-penguins-guide"]{A first look at the Palmer penguins}
+
+The @racket['penguins] dataset comes from @tt{datasets-r}, which @tt{datasets}
+installs. It records 344 penguins of three species on three islands near Palmer
+Station, Antarctica: four body measurements, sex, and the study year.
+
+@examples[#:eval ev
+ (define penguins (load-dataset 'penguins))
+ (pl:shape penguins)
+ (pl:head penguins 4)
+ (hash-ref (dataset-info 'penguins) "suggested-targets")]
+
+Species, island, and sex are labels whose levels are in the metadata. The fourth
+penguin, like one other, was never measured; Polars shows its missing values as
+@tt{null}, and the mean of each species' body mass skips them:
+
+@examples[#:eval ev
+ (define by-species
+   (pl:~> penguins
+          (pl:group-by "species")
+          (pl:agg (pl:mean (pl:col "body-mass-g")))
+          (pl:dataframe-sort '("species"))))
+ (for/list ([row (in-range (pl:dataframe-height by-species))])
+   (list (pl:series-ref (pl:dataframe-column by-species "species") row)
+         (pl:series-ref (pl:dataframe-column by-species "body-mass-g") row)))]
 
 @section[#:tag "datasets-categories-guide"]{Grouping categorical data}
 

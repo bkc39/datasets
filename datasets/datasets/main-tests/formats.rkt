@@ -37,7 +37,7 @@
   (define p (load-iris))
   (define renamed (pl:dataframe-rename p "species" "label"))
   (check-equal? (last (pl:dataframe-column-names (load-iris))) "species")
-  (for ([name (in-list (dataset-names))])
+  (for ([name (in-list (dataset-names #:package "datasets-core"))])
     (define loader (dynamic-require 'datasets (string->symbol (format "load-~a" name))))
     (check-equal? (loader #:format 'table) (load-dataset name #:format 'table)))
   (check-exn #rx"species" (lambda () (load-iris #:format 'matrix)))

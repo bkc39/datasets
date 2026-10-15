@@ -7,7 +7,7 @@
                    (breast-cancer 569 32) (diabetes 442 11) (faithful 272 2)
                    (iris 150 5) (mtcars 32 12) (plant-growth 30 2)
                    (titanic 32 5) (tooth-growth 60 3) (us-arrests 50 5) (wine 178 14)))
-  (check-equal? (dataset-names) (map car shapes))
+  (check-equal? (dataset-names #:package "datasets-core") (map car shapes))
   (for ([shape (in-list shapes)])
     (define id (car shape))
     (define t (load-dataset-table id))

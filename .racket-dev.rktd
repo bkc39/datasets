@@ -1,7 +1,7 @@
 ((shell "nix develop --command")
  (base-ref "origin/master")
  (gates
-  (compile  "raco setup --no-docs --pkgs datasets-core datasets")
+  (compile  "raco setup --no-docs --pkgs datasets-core datasets-r datasets")
   (core     "bash scripts/check.sh core")
   (test     "bash scripts/check.sh full")
   (resyntax "scripts/resyntax-gate.sh ${RESYNTAX_BASE:-origin/master}")
