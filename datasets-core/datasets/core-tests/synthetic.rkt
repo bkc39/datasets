@@ -392,7 +392,7 @@
                    (make-blobs #:n-samples '(5 5) #:centers '((0 0)))
                    (make-blobs #:centers 2 #:cluster-std '(1.0))
                    (make-blobs #:n-features 3 #:centers '((0 0)))
-                   (make-blobs #:center-box '(1.0 -1.0))
+                   (make-blobs #:center-box '(1.0 -1.0)) (make-blobs #:center-box '(-1e308 1e308))
                    (make-blobs #:cluster-std -1.0) (make-moons #:n-samples 0)
                    (make-moons #:noise -0.1)
                    (make-moons #:noise (expt 10 400))

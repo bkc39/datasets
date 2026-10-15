@@ -59,8 +59,10 @@ These procedures take the arguments of the same-named generators of
 @racketmodname[datasets/synthetic], documented in
 @secref["datasets-synthetic-reference" #:doc '(lib "datasets/core-doc/datasets-core.scrbl")],
 plus @racket[#:format], and convert the generated table as @racket[load-dataset]
-does, under the same argument bounds, which must hold for each value as a flonum.
-Every generated table is numeric, so all four formats apply.
+does, under the same argument bounds, which must hold for each value and for its flonum.
+Every generated table is numeric, so all four formats apply, except that a
+@tt{math/matrix} matrix has at least one row: @racket['matrix] with
+zero total samples is a contract violation.
 @racketmodname[datasets] does not re-export @racketmodname[datasets/synthetic]:
 the names are the same, so a module that requires both gets an import conflict
 and should use @racket[prefix-in] or @racket[only-in] for one of them.

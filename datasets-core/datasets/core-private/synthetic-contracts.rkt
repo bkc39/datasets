@@ -6,7 +6,8 @@
          (only-in racket/contract/base
                   ->i and/c any/c flat-named-contract integer-in list/c listof
                   non-empty-listof or/c unsupplied-arg?)
-         (only-in racket/match match)
+         (only-in racket/flonum fl-)
+         (only-in racket/match match match-lambda)
          (only-in syntax/parse/define define-syntax-parse-rule)
          (only-in datasets/core-private/table dataset-table?))
 (provide synthetic/c dataset-format/c (for-syntax generator) centre-count
@@ -36,7 +37,11 @@
     (and/c (non-empty-listof exact-nonnegative-integer?) (λ (ns) (positive? (apply + ns))))))
 (define center-box/c
   (flat-named-contract 'center-box/c
-    (and/c (list/c finite/c finite/c) (λ (box) (apply <= box)))))
+    (and/c (list/c finite/c finite/c)
+           (match-lambda
+             [(list lo hi)
+              (and (<= lo hi)
+                   (rational? (fl- (real->double-flonum hi) (real->double-flonum lo))))]))))
 (define points/c
   (flat-named-contract 'points/c
     (and/c (non-empty-listof (non-empty-listof finite/c))
@@ -80,6 +85,10 @@
   (or (not (list? v)) (= (length v) n-features)))
 
 (define (quantiles-samples-fit? n-samples n-classes) (>= n-samples n-classes))
+
+(define (format-has-rows? format n-samples)
+  (or (not (eq? format 'matrix))
+      (positive? (match n-samples [(? list? ns) (apply + ns)] [n n]))))
 
 (begin-for-syntax
   (define-syntax-class argument
@@ -199,18 +208,28 @@
           (quantiles-samples-fit? n-samples n-classes)]))))
 
 (define-syntax-parse-rule (synthetic/c g:generator (~optional (~and #:format with-format)))
-  #:do [(define defaults
-          (for/hasheq ([name (in-list (attribute g.arg.name))]
-                       [default (in-list (attribute g.arg.default))])
-            (values (syntax-e name) default)))]
+  #:do [(define format? (attribute with-format))
+        (define format-id #'format)
+        (define defaults
+          (for/hasheq ([name (in-list (cons format-id (attribute g.arg.name)))]
+                       [default (in-list (cons #''polars (attribute g.arg.default)))])
+            (values (syntax-e name) default)))
+        (define n-samples-id
+          (findf (λ (id) (eq? (syntax-e id) 'n-samples)) (attribute g.arg.name)))]
+  #:with ([(pre-id ...) pre-message pre-check] ...)
+  (append (map list (attribute g.pre.id) (attribute g.pre.message) (attribute g.pre.check))
+          (if format?
+              (list #`[(#,format-id #,n-samples-id) "'matrix needs at least one sample"
+                       (format-has-rows? #,format-id #,n-samples-id)])
+              '()))
   #:with ((pre-default ...) ...)
-  (for/list ([ids (in-list (attribute g.pre.id))])
+  (for/list ([ids (in-list (attribute pre-id))])
     (for/list ([id (in-list ids)]) (hash-ref defaults (syntax-e id))))
   #:with (format-domain ...)
-  (if (attribute with-format) #'(#:format [format dataset-format/c]) #'())
-  #:with result/c (if (attribute with-format) #'any/c #'dataset-table?)
+  (if format? #`(#:format [#,format-id dataset-format/c]) #'())
+  #:with result/c (if format? #'any/c #'dataset-table?)
   (->i ()
        (format-domain ... (~@ g.arg.keyword [g.arg.name g.arg.contract]) ... #:seed [seed seed/c])
-       (~@ #:pre/name (g.pre.id ...) g.pre.message
-           (let ([g.pre.id (given g.pre.id pre-default)] ...) g.pre.check)) ...
+       (~@ #:pre/name (pre-id ...) pre-message
+           (let ([pre-id (given pre-id pre-default)] ...) pre-check)) ...
        [result result/c]))

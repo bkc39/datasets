@@ -85,16 +85,41 @@
                      (apply/plist w (append args '(#:format data-frame #:seed 5))))
                     (dataset-table-names (apply/plist core (append args '(#:seed 5)))))))
 
+  (define (violation form)
+    (parameterize ([current-namespace (make-base-namespace)])
+      (namespace-attach-module (variable-reference->empty-namespace (#%variable-reference))
+                               'datasets)
+      (eval `(module client racket/base (require datasets) ,form))
+      (with-handlers ([exn:fail:contract:blame? exn-message])
+        (eval '(require 'client))
+        "no violation")))
+
+  (test-case "exact: zero samples convert, except to 'matrix"
+    (for* ([c (in-list `((,make-circles ,s:make-circles make-circles 0)
+                         (,make-moons ,s:make-moons make-moons (0 0))))]
+           [format (in-list '(polars table data-frame matrix))])
+      (match-define (list w core name n) c)
+      (define names (dataset-table-names (core #:n-samples n)))
+      (match format
+        ['polars
+         (define p (w #:n-samples n #:format format))
+         (check-equal? (pl:dataframe-column-names p) names)
+         (check-equal? (pl:dataframe-height p) 0)
+         (check-equal? (map (λ (c) (pl:series-dtype (pl:dataframe-column p c))) names)
+                       '(float64 float64 int64))]
+        ['table
+         (define t (w #:n-samples n #:format format))
+         (check-equal? (dataset-table-names t) names)
+         (check-equal? (dataset-table-row-count t) 0)]
+        ['data-frame
+         (check-equal? (data-frame-column-names (w #:n-samples n #:format format)) names)]
+        ['matrix
+         (check-regexp-match #rx"'matrix needs at least one sample.*blaming: [^\n]*client"
+                             (violation `(,name #:n-samples ',n #:format 'matrix)))])))
+
   (test-case "exact: invalid arguments blame the caller"
-    (define (violation form)
-      (parameterize ([current-namespace (make-base-namespace)])
-        (namespace-attach-module (variable-reference->empty-namespace (#%variable-reference))
-                                 'datasets)
-        (eval `(module client racket/base (require datasets) ,form))
-        (with-handlers ([exn:fail:contract:blame? exn-message])
-          (eval '(require 'client))
-          "no violation")))
     (for ([form (in-list '((make-moons #:format 'csv) (make-blobs #:centers '((0 0) (1)))
+                           (make-moons #:noise (- (/ 1 (expt 10 400))))
                            (make-gaussian-quantiles #:n-samples 2 #:n-classes 3)
                            (load-dataset 'iris #:format 'csv) (load-iris #:format 'csv)
                            (load-iris #:columns 5) (load-dataset 'iris #:columns '())))])
