@@ -7,5 +7,5 @@
   (resyntax "scripts/resyntax-gate.sh ${RESYNTAX_BASE:-origin/master}")
   (no-define-syntax-rule "bash -c '! git grep -n define-syntax-rule -- \"*.rkt\" \"*.scrbl\"'")
   (docs     "bash scripts/build-docs.sh")
-  (check    "nix flake check --print-build-logs"))
+  (check    "nix flake check --max-jobs 1 --cores 4 --print-build-logs"))
  (push-gates (compile resyntax core)))
