@@ -1,6 +1,6 @@
 #lang racket/base
-(require racket/list racket/runtime-path racket/port datasets/core)
-(define-runtime-path private "../private")
+(require racket/list racket/runtime-path racket/port datasets/core "fixture.rkt")
+(define-runtime-path core-data "../core-data")
 (module+ test
   (require rackunit)
   (define shapes '((air-passengers 144 3) (airquality 153 6) (anscombe 11 8)
@@ -8,12 +8,6 @@
                    (iris 150 5) (mtcars 32 12) (plant-growth 30 2)
                    (titanic 32 5) (tooth-growth 60 3) (us-arrests 50 5) (wine 178 14)))
   (check-equal? (dataset-names) (map car shapes))
-  (define (sha256 path)
-    (call-with-input-file path
-      (lambda (in) (apply string-append
-                         (for/list ([b (in-bytes (sha256-bytes in))])
-                           (define s (number->string b 16))
-                           (if (= 1 (string-length s)) (string-append "0" s) s))))))
   (for ([shape (in-list shapes)])
     (define id (car shape))
     (define t (load-dataset-table id))
@@ -21,7 +15,7 @@
     (check-equal? (dataset-table-row-count t) (cadr shape))
     (check-equal? (length (dataset-table-names t)) (caddr shape))
     (check-equal? (dataset-table-names t) (map (lambda (c) (hash-ref c "name")) (hash-ref info "columns")))
-    (check-equal? (sha256 (build-path private "data" (format "~a.rktd" id))) (hash-ref info "sha256"))
+    (check-equal? (hex (sha256-bytes (gunzip-file (build-path core-data "data" (format "~a.rktd.gz" id))))) (hash-ref info "sha256"))
     (check-true (immutable? info))
     (check-true (immutable? (dataset-table-columns t)))
     (check-equal? t (load-dataset-table id))

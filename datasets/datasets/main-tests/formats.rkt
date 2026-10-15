@@ -1,5 +1,6 @@
 #lang racket/base
-(require racket/list datasets datasets/data-frame math/matrix (prefix-in pl: polars) (prefix-in df: data-frame))
+(require racket/list datasets datasets/data-frame datasets/core-tests/fixture math/matrix
+         (prefix-in pl: polars) (prefix-in df: data-frame))
 (module+ test
   (require rackunit)
   (for ([id (in-list (dataset-names))])
@@ -42,4 +43,8 @@
   (check-exn #rx"species" (lambda () (load-iris #:format 'matrix)))
   (check-exn #rx"ozone" (lambda () (load-airquality #:format 'matrix #:columns '("ozone"))))
   (check-exn #rx"format|polars" (lambda () (load-iris #:format 'bad)))
-  (check-exn #rx"unknown column" (lambda () (load-iris #:columns '("bad")))))
+  (check-exn #rx"unknown column" (lambda () (load-iris #:columns '("bad"))))
+  (call-with-registry-fixtures (list (registry-fixture "sibling"))
+    (lambda ()
+      (check-equal? (load-dataset 'toy #:format 'table) (load-dataset-table 'toy))
+      (check-equal? (pl:dataframe-height (load-dataset 'toy)) 3))))

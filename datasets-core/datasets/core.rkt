@@ -1,6 +1,9 @@
 #lang racket/base
-(require racket/list racket/runtime-path racket/vector)
-(provide dataset-names dataset-info load-dataset-table
+(require racket/contract/base racket/list racket/runtime-path racket/vector)
+(provide (contract-out
+          [dataset-names (->* () (#:package (or/c #f string?)) (listof symbol?))]
+          [dataset-packages (-> (listof string?))])
+         dataset-info load-dataset-table
          dataset-missing dataset-missing?
          dataset-table? dataset-table-names dataset-table-columns
          dataset-table-row-count dataset-table-info dataset-table-column)
@@ -18,7 +21,11 @@
         [(hash? v) (for/hash ([(k x) (in-hash v)]) (values (freeze k) (freeze x)))]
         [else v]))
 (define registry (freeze (call-with-input-file registry-path read)))
-(define (dataset-names) (sort (map string->symbol (hash-keys registry)) symbol<?))
+(define (dataset-names #:package [package #f])
+  (if package
+      (error 'unimplemented)
+      (sort (map string->symbol (hash-keys registry)) symbol<?)))
+(define (dataset-packages) (error 'unimplemented))
 (define (dataset-info name)
   (unless (and (symbol? name) (hash-has-key? registry (symbol->string name)))
     (raise-arguments-error 'dataset-info "unknown dataset" "name" name "available" (dataset-names)))
