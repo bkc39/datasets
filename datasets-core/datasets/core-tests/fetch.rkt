@@ -31,8 +31,8 @@
       (lambda (srv)
         (call-with-fetch-fixture (entries-of (lambda (p) (http-fixture-url srv p)))
           (lambda (root registry) (proc srv root registry))))))
-  (define (toy-at path)
-    (lambda (u) (list (fetch-entry (list (u path))))))
+  (define ((toy-at path) u)
+    (list (fetch-entry (list (u path)))))
   (define (call-within seconds thunk)
     (define result (make-channel))
     (define worker
