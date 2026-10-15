@@ -2,11 +2,13 @@
 (require (for-syntax racket/base)
          (only-in datasets/core dataset-info dataset-missing? dataset-names dataset-packages
                   dataset-table-column dataset-table-names dataset-table-row-count load-dataset-table)
-         (only-in racket/list append*)
+         (only-in racket/file make-directory*)
+         (only-in racket/list append* make-list)
          (only-in racket/match match-define)
          (only-in racket/runtime-path define-runtime-path)
          (only-in "fixture.rkt" call-with-registry-fixtures call-with-temporary-fixture fetch-ok
                   gen-entry registry-fixture write-registry-fixture!))
+(define-runtime-path core-module "../core.rkt")
 (define-runtime-path core-registry "../core-data/registry.rktd")
 (module+ test
   (require (only-in rackunit check-equal? check-exn check-false check-not-exn check-not-false
@@ -32,6 +34,26 @@
            (for ([call (in-list registry-calls)])
              (check-exn (apply registry-error? (regexp (regexp-quote (path->string dir))) rxs) call)))))))
   (define (one entry) (hash "registry.rktd" (hash (hash-ref entry "name" "gen") entry)))
+  (define (listed? name) (and (memq name (dataset-names)) #t))
+  (define (call-with-unreadable file thunk)
+    (parameterize ([current-security-guard
+                    (make-security-guard (current-security-guard)
+                                         (lambda (who path modes)
+                                           (when (and path (memq 'read modes) (equal? (simplify-path path) file))
+                                             (error who "denied: ~a" path)))
+                                         void)])
+      (thunk)))
+  (define (call-with-core-copy registry thunk)
+    (call-with-temporary-fixture
+     (lambda (root)
+       (define dir (build-path root "datasets" "core-data"))
+       (make-directory* dir)
+       (write-registry-fixture! dir #:info '("registry.rktd") #:registries (hash "registry.rktd" registry)
+                                #:data (hash))
+       (call-with-registry-fixtures (list dir) thunk))))
+  (define (rewrite-gen! dir name #:modify-seconds [seconds #f])
+    (write-registry-fixture! dir #:info '("registry.rktd") #:registries (one (gen-entry name)) #:data (hash))
+    (when seconds (file-or-directory-modify-seconds (build-path dir "registry.rktd") seconds)))
 
   (test-case "R0 dedupe works; fixtures do not leak into installed discovery"
     (check-not-false (member "datasets-core" installed-packages))
@@ -121,10 +143,14 @@
     (for ([info (in-list (list '("../registry.rktd") '("/tmp/registry.rktd") "registry.rktd" '(registry) '("absent.rktd")))])
       (check-malformed info (hash) (list #rx"datasets-registries|absent\\.rktd"))))
 
-  (test-case "stale index: a missing directory or one without info.rkt is skipped"
+  (test-case "stale index: a missing directory, one without info.rkt, or one without the key is skipped"
     (call-with-temporary-fixture
      (lambda (dir)
-       (call-with-registry-fixtures (list (build-path dir "absent") dir)
+       (define moved (build-path dir "moved"))
+       (make-directory* moved)
+       (call-with-output-file (build-path moved "info.rkt")
+         (lambda (out) (write '(module info info (#%module-begin (define name "moved"))) out)))
+       (call-with-registry-fixtures (list (build-path dir "absent") dir moved)
          (lambda ()
            (check-equal? (dataset-names) installed)
            (check-equal? (dataset-table-row-count (load-dataset-table 'iris)) 150))))))
@@ -155,12 +181,98 @@
                                     #:data (hash))
            (check-equal? (dataset-names) (sort (cons 'gen installed) symbol<?)))))))
 
-  (test-case "a discovered copy of the core registry is not a duplicate"
+  (test-case "an unreadable registry is not cached: once readable it is listed"
     (call-with-temporary-fixture
      (lambda (dir)
-       (write-registry-fixture! dir #:info '("registry.rktd") #:registries (hash) #:data (hash))
-       (copy-file core-registry (build-path dir "registry.rktd"))
+       (rewrite-gen! dir "gen")
        (call-with-registry-fixtures (list dir)
          (lambda ()
-           (check-equal? (dataset-names) installed)
-           (check-equal? (dataset-table-row-count (load-dataset-table 'iris)) 150)))))))
+           (call-with-unreadable (build-path dir "registry.rktd")
+             (lambda () (check-exn (registry-error? #rx"cannot read registry" #rx"registry\\.rktd") dataset-names)))
+           (check-true (listed? 'gen)))))))
+
+  (test-case "the cache key covers an in-place rewrite"
+    (call-with-temporary-fixture
+     (lambda (dir)
+       (rewrite-gen! dir "gen")
+       (call-with-registry-fixtures (list dir)
+         (lambda ()
+           (check-true (listed? 'gen))
+           (rewrite-gen! dir "gen-x")
+           (check-equal? (map listed? '(gen gen-x)) '(#f #t)))))))
+
+  (test-case "the cache key covers a same-size rewrite with the modify time pinned"
+    (call-with-temporary-fixture
+     (lambda (dir)
+       (rewrite-gen! dir "gen" #:modify-seconds 1000000)
+       (call-with-registry-fixtures (list dir)
+         (lambda ()
+           (check-true (listed? 'gen))
+           (rewrite-gen! dir "gem" #:modify-seconds 1000000)
+           (check-equal? (map listed? '(gen gem)) '(#f #t)))))))
+
+  (test-case "declared registries are cached until the info.rkt changes"
+    (call-with-temporary-fixture
+     (lambda (dir)
+       (rewrite-gen! dir "gen")
+       (call-with-registry-fixtures (list dir)
+         (lambda ()
+           (check-true (listed? 'gen))
+           (call-with-unreadable (build-path dir "info.rkt") (lambda () (check-true (listed? 'gen)))))))))
+
+  (test-case "concurrent calls after a discovery change all see the sibling registry"
+    (for ([round (in-range 20)])
+      (call-with-registry-fixtures (list (registry-fixture "sibling"))
+        (lambda ()
+          (define results
+            (for/list ([worker (in-range 8)])
+              (define result (box '()))
+              (cons result (thread (lambda () (set-box! result (for/list ([call (in-range 3)]) (listed? 'toy))))))))
+          (for ([r (in-list results)]) (thread-wait (cdr r)))
+          (check-equal? (map (lambda (r) (unbox (car r))) results) (make-list 8 '(#t #t #t)))))))
+
+  (test-case "a discovered copy of the core registry is not a duplicate"
+    (call-with-core-copy (call-with-input-file core-registry read)
+      (lambda ()
+        (check-equal? (dataset-names) installed)
+        (check-equal? (dataset-table-row-count (load-dataset-table 'iris)) 150))))
+
+  (test-case "a discovered copy of the core registry is skipped unread"
+    (call-with-core-copy (for/hash ([(name entry) (in-hash (call-with-input-file core-registry read))])
+                           (values name (hash-remove entry "source-version")))
+      (lambda () (check-equal? (dataset-names #:package "datasets-core") core-13))))
+
+  (test-case "a registry outside datasets/core-data cannot declare datasets-core"
+    (check-malformed '("registry.rktd")
+                     (hash "registry.rktd" (hash "toy" (gen-entry "toy" #:package "datasets-core")
+                                                 "iris" (gen-entry "iris" #:package "datasets-core")))
+                     (list #rx"package datasets-core is reserved" #rx"registry\\.rktd")))
+
+  (test-case "every registry core's info.rkt declares is used"
+    (call-with-temporary-fixture
+     (lambda (root)
+       (define dir (build-path root "datasets" "core-data"))
+       (make-directory* dir)
+       (copy-file core-module (build-path root "datasets" "core.rkt"))
+       (write-registry-fixture! dir #:info '("registry.rktd" "extra.rktd")
+                                #:registries (hash "registry.rktd" (call-with-input-file core-registry read)
+                                                   "extra.rktd" (hash "gen" (gen-entry "gen" #:package "datasets-core")))
+                                #:data (hash))
+       (parameterize ([current-library-collection-paths (cons root (current-library-collection-paths))]
+                      [current-namespace (make-base-namespace)])
+         (check-equal? ((dynamic-require 'datasets/core 'dataset-names) #:package "datasets-core")
+                       (sort (cons 'gen core-13) symbol<?))))))
+
+  (test-case "a thread killed mid-rebuild does not block later calls"
+    (call-with-temporary-fixture
+     (lambda (dir)
+       (rewrite-gen! dir "gen")
+       (call-with-registry-fixtures (list dir)
+         (lambda ()
+           (check-true
+            (for/and ([i (in-range 50)])
+              (rewrite-gen! dir (format "gen-~a" i))
+              (define victim (thread dataset-names))
+              (sleep (* (random) 0.002))
+              (kill-thread victim)
+              (and (sync/timeout 5 (thread-dead-evt (thread dataset-names))) #t)))))))))
