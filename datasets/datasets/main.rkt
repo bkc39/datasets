@@ -29,7 +29,8 @@
     [(table) table]
     [(polars) (table->polars table)]
     [(matrix) (table->matrix table)]
-    [(data-frame) (table->data-frame table)]))
+    [(data-frame) (table->data-frame table)]
+    [else (raise-argument-error 'load-dataset "(or/c 'polars 'table 'matrix 'data-frame)" format)]))
 (define (load-air-passengers #:format [format 'polars] #:columns [columns #f])
   (load-dataset 'air-passengers #:format format #:columns columns))
 (define (load-airquality #:format [format 'polars] #:columns [columns #f])

@@ -364,8 +364,9 @@
   (define info (and name (dataset-info* 'clear-dataset-cache name)))
   (define root (cache-root 'clear-dataset-cache))
   (cond
-    [(not name) (clear-cache-root root)]
-    [(fetch-tier? info) (clear-cache-directory (build-path root (symbol->string name)))]
+    [(not name) (clear-cache-root 'clear-dataset-cache root)]
+    [(fetch-tier? info)
+     (clear-cache-directory 'clear-dataset-cache name (build-path root (symbol->string name)))]
     [else (void)]))
 
 (define (dataset-info* who name)

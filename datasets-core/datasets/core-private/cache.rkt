@@ -46,18 +46,23 @@
                            "supported" (format "~s" supported-formats)
                            "hint" "a newer datasets-core may support this format")]
     [else
-     (define-values (dir _file _dir?) (split-path final))
-     (make-directory* dir)
-     (with-part-file [part final]
+     (with-part-file [part who name final]
        (try-urls who name info part final idle))]))
 
-(define-syntax-parse-rule (with-part-file [part:id final:expr] body:expr ...+)
-  (with-resource [part (make-part-file final) (delete-if-present part)]
+(define-syntax-parse-rule (with-cache-failure [who:expr message:expr field:expr ...] body:expr ...+)
+  (with-handlers ([exn:fail? (lambda (e)
+                               (raise-registry-error who message field ... "error" (exn-message e)))])
     body ...))
 
-(define (make-part-file final)
+(define-syntax-parse-rule (with-part-file [part:id who:expr name:expr final:expr] body:expr ...+)
+  (with-resource [part (make-part-file who name final) (delete-if-present part)]
+    body ...))
+
+(define (make-part-file who name final)
   (define-values (dir file _dir?) (split-path final))
-  (make-temporary-file (string-append (path->string file) ".~a.part") #:base-dir dir))
+  (with-cache-failure [who "cannot write the dataset cache" "dataset" name "directory" dir]
+    (make-directory* dir)
+    (make-temporary-file (string-append (path->string file) ".~a.part") #:base-dir dir)))
 
 (define (try-urls who name info part final idle)
   (define fetch (hash-ref info "fetch"))
@@ -150,17 +155,21 @@
   (with-handlers ([exn:fail:filesystem? (lambda (e) (when (file-exists? file) (raise e)))])
     (delete-file file)))
 
-(define (clear-cache-directory dir)
-  (for ([file (in-list (if (directory-exists? dir) (directory-list dir) '()))]
-        #:when (regexp-match? cache-file-rx (path->string file))
-        #:when (file-exists? (build-path dir file)))
-    (delete-if-present (build-path dir file)))
-  (with-handlers ([exn:fail:filesystem? void])
-    (delete-directory dir)))
+(define (clear-cache-directory who name dir)
+  (unless (link-exists? dir)
+    (with-cache-failure [who "cannot clear the dataset cache" "dataset" name "directory" dir]
+      (for ([file (in-list (if (directory-exists? dir) (directory-list dir) '()))]
+            #:when (regexp-match? cache-file-rx (path->string file))
+            #:when (file-exists? (build-path dir file)))
+        (delete-if-present (build-path dir file)))
+      (with-handlers ([exn:fail:filesystem? void])
+        (delete-directory dir)))))
 
-(define (clear-cache-root root)
-  (for ([sub (in-list (if (directory-exists? root) (directory-list root) '()))]
+(define (clear-cache-root who root)
+  (define subs
+    (with-cache-failure [who "cannot clear the dataset cache" "directory" root]
+      (if (directory-exists? root) (directory-list root) '())))
+  (for ([sub (in-list subs)]
         #:when (regexp-match? name-rx (path->string sub))
-        #:unless (link-exists? (build-path root sub))
         #:when (directory-exists? (build-path root sub)))
-    (clear-cache-directory (build-path root sub))))
+    (clear-cache-directory who (path->string sub) (build-path root sub))))

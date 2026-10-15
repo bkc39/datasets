@@ -39,7 +39,7 @@ it is independent of any column selection. See
                              [#:columns columns (or/c #f (non-empty-listof string?)) #f]
                              [#:download? download? boolean? #t])
          dataset-table?]{
-Reads the bundled observations for @racket[name] and returns a table. Data files
+Reads the observations for @racket[name] and returns a table. Bundled data files
 are resolved relative to the installed module and read when this procedure is
 called; the current directory does not affect loading.
 

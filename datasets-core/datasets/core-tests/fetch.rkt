@@ -3,6 +3,7 @@
          (only-in datasets/core clear-dataset-cache dataset-cache-directory dataset-cached?
                   dataset-info dataset-names dataset-table-column dataset-table-names fetch-dataset
                   load-dataset-table)
+         (only-in datasets/core-private/resource with-resource)
          (only-in racket/file file->bytes make-directory*)
          (only-in racket/list last remove-duplicates)
          (only-in racket/match match match-define)
@@ -17,7 +18,8 @@
                   http-fixture-requests http-fixture-stalled-evt http-fixture-url))
 (define-runtime-path fetch-place "fetch-place.rkt")
 (module+ test
-  (require (only-in rackunit check-equal? check-exn check-false check-not-false check-pred
+  (require (only-in racket/sandbox kill-evaluator make-evaluator sandbox-path-permissions)
+           (only-in rackunit check-equal? check-exn check-false check-not-false check-pred
                     check-regexp-match check-true test-case))
   (define final-rel (format "toy-remote/~a.rktd.gz" toy-artifact-sha256))
   (define part-rx #px"^toy-remote/[0-9a-f]{64}\\.rktd\\.gz\\.[A-Za-z0-9]+\\.part$")
@@ -131,16 +133,19 @@
   (test-case "C6 C7 offline refusal: no request, nothing written, env beats keyword"
     (with-server (hash "/toy" `(ok ,toy-artifact)) (toy-at "/toy")
       (lambda (srv root registry)
-        (check-exn (fetch-error? "toy-remote" "not cached" "#:download? #f" "fetch-dataset")
+        (check-exn (fetch-error? #rx"^load-dataset-table: dataset is not cached" "toy-remote"
+                                 "#:download? #f" "fetch-dataset")
                    (lambda () (load-dataset-table 'toy-remote #:download? #f)))
         (check-exn exn:fail:contract?
                    (lambda () (load-dataset-table 'toy-remote #:columns '("absent"))))
         (for ([v (in-list '("1" "true" "TRUE" "yes" "on" "anything"))])
           (call-with-environment (hash "DATASETS_OFFLINE" v)
             (lambda ()
-              (check-exn (fetch-error? "toy-remote" "not cached" "DATASETS_OFFLINE" "fetch-dataset")
+              (check-exn (fetch-error? #rx"^load-dataset-table: dataset is not cached" "toy-remote"
+                                       "DATASETS_OFFLINE" "fetch-dataset")
                          (lambda () (load-dataset-table 'toy-remote #:download? #t)))
-              (check-exn (fetch-error? "toy-remote" "DATASETS_OFFLINE")
+              (check-exn (fetch-error? #rx"^fetch-dataset: dataset is not cached" "toy-remote"
+                                       "DATASETS_OFFLINE")
                          (lambda () (fetch-dataset 'toy-remote)))
               (check-equal? (hash-ref (dataset-info 'toy-remote) "tier") "fetch"))))
         (check-equal? (http-fixture-requests srv) '())
@@ -287,20 +292,26 @@
             (check-equal? (cache-files root) (sort foreign string<?))
             (check-true (directory-exists? root))
             (check-false (directory-exists? (build-path root "gone")))
-            (check-exn #rx"unknown dataset" (lambda () (clear-dataset-cache 'absent)))
+            (check-exn #rx"^fetch-dataset: unknown dataset" (lambda () (fetch-dataset 'absent)))
+            (check-exn #rx"^dataset-cached\\?: unknown dataset" (lambda () (dataset-cached? 'absent)))
+            (check-exn #rx"^clear-dataset-cache: unknown dataset"
+                       (lambda () (clear-dataset-cache 'absent)))
             (call-with-environment (hash "DATASETS_HOME" (path->string (build-path root "never")))
               (lambda ()
                 (clear-dataset-cache)
                 (check-false (directory-exists? (build-path root "never"))))))))))
 
   (test-case "C17 clear does not follow a linked directory out of the root"
-    (call-with-fetch-fixture '()
+    (call-with-fetch-fixture (list (fetch-entry (list "file:///nonexistent/toy.rktd.gz")))
       (lambda (root registry)
         (call-with-temporary-fixture
          (lambda (outside)
            (define kept (build-path outside (format "~a.rktd.gz" (make-string 64 #\c))))
            (call-with-output-file kept (lambda (o) (write-bytes #"x" o)))
            (make-file-or-directory-link outside (build-path root "elsewhere"))
+           (make-file-or-directory-link outside (build-path root "toy-remote"))
+           (clear-dataset-cache 'toy-remote)
+           (check-true (file-exists? kept))
            (clear-dataset-cache)
            (check-true (file-exists? kept))
            (check-true (link-exists? (build-path root "elsewhere"))))))))
@@ -342,9 +353,10 @@
                  (lambda (u) (list (fetch-entry (list (u "/toy")) #:format "zip")))
       (lambda (srv root registry)
         (check-not-false (memq 'toy-remote (dataset-names)))
-        (check-exn (fetch-error? "unsupported fetch format" "zip" "toy-remote" "rktd.gz")
+        (check-exn (fetch-error? #rx"^fetch-dataset: unsupported fetch format" "zip" "toy-remote"
+                                 "rktd.gz")
                    (lambda () (fetch-dataset 'toy-remote)))
-        (check-exn (fetch-error? "unsupported fetch format")
+        (check-exn (fetch-error? #rx"^load-dataset-table: unsupported fetch format")
                    (lambda () (load-dataset-table 'toy-remote)))
         (check-equal? (http-fixture-requests srv) '()))))
 
@@ -398,4 +410,31 @@
             (dataset-cached? 'toy-remote)
             (dataset-info 'toy-remote)
             (dataset-names)
-            (check-false (directory-exists? sub))))))))
+            (check-false (directory-exists? sub)))))))
+
+  (test-case "C28 a cache the caller cannot write or clear raises a registry error"
+    (call-with-artifact-url toy-artifact
+      (lambda (url)
+        (call-with-fetch-fixture (list (fetch-entry (list url)))
+          (lambda (root registry)
+            (with-resource [ev (parameterize ([sandbox-path-permissions '((read "/"))])
+                                 (make-evaluator 'racket/base '(require datasets/core)))
+                               (kill-evaluator ev)]
+              (check-exn #rx"^load-dataset-table: cannot write the dataset cache\n  dataset: toy-remote"
+                         (lambda () (ev '(load-dataset-table 'toy-remote))))
+              (check-equal? (cache-files root) '())
+              (fetch-dataset 'toy-remote)
+              (check-exn #rx"^clear-dataset-cache: cannot clear the dataset cache\n  dataset: toy-remote"
+                         (lambda () (ev '(clear-dataset-cache 'toy-remote))))
+              (check-exn #rx"^clear-dataset-cache: cannot clear the dataset cache.*access denied"
+                         (lambda () (ev '(clear-dataset-cache))))
+              (check-equal? (cache-files root) (list final-rel)))
+            (define elsewhere
+              (byte-pregexp (bytes-append #"^(?!" (regexp-quote (path->bytes root)) #")")))
+            (with-resource [ev (parameterize ([sandbox-path-permissions `((read ,elsewhere))])
+                                 (make-evaluator 'racket/base '(require datasets/core)))
+                               (kill-evaluator ev)]
+              (check-exn (regexp (string-append "^clear-dataset-cache: cannot clear the dataset cache"
+                                                "\n  directory: " (regexp-quote (path->string root))))
+                         (lambda () (ev '(clear-dataset-cache)))))
+            (check-equal? (cache-files root) (list final-rel))))))))

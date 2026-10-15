@@ -1,8 +1,10 @@
 #lang racket/base
 (require (prefix-in df: (only-in data-frame df-is-na? df-na-value df-ref df-set!))
          (only-in datasets dataset-missing dataset-missing? dataset-names
-                  dataset-table-column dataset-table-names dataset-table-row-count load-airquality
-                  load-dataset load-dataset-table load-iris)
+                  dataset-table-column dataset-table-names dataset-table-row-count
+                  load-air-passengers load-airquality load-anscombe load-breast-cancer load-dataset
+                  load-dataset-table load-diabetes load-faithful load-iris load-mtcars
+                  load-plant-growth load-titanic load-tooth-growth load-us-arrests load-wine)
          (only-in datasets/core-tests/fixture cache-files call-with-artifact-url
                   call-with-environment call-with-fetch-fixture call-with-registry-fixtures
                   fetch-entry registry-fixture table-digest toy-artifact toy-table-digest)
@@ -39,10 +41,17 @@
         (define m (load-dataset id #:format 'matrix #:columns numeric))
         (for* ([i (in-range (dataset-table-row-count t))] [j (in-range (length numeric))])
           (check-equal? (matrix-ref m i j) (vector-ref (dataset-table-column t (list-ref numeric j)) i))))))
+  (define loaders
+    (hash 'air-passengers load-air-passengers 'airquality load-airquality 'anscombe load-anscombe
+          'breast-cancer load-breast-cancer 'diabetes load-diabetes 'faithful load-faithful
+          'iris load-iris 'mtcars load-mtcars 'plant-growth load-plant-growth
+          'titanic load-titanic 'tooth-growth load-tooth-growth 'us-arrests load-us-arrests
+          'wine load-wine))
   (define (check-loaders)
-    (for ([name (in-list (dataset-names #:package "datasets-core"))])
-      (define loader (dynamic-require 'datasets (string->symbol (format "load-~a" name))))
-      (check-equal? (loader #:format 'table) (load-dataset name #:format 'table))))
+    (check-equal? (sort (hash-keys loaders) symbol<?) (dataset-names #:package "datasets-core"))
+    (for ([(name loader) (in-hash loaders)])
+      (check-equal? (loader #:format 'table) (load-dataset name #:format 'table))
+      (check-exn #rx"blaming: [^\n]*formats\\.rkt" (lambda () (loader #:format 'bad)))))
   (check-formats)
   (check-loaders)
   (define air (load-airquality #:format 'data-frame))
