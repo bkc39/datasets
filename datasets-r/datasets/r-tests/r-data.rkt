@@ -4,6 +4,7 @@
                   dataset-packages dataset-table-column dataset-table-columns dataset-table-names
                   dataset-table-row-count load-dataset-table)
          (only-in datasets/core-tests/fixture gunzip-file hex)
+         (only-in racket/file file->lines)
          (only-in racket/list flatten make-list remove-duplicates)
          (only-in racket/match match match-define)
          (only-in racket/runtime-path define-runtime-path)
@@ -34,9 +35,9 @@
   (define licenses
     (hash 'datasaurus-dozen "MIT" 'gapminder "CC0-1.0" 'penguins "CC0-1.0"
           'penguins-raw "CC0-1.0" 'titanic-passengers "CC0-1.0"))
+  (define ids (map car shapes))
   (define column-metas
-    (for/hash ([shape (in-list shapes)])
-      (define id (car shape))
+    (for/hash ([id (in-list ids)])
       (values id (for/hash ([meta (in-list (hash-ref (dataset-info id) "columns"))])
                    (values (hash-ref meta "name") meta)))))
   (define (data-file id) (build-path r-data "data" (format "~a.rktd.gz" id)))
@@ -45,13 +46,24 @@
   (define (column-count id name keep?) (vector-count keep? (column id name)))
   (define (column-sum id name)
     (for/sum ([v (in-vector (column id name))] #:unless (dataset-missing? v)) v))
+  (define (column-type name levels identifiers present)
+    (cond
+      [(member name identifiers) "identifier"]
+      [(pair? levels) "categorical"]
+      [(andmap exact-integer? present) "integer"]
+      [(andmap real? present) "real"]
+      [else "string"]))
+  (define (key-values path)
+    (for/hash ([line (in-list (file->lines path))])
+      (match-define (list _ key value) (regexp-match #px"^([^:]+): (.*)$" line))
+      (values key value)))
   (define spot-checks
     `((row penguins 0 ,penguins-names ("Adelie" "Torgersen" 39.1 18.7 181 3750 "male" 2007))
       (row penguins 3 ("bill-length-mm" "bill-depth-mm" "flipper-length-mm" "body-mass-g" "sex")
            ,(make-list 5 dataset-missing))
       (row penguins 343 ("species" "bill-length-mm") ("Chinstrap" 50.2))
       (missing penguins ("bill-length-mm" "sex") (2 11))
-      (sum penguins "body-mass-g" 1437000 0)
+      (sum penguins "body-mass-g" 1437000)
       (level-counts penguins "species" (152 68 124))
       (meta penguins "species" "levels" ("Adelie" "Chinstrap" "Gentoo"))
       (info penguins "suggested-targets" ("species"))
@@ -66,7 +78,7 @@
       (meta penguins-raw "study-name" "levels" ("PAL0708" "PAL0809" "PAL0910"))
       (row gapminder 0 ,gapminder-names ("Afghanistan" "Asia" 1952 28.801 8425333 779.4453145))
       (row gapminder 1703 ,gapminder-names ("Zimbabwe" "Africa" 2007 43.487 12311143 469.7092981))
-      (sum gapminder "pop" 50440465801 0)
+      (sum gapminder "pop" 50440465801)
       (level-counts gapminder "country" ,(make-list 142 12))
       (meta gapminder "continent" "levels" ("Africa" "Americas" "Asia" "Europe" "Oceania"))
       (info gapminder "suggested-targets" ("life-exp"))
@@ -81,13 +93,13 @@
       (row titanic-passengers 1 ("cabin" "fare") ("C85" 71.2833))
       (row titanic-passengers 890 ("name" "ticket") ("Dooley, Mr. Patrick" "370376"))
       (missing titanic-passengers ("age" "cabin" "embarked") (177 687 2))
-      (sum titanic-passengers "survived" 342 0)
+      (sum titanic-passengers "survived" 342)
       (sum titanic-passengers "fare" 28693.9493 1e-6)
       (info titanic-passengers "identifiers" ("passenger-id"))
       (info titanic-passengers "suggested-targets" ("survived"))
       (meta titanic-passengers "passenger-id" "original-name" "PassengerId")))
 
-  (check-equal? (dataset-names #:package "datasets-r") (map car shapes))
+  (check-equal? (dataset-names #:package "datasets-r") ids)
   (check-not-false (member "datasets-r" (dataset-packages)))
   (for ([shape (in-list shapes)])
     (match-define (list id rows names) shape)
@@ -109,7 +121,15 @@
     (for ([c (in-vector (dataset-table-columns t))] [meta (in-list (hash-ref info "columns"))])
       (check-true (immutable? c))
       (check-equal? (vector-length c) rows)
-      (check-equal? (vector-count dataset-missing? c) (hash-ref meta "missing-count")))
+      (check-equal? (vector-count dataset-missing? c) (hash-ref meta "missing-count"))
+      (define present (for/list ([v (in-vector c)] #:unless (dataset-missing? v)) v))
+      (define type (hash-ref meta "type"))
+      (check-equal? type
+                    (column-type (hash-ref meta "name") (hash-ref meta "levels")
+                                 (hash-ref info "identifiers") present)
+                    (hash-ref meta "name"))
+      (check-true (or (andmap string? present) (not (member type '("categorical" "string"))))
+                  (hash-ref meta "name")))
     (for ([c (in-vector (dataset-table-columns t))] [meta (in-list (hash-ref info "columns"))]
           #:when (pair? (hash-ref meta "levels")))
       (check-equal? (sort (remove-duplicates
@@ -117,13 +137,13 @@
                           string<?)
                     (sort (hash-ref meta "levels") string<?))))
   (check-equal? (sort (map path->string (directory-list (build-path r-data "data"))) string<?)
-                (sort (for/list ([shape (in-list shapes)]) (format "~a.rktd.gz" (car shape))) string<?))
+                (sort (for/list ([id (in-list ids)]) (format "~a.rktd.gz" id)) string<?))
 
   (define license-files (directory-list (build-path r-data "licenses")))
   (match-define (list _ 'AND data-license) ((get-info/full package-root) 'license))
   (define registry-licenses
     (remove-duplicates
-     (for/list ([shape (in-list shapes)]) (hash-ref (dataset-info (car shape)) "license"))))
+     (for/list ([id (in-list ids)]) (hash-ref (dataset-info id) "license"))))
   (check-equal? (sort registry-licenses string<?)
                 (sort (for/list ([id (in-list (remove-duplicates (flatten data-license)))]
                                  #:unless (eq? id 'AND))
@@ -134,6 +154,10 @@
     (check-not-false (for/or ([file (in-list license-files)])
                        (regexp-match? file-name (path->string file)))
                      license))
+  (define datasaurus-copyright (key-values (build-path r-data "provenance" "datasauRus-LICENSE")))
+  (check-not-false (member (format "Copyright (c) ~a ~a" (hash-ref datasaurus-copyright "YEAR")
+                                   (hash-ref datasaurus-copyright "COPYRIGHT HOLDER"))
+                           (file->lines (build-path r-data "licenses" "MIT-datasauRus.txt"))))
 
   (for ([spot (in-list spot-checks)])
     (match spot
@@ -142,6 +166,7 @@
       [(list 'missing id names expected)
        (check-equal? (for/list ([name (in-list names)]) (column-count id name dataset-missing?))
                      expected)]
+      [(list 'sum id name expected) (check-equal? (column-sum id name) expected)]
       [(list 'sum id name expected epsilon) (check-= (column-sum id name) expected epsilon)]
       [(list 'level-counts id name expected)
        (check-equal? (for/list ([level (in-list (column-meta id name "levels"))])
