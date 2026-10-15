@@ -9,7 +9,8 @@
          (only-in racket/list append-map check-duplicates index-of remove-duplicates take)
          (only-in racket/match == match match-define)
          (only-in racket/runtime-path define-runtime-path)
-         (only-in setup/getinfo find-relevant-directories get-info/full reset-relevant-directories-state!))
+         (only-in setup/getinfo directory-record-path directory-record-spec find-relevant-directory-records
+                  get-info/full reset-relevant-directories-state!))
 (provide (contract-out
           [dataset-names (->* () (#:package (or/c #f string?)) (listof symbol?))]
           [dataset-packages (-> (listof string?))])
@@ -106,16 +107,11 @@
   (set-box! info-cache current)
   (append-map (lambda (dir) (resolve-registries dir (cdr (hash-ref current dir)))) dirs))
 
-(define (core-copy? dir)
-  (match (map path->string (explode-path dir))
-    [(list _ ... "datasets" "core-data") #t]
-    [_ #f]))
-
 (define (registry-sources dirs)
   (define core-names (check-registries core-data core-registry-names))
   (define core (resolve-registries core-data core-names))
   (define discovered
-    (sort (declared-registries (for/list ([dir (in-list dirs)] #:unless (core-copy? dir)) dir))
+    (sort (declared-registries dirs)
           string<? #:key path->string))
   (remove-duplicates
    (append (for/list ([file (in-list core)]) (source file #t (file-signature file)))
@@ -228,8 +224,9 @@
   ((unbox reply)))
 
 (define (access-denied? e)
-  (and (exn:fail? e)
-       (or (exn:fail:filesystem? e) (regexp-match? #rx"access denied" (exn-message e)))))
+  (or (and (exn:fail:filesystem:errno? e)
+           (member (exn:fail:filesystem:errno-errno e) '((13 . posix) (1 . posix) (5 . windows))))
+      (and (exn:fail? e) (regexp-match? #rx"^[^:\n]*: `[a-z+-]+' access denied for " (exn-message e)))))
 
 (define (discovered-directories)
   (with-handlers ([access-denied?
@@ -239,7 +236,9 @@
                      (values '() (exn-message e)))])
     (values (with-handlers ([(lambda (_) #t)
                              (lambda (e) (reset-relevant-directories-state!) (raise e))])
-              (find-relevant-directories '(datasets-registries) 'all-available))
+              (for/list ([record (in-list (find-relevant-directory-records '(datasets-registries) 'all-available))]
+                         #:unless (equal? (directory-record-spec record) '(lib "datasets" "core-data")))
+                (directory-record-path record)))
             #f)))
 
 (define (unlocked-catalog)
@@ -253,28 +252,35 @@
          fresh]))
   (struct-copy catalog built [discovery-failure failure]))
 
+(define (discovery-failure-fields known)
+  (match (catalog-discovery-failure known)
+    [#f '()]
+    [reason (list "sibling-package discovery failed" reason)]))
+
+(define (catalog-packages known)
+  (sort (remove-duplicates (for/list ([entry (in-hash-values (catalog-entries known))])
+                             (hash-ref entry "package")))
+        string<?))
+
 (define (dataset-names #:package [package #f])
+  (define known (current-catalog))
   (define names
-    (for/list ([(name entry) (in-hash (catalog-entries (current-catalog)))]
+    (for/list ([(name entry) (in-hash (catalog-entries known))]
                #:when (or (not package) (equal? package (hash-ref entry "package"))))
       (string->symbol name)))
   (when (and package (null? names))
-    (raise-arguments-error 'dataset-names "unknown package"
-                           "package" package "available" (dataset-packages)))
+    (apply raise-arguments-error 'dataset-names "unknown package"
+           "package" package "available" (catalog-packages known) (discovery-failure-fields known)))
   (sort names symbol<?))
 
 (define (dataset-packages)
-  (sort (remove-duplicates (for/list ([entry (in-hash-values (catalog-entries (current-catalog)))])
-                             (hash-ref entry "package")))
-        string<?))
+  (catalog-packages (current-catalog)))
 
 (define (dataset-entry name)
   (define known (current-catalog))
   (unless (and (symbol? name) (hash-has-key? (catalog-entries known) (symbol->string name)))
     (apply raise-arguments-error 'dataset-info "unknown dataset" "name" name "available" (dataset-names)
-           (match (catalog-discovery-failure known)
-             [#f '()]
-             [reason (list "sibling-package discovery failed" reason)])))
+           (discovery-failure-fields known)))
   (values (hash-ref (catalog-entries known) (symbol->string name))
           (hash-ref (catalog-data-dirs known) (symbol->string name))))
 

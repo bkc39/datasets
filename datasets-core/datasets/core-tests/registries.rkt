@@ -36,12 +36,17 @@
              (check-exn (apply registry-error? (regexp (regexp-quote (path->string dir))) rxs) call)))))))
   (define (one entry) (hash "registry.rktd" (hash (hash-ref entry "name" "gen") entry)))
   (define (listed? name) (and (memq name (dataset-names)) #t))
-  (define (call-with-unreadable file thunk #:denial [denial "denied"])
+  (define ((denial message) who path) (error who "~a~a" message path))
+  (define ((errno-denial reason errno) who path)
+    (raise (exn:fail:filesystem:errno
+            (format "~a: cannot open input file\n  path: ~a\n  system error: ~a" who path reason)
+            (current-continuation-marks) errno)))
+  (define (call-with-unreadable file thunk #:raise [raise-denial (denial "denied: ")])
     (parameterize ([current-security-guard
                     (make-security-guard (current-security-guard)
                                          (lambda (who path modes)
                                            (when (and path (memq 'read modes) (equal? (simplify-path path) file))
-                                             (error who "~a: ~a" denial path)))
+                                             (raise-denial who path)))
                                          void)])
       (thunk)))
   (define (fixture-index)
@@ -53,7 +58,7 @@
        (make-directory* dir)
        (write-registry-fixture! dir #:info (sort (hash-keys registries) string<?) #:registries registries
                                 #:data (hash))
-       (call-with-registry-fixtures (list dir) thunk))))
+       (call-with-registry-fixtures (list dir) thunk #:specs '((lib "datasets" "core-data"))))))
   (define (call-with-gen thunk)
     (call-with-temporary-fixture
      (lambda (dir)
@@ -325,7 +330,7 @@
     (call-with-gen
      (lambda ()
        (define receiver (make-log-receiver (current-logger) 'warning 'datasets))
-       (call-with-unreadable (fixture-index) #:denial "access denied"
+       (call-with-unreadable (fixture-index) #:raise (denial "`read' access denied for ")
          (lambda ()
            (check-equal? (dataset-names) installed)
            (check-exn #rx"unknown dataset.*sibling-package discovery failed.*access denied"
@@ -368,4 +373,42 @@
            (check-equal? (for/list ([round (in-range 10)])
                            (write-info! (if (even? round) '("registry.rktd") '("registry.rktd" "two.rktd")))
                            (listed? 'second))
-                         (for/list ([round (in-range 10)]) (odd? round)))))))))
+                         (for/list ([round (in-range 10)]) (odd? round))))))))
+
+  (test-case "only a permission error or an access-denied guard falls back to datasets-core"
+    (call-with-gen
+     (lambda ()
+       (call-with-unreadable (fixture-index)
+         #:raise (errno-denial "Too many open files; errno=24" '(24 . posix))
+         (lambda () (check-exn #rx"Too many open files" dataset-names)))
+       (call-with-unreadable (fixture-index) #:raise (errno-denial "Permission denied; errno=13" '(13 . posix))
+         (lambda () (check-equal? (dataset-names) installed)))
+       (check-true (listed? 'gen)))))
+
+  (test-case "a malformed index raises, even one mentioning access denied, and is retried once restored"
+    (for ([bad (in-list '(bogus ("access denied")))])
+      (call-with-gen
+       (lambda ()
+         (define index (fixture-index))
+         (define saved (call-with-input-file index read))
+         (call-with-output-file index #:exists 'truncate (lambda (out) (write bad out)))
+         (check-exn #rx"bad info-domain cache" dataset-names)
+         (call-with-output-file index #:exists 'truncate (lambda (out) (write saved out)))
+         (check-true (listed? 'gen))))))
+
+  (test-case "a registry under another path ending in datasets/core-data is discovered"
+    (call-with-temporary-fixture
+     (lambda (root)
+       (define dir (build-path root "mylab" "datasets" "core-data"))
+       (make-directory* dir)
+       (write-registry-fixture! dir #:info '("registry.rktd")
+                                #:registries (one (gen-entry "lab" #:package "mylab-data")) #:data (hash))
+       (call-with-registry-fixtures (list dir) (lambda () (check-true (listed? 'lab)))))))
+
+  (test-case "an unknown package in the fallback gives the discovery failure"
+    (call-with-gen
+     (lambda ()
+       (call-with-unreadable (fixture-index) #:raise (denial "`read' access denied for ")
+         (lambda ()
+           (check-exn #rx"unknown package.*sibling-package discovery failed"
+                      (lambda () (dataset-names #:package "datasets-gen")))))))))
