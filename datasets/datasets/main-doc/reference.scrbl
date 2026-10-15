@@ -53,6 +53,7 @@ types are the same. Variable descriptions and provenance appear in the
 @defproc[(load-wine [#:format format symbol? 'polars] [#:columns columns (or/c #f (listof string?)) #f]) any/c]{Loads wine measurements and cultivar labels.}
 
 @section[#:tag "datasets-synthetic-formats-reference"]{Synthetic generators}
+@declare-exporting[datasets]
 
 These procedures take the arguments of the same-named generators of
 @racketmodname[datasets/synthetic], documented in

@@ -1,5 +1,5 @@
 #lang racket/base
-(require (for-syntax racket/base racket/syntax)
+(require (for-syntax racket/base racket/syntax syntax/parse)
          (only-in racket/contract/base contract-out)
          (only-in syntax/parse/define define-syntax-parse-rule)
          datasets/core datasets/polars datasets/matrix datasets/data-frame
@@ -19,13 +19,14 @@
   (convert-table (load-dataset-table name #:columns columns) format))
 
 (define (format-wrapper name generate)
-  (procedure-rename
+  (define-values (_ keywords) (procedure-keywords generate))
+  (procedure-reduce-keyword-arity
    (make-keyword-procedure
     (λ (kws vals)
       (define fmt (for/first ([k (in-list kws)] [v (in-list vals)] #:when (eq? k '#:format)) v))
       (define pairs (for/list ([k (in-list kws)] [v (in-list vals)] #:unless (eq? k '#:format)) (cons k v)))
       (convert-table (keyword-apply generate (map car pairs) (map cdr pairs) '()) (or fmt 'polars))))
-   name))
+   0 '() (sort (cons '#:format keywords) keyword<?) name))
 
 (define-syntax-parse-rule (define-synthetic-wrappers generator:id ...)
   #:with (core ...) (for/list ([g (in-list (attribute generator))]) (format-id g "s:~a" g))
