@@ -2,7 +2,7 @@
 (define collection 'multi)
 (define version "0.1")
 (define deps '(("base" #:version "9.3")))
-(define build-deps '("rackunit-lib" "scribble-lib" "racket-doc"))
+(define build-deps '("rackunit-lib" "racket-doc" "sandbox-lib" "scribble-lib"))
 (define pkg-desc "Bundled, attributed datasets and immutable Racket tables")
 (define pkg-authors '(bkc))
 (define license
