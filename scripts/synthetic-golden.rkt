@@ -20,7 +20,13 @@
     (make-hastie-10-2 (#:n-samples 5 #:seed 0))
     (make-swiss-roll (#:n-samples 5 #:noise 0.1 #:hole? #t #:seed 0))
     (make-s-curve (#:n-samples 5 #:noise 0.1 #:seed 0))
-    (make-gaussian-quantiles (#:n-samples 5 #:seed 0))))
+    (make-gaussian-quantiles (#:n-samples 5 #:seed 0))
+    (make-classification (#:n-samples 5 #:n-features 4 #:hypercube? #f #:seed 0))
+    (make-regression (#:n-samples 5 #:n-features 4 #:effective-rank 2 #:noise 0.1 #:seed 0))
+    (make-swiss-roll (#:n-samples 5 #:noise 0.1 #:seed 0))
+    (make-classification
+     (#:n-samples 3 #:n-features 31 #:n-informative 31 #:n-redundant 0 #:n-clusters-per-class 1
+      #:seed 0))))
 
 (define entries
   (for/list ([c (in-list cases)])

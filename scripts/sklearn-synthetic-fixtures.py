@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Write the scikit-learn parity fixture for datasets/synthetic.
-Run from `nix shell nixpkgs#python3Packages.scikit-learn`: python3 scripts/sklearn-synthetic-fixtures.py
+Run with scikit-learn from nixpkgs 07e1d92:
+  nix shell --impure --expr '(builtins.getFlake "github:NixOS/nixpkgs/07e1d92cdc0ed416cfa11ff3ca40d17e61cfba7a").legacyPackages.x86_64-linux.python3.withPackages (p: [p.scikit-learn])' -c python3 -I scripts/sklearn-synthetic-fixtures.py
 Only the deterministic parts are recorded (labels, noise-free curves, singular values);
 the random stream is not NumPy's.
 """
@@ -35,7 +36,10 @@ CASES = [
       ("flip-y", 0.0), ("shuffle?", False)], ["y"]),
     ("quantiles", "make-gaussian-quantiles", [("n-samples", 10), ("n-classes", 3), ("shuffle?", False)], ["y"]),
 ]
-LOW_RANK = [("n-samples", 20), ("n-features", 10), ("effective-rank", 3), ("tail-strength", 0.5)]
+LOW_RANK = [
+    ("low-rank-even", [("n-samples", 20), ("n-features", 10), ("effective-rank", 3), ("tail-strength", 0.5)]),
+    ("low-rank-tail", [("n-samples", 20), ("n-features", 10), ("effective-rank", 3), ("tail-strength", 0.2)]),
+]
 
 
 def python_name(keyword):
@@ -77,12 +81,12 @@ def case(name, generator, args, wanted):
     return f"({name} {generator} {keyword_args(args)} {columns({n: table[n] for n in wanted})})"
 
 
-def low_rank_case():
-    matrix = datasets.make_low_rank_matrix(**kwargs(LOW_RANK), random_state=0)
+def low_rank_case(name, args):
+    matrix = datasets.make_low_rank_matrix(**kwargs(args), random_state=0)
     s = np.linalg.svd(matrix, compute_uv=False)
-    return f"(low-rank-profile low-rank-profile {keyword_args(LOW_RANK)} {columns({'singular-values': list(s)})})"
+    return f"({name} low-rank-profile {keyword_args(args)} {columns({'singular-values': list(s)})})"
 
 
-cases = [case(*c) for c in CASES] + [low_rank_case()]
+cases = [case(*c) for c in CASES] + [low_rank_case(*c) for c in LOW_RANK]
 OUT.write_text(f'#hash(("scikit-learn" . "{VERSION}")\n       ("cases" .\n        (' + "\n         ".join(cases) + ")))\n")
 print(OUT)

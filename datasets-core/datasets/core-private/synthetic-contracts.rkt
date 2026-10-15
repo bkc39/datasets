@@ -4,8 +4,8 @@
                               attribute define-syntax-class expr id pattern str
                               ~and ~datum ~optional ~or*))
          (only-in racket/contract/base
-                  ->i </c >/c >=/c and/c any/c flat-named-contract integer-in list/c listof
-                  non-empty-listof or/c real-in unsupplied-arg?)
+                  ->i and/c any/c flat-named-contract integer-in list/c listof
+                  non-empty-listof or/c unsupplied-arg?)
          (only-in racket/match match)
          (only-in syntax/parse/define define-syntax-parse-rule)
          (only-in datasets/core-private/table dataset-table?))
@@ -22,10 +22,11 @@
 (define finite/c
   (flat-named-contract 'finite/c
     (λ (x) (and (rational? x) (rational? (real->double-flonum x))))))
-(define nonnegative/c (flat-named-contract 'nonnegative/c (and/c finite/c (>=/c 0))))
-(define positive/c (flat-named-contract 'positive/c (and/c finite/c (>/c 0))))
-(define probability/c (flat-named-contract 'probability/c (and/c finite/c (real-in 0 1))))
-(define factor/c (flat-named-contract 'factor/c (and/c finite/c (>=/c 0) (</c 1))))
+(define (flonum-in ok?) (and/c finite/c (λ (x) (ok? (real->double-flonum x)))))
+(define nonnegative/c (flat-named-contract 'nonnegative/c (flonum-in (λ (x) (>= x 0.0)))))
+(define positive/c (flat-named-contract 'positive/c (flonum-in (λ (x) (> x 0.0)))))
+(define probability/c (flat-named-contract 'probability/c (flonum-in (λ (x) (<= 0.0 x 1.0)))))
+(define factor/c (flat-named-contract 'factor/c (flonum-in (λ (x) (and (>= x 0.0) (< x 1.0))))))
 (define sample-split/c
   (flat-named-contract 'sample-split/c
     (list/c exact-nonnegative-integer? exact-nonnegative-integer?)))

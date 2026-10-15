@@ -96,5 +96,6 @@
           "no violation")))
     (for ([form (in-list '((make-moons #:format 'csv) (make-blobs #:centers '((0 0) (1)))
                            (make-gaussian-quantiles #:n-samples 2 #:n-classes 3)
-                           (load-dataset 'iris #:format 'csv) (load-iris #:format 'csv)))])
+                           (load-dataset 'iris #:format 'csv) (load-iris #:format 'csv)
+                           (load-iris #:columns 5) (load-dataset 'iris #:columns '())))])
       (check-regexp-match #rx"blaming: [^\n]*client" (violation form)))))

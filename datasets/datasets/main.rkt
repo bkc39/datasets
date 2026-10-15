@@ -1,6 +1,6 @@
 #lang racket/base
 (require (for-syntax racket/base (only-in racket/syntax format-id) (only-in syntax/parse attribute))
-         (only-in racket/contract/base ->* any any/c contract-out)
+         (only-in racket/contract/base ->* any contract-out non-empty-listof or/c)
          (only-in syntax/parse/define define-syntax-parse-rule)
          datasets/core
          (only-in datasets/polars table->polars)
@@ -10,14 +10,15 @@
          (prefix-in s: datasets/synthetic))
 (provide (all-from-out datasets/core)
          (contract-out
-          [load-dataset (->* (symbol?) (#:format dataset-format/c #:columns any/c) any)]
+          [load-dataset (->* (symbol?) (#:format dataset-format/c #:columns columns/c) any)]
           [load-air-passengers loader/c] [load-airquality loader/c] [load-anscombe loader/c]
           [load-breast-cancer loader/c] [load-diabetes loader/c] [load-faithful loader/c]
           [load-iris loader/c] [load-mtcars loader/c] [load-plant-growth loader/c]
           [load-titanic loader/c] [load-tooth-growth loader/c] [load-us-arrests loader/c]
           [load-wine loader/c]))
 
-(define loader/c (->* () (#:format dataset-format/c #:columns any/c) any))
+(define columns/c (or/c #f (non-empty-listof string?)))
+(define loader/c (->* () (#:format dataset-format/c #:columns columns/c) any))
 
 (define (convert-table table format)
   (case format

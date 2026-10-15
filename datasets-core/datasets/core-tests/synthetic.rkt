@@ -31,6 +31,7 @@
   (define (label-counts t)
     (for/fold ([h (hash)]) ([v (in-vector (col t "y"))]) (hash-update h v add1 0)))
   (define (state g) (pseudo-random-generator->vector g))
+  (define (dot u v) (for/sum ([a (in-vector u)] [b (in-vector v)]) (* a b)))
   (define (mean xs) (/ (apply + xs) (length xs)))
   (define (variance xs)
     (define m (mean xs))
@@ -241,7 +242,9 @@
           (mean (for/list ([x (in-vector (col t n))] [y (in-vector (col t "y"))] #:when (= y k))
                   x)))))
     (check-= (abs (* m00 m11)) (abs (* m01 m10)) (* 0.02 (abs (* m01 m10))))
-    (check-true (for/or ([m (list m00 m01 m10 m11)]) (< (abs m) 90.0))))
+    (check-true (for/or ([m (list m00 m01 m10 m11)]) (< (abs m) 90.0)))
+    (check-true (> (abs (- 1 (abs (/ m00 m01)))) 0.1))
+    (check-true (> (abs (- 1 (abs (/ m00 m10)))) 0.1)))
 
   (test-case "formula (1e-12): list #:shift and #:scale apply per feature"
     (define shift '(1.0 -2.0 0.5))
@@ -349,7 +352,6 @@
     (define s
       (for/list ([k 10]) (+ (* 0.5 (exp (- (sqr (/ k 3.0))))) (* 0.5 (exp (* -0.1 (/ k 3.0)))))))
     (define cols (map (λ (n) (col t n)) (features t)))
-    (define (dot u v) (for/sum ([a (in-vector u)] [b (in-vector v)]) (* a b)))
     (check-= (for/sum ([u cols]) (dot u u)) (for/sum ([x s]) (sqr x)) 1e-10)
     (check-= (for*/sum ([u cols] [v cols]) (sqr (dot u v))) (for/sum ([x s]) (expt x 4)) 1e-10))
 
@@ -392,6 +394,9 @@
                    (make-moons #:noise -0.1)
                    (make-moons #:noise (expt 10 400))
                    (make-moons #:n-samples '(1 2 3)) (make-circles #:factor 1.0)
+                   (make-circles #:factor (- 1 (/ 1 (expt 10 400))))
+                   (make-classification #:scale (/ 1 (expt 10 400)))
+                   (make-classification #:class-sep (/ 1 (expt 10 400)))
                    (make-classification #:n-features 3) (make-classification #:n-classes 3)
                    (make-classification #:n-classes 3 #:weights '(0.5))
                    (make-classification #:n-classes 3 #:weights '(0.7 0.6))
@@ -432,11 +437,14 @@
     (check-equal? (hash-ref fx "scikit-learn") "1.8.0")
     (for ([c (hash-ref fx "cases")])
       (match c
-        [(list _ 'low-rank-profile args (hash-table ("singular-values" s)))
+        [(list id 'low-rank-profile args (hash-table ("singular-values" s)))
          (define t (apply/plist make-regression (append args '(#:seed 0))))
-         (check-= (for*/sum ([n (features t)] [x (in-vector (col t n))]) (sqr x))
-                  (for/sum ([x s]) (sqr x))
-                  1e-10)]
+         (define cols (map (λ (n) (col t n)) (features t)))
+         (check-= (for/sum ([u cols]) (dot u u)) (for/sum ([x s]) (sqr x)) 1e-10 (format "~a Σs²" id))
+         (check-= (for*/sum ([u cols] [v cols]) (sqr (dot u v)))
+                  (for/sum ([x s]) (expt x 4))
+                  1e-10
+                  (format "~a Σs⁴" id))]
         [(list id generator args expected)
          (define t (apply/plist (dynamic-require 'datasets/synthetic generator)
                                 (append args '(#:seed 0))))
