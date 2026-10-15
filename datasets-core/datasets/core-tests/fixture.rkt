@@ -4,13 +4,13 @@
                   dataset-table-row-count dataset-table?)
          (only-in datasets/core-private/codec gunzip-file hex)
          (only-in file/gzip gzip-through-ports)
-         (only-in racket/contract/base -> any any/c contract-out hash/c listof)
+         (only-in racket/contract/base -> ->* any any/c contract-out hash/c listof)
          (only-in racket/file delete-directory/files make-directory* make-temporary-directory)
          (only-in racket/port call-with-output-bytes)
          (only-in racket/runtime-path define-runtime-path))
 (provide (contract-out
           [registry-fixture (-> string? complete-path?)]
-          [call-with-registry-fixtures (-> (listof complete-path?) (-> any) any)]
+          [call-with-registry-fixtures (->* ((listof complete-path?) (-> any)) (#:specs (listof any/c)) any)]
           [call-with-temporary-fixture (-> (-> complete-path? any) any)]
           [write-registry-fixture! (-> path? #:info any/c #:registries (hash/c string? any/c)
                                        #:data (hash/c string? bytes?) void?)]
@@ -28,16 +28,17 @@
                 (lambda () (proc dir))
                 (lambda () (delete-directory/files dir #:must-exist? #f))))
 
-(define (call-with-registry-fixtures dirs thunk)
+(define (call-with-registry-fixtures dirs thunk
+                                     #:specs [specs (for/list ([i (in-range (length dirs))])
+                                                      `(lib ,(format "datasets-fixture-~a" i)))])
   (call-with-temporary-fixture
    (lambda (root)
      (define compiled (build-path root "info-domain" "compiled"))
      (make-directory* compiled)
      (call-with-output-file (build-path compiled "cache.rktd")
        (lambda (out)
-         (write (for/list ([dir (in-list dirs)] [i (in-naturals)])
-                  `(,(path->bytes dir) (datasets-registries)
-                    (lib ,(format "datasets-fixture-~a" i)) 0 0))
+         (write (for/list ([dir (in-list dirs)] [spec (in-list specs)])
+                  `(,(path->bytes dir) (datasets-registries) ,spec 0 0))
                 out)))
      (parameterize ([current-library-collection-paths
                      (cons root (current-library-collection-paths))])
