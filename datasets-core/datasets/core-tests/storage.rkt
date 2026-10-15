@@ -1,9 +1,16 @@
 #lang racket/base
-(require racket/list racket/match racket/runtime-path datasets/core "fixture.rkt")
+(require (for-syntax racket/base)
+         (only-in datasets/core dataset-info dataset-names dataset-table-columns dataset-table-names
+                  load-dataset-table)
+         (only-in racket/match match-define match-lambda)
+         (only-in racket/runtime-path define-runtime-path)
+         (only-in "fixture.rkt" call-with-registry-fixtures call-with-temporary-fixture gen-entry
+                  gunzip-file gzip-bytes hex registry-fixture rows->rktd-bytes table-digest
+                  write-registry-fixture!))
 (define-runtime-path core-data "../core-data")
 (define-runtime-path pre-change-registry "pre-change-registry.rktd")
 (module+ test
-  (require rackunit)
+  (require (only-in rackunit check-equal? check-exn check-false test-case))
   (define pinned-sha256
     '((air-passengers "7f5e28170e7d79384a758fca5ca1f4e0dc018dc4717bc4864eb197e545e6eeac")
       (airquality "8274e5211f8a68c76e80f5ea8ec31d65be653a097a911adb22d086a2309d4110")
@@ -35,51 +42,68 @@
   (define (data-file id) (build-path core-data "data" (format "~a.rktd.gz" id)))
   (define old-registry (call-with-input-file pre-change-registry read))
 
-  (for ([p (in-list pinned-sha256)])                                   ; S1
-    (match-define (list id sha) p)
-    (check-equal? (hex (sha256-bytes (gunzip-file (data-file id)))) sha)
-    (check-equal? (hash-ref (dataset-info id) "sha256") sha))
+  (test-case "S1 decompressed bytes byte-identical to 007c85a"
+    (for ([p (in-list pinned-sha256)])
+      (match-define (list id sha) p)
+      (check-equal? (hex (sha256-bytes (gunzip-file (data-file id)))) sha)
+      (check-equal? (hash-ref (dataset-info id) "sha256") sha)))
 
-  (for ([id (in-list (dataset-names))])                                ; S2
-    (define info (dataset-info id))
-    (check-equal? (for/fold ([h info]) ([k (in-list '("tier" "package" "fetch"))]) (hash-remove h k))
-                  (hash-ref old-registry (symbol->string id)))
-    (check-equal? (hash-ref info "tier") "bundled")
-    (check-equal? (hash-ref info "package") "datasets-core")
-    (check-false (hash-ref info "fetch")))
+  (test-case "S3 loaded values identical to pre-change loads"
+    (for ([p (in-list pre-change-table-digests)])
+      (match-define (list id digest) p)
+      (check-equal? (table-digest (load-dataset-table id)) digest)))
 
-  (for ([p (in-list pre-change-table-digests)])                        ; S3
-    (match-define (list id digest) p)
-    (check-equal? (table-digest (load-dataset-table id)) digest))
+  (define (check-core-storage)
+    (test-case "S2 metadata unchanged apart from 3 new keys"
+      (for ([id (in-list (dataset-names #:package "datasets-core"))])
+        (define info (dataset-info id))
+        (check-equal? (for/fold ([h info]) ([k (in-list '("tier" "package" "fetch"))]) (hash-remove h k))
+                      (hash-ref old-registry (symbol->string id)))
+        (check-equal? (hash-ref info "tier") "bundled")
+        (check-equal? (hash-ref info "package") "datasets-core")
+        (check-false (hash-ref info "fetch"))))
 
-  (for ([id (in-list (dataset-names))])                                ; S3b
-    (define full (load-dataset-table id))
-    (define picked (load-dataset-table id #:columns (reverse (dataset-table-names full))))
-    (check-equal? (vector->list (dataset-table-columns picked))
-                  (reverse (vector->list (dataset-table-columns full)))))
+    (test-case "S3b column selection is a permutation of the full load"
+      (for ([id (in-list (dataset-names #:package "datasets-core"))])
+        (define full (load-dataset-table id))
+        (define picked (load-dataset-table id #:columns (reverse (dataset-table-names full))))
+        (check-equal? (vector->list (dataset-table-columns picked))
+                      (reverse (vector->list (dataset-table-columns full))))))
 
-  (for ([id (in-list (dataset-names))])                                ; S4
-    (define header (call-with-input-file (data-file id) (lambda (in) (read-bytes 10 in))))
-    (check-equal? (subbytes header 0 3) (bytes #x1f #x8b 8))
-    (check-equal? (bitwise-and (bytes-ref header 3) 8) 0)
-    (check-equal? (subbytes header 4 8) (bytes 0 0 0 0)))
+    (test-case "S4 reproducible gzip header"
+      (for ([id (in-list (dataset-names #:package "datasets-core"))])
+        (define header (call-with-input-file (data-file id) (lambda (in) (read-bytes 10 in))))
+        (check-equal? (subbytes header 0 3) (bytes #x1f #x8b 8))
+        (check-equal? (bitwise-and (bytes-ref header 3) 8) 0)
+        (check-equal? (subbytes header 4 8) (bytes 0 0 0 0)))))
+  (check-core-storage)
+  (test-case "S2 S3b S4 hold with a sibling registry installed"
+    (call-with-registry-fixtures (list (registry-fixture "sibling")) check-core-storage))
 
-  (check-equal? (sort (map path->string (directory-list (build-path core-data "data"))) string<?)  ; S6
-                (map (lambda (p) (format "~a.rktd.gz" (car p))) pinned-sha256))
-  (check-false (directory-exists? (build-path core-data 'up "private")))
+  (test-case "S6 no uncompressed or stray files"
+    (check-equal? (sort (map path->string (directory-list (build-path core-data "data"))) string<?)
+                  (map (match-lambda [(list id _) (format "~a.rktd.gz" id)]) pinned-sha256))
+    (check-false (directory-exists? (build-path core-data 'up "private"))))
 
-  (define good (rows->rktd-bytes '((1))))                              ; S7
-  (for ([c (in-list (list (list "truncated" (subbytes (gzip-bytes good) 0 12) #rx"gen")
-                          (list "mismatch" (gzip-bytes (rows->rktd-bytes '((2)))) #rx"sha256")))])
-    (match-define (list _ bytes rx) c)
-    (call-with-temporary-fixture
-     (lambda (dir)
-       (write-registry-fixture! dir #:info '("registry.rktd")
-                                #:registries (hash "registry.rktd" (hash "gen" (gen-entry "gen" #:sha256 (hex (sha256-bytes good)))))
-                                #:data (hash "gen" bytes))
-       (call-with-registry-fixtures (list dir)
-         (lambda ()
-           (check-exn (lambda (e) (and (exn:fail? e) (not (exn:fail:contract? e))
-                                       (regexp-match? rx (exn-message e))
-                                       (regexp-match? #rx"gen" (exn-message e))))
-                      (lambda () (load-dataset-table 'gen)))))))))
+  (test-case "S7 corrupt or mismatched data raises a non-contract exn:fail naming the dataset"
+    (define good (rows->rktd-bytes '((1))))
+    (define bad (rows->rktd-bytes '((2))))
+    (define (check-load-fails bytes rxs)
+      (call-with-temporary-fixture
+       (lambda (dir)
+         (write-registry-fixture! dir #:info '("registry.rktd")
+                                  #:registries (hash "registry.rktd" (hash "gen" (gen-entry "gen" #:sha256 (hex (sha256-bytes good)))))
+                                  #:data (hash "gen" bytes))
+         (define file-rx (regexp (regexp-quote (path->string (build-path dir "data" "gen.rktd.gz")))))
+         (call-with-registry-fixtures (list dir)
+           (lambda ()
+             (check-exn (lambda (e) (and (exn:fail? e) (not (exn:fail:contract? e))
+                                         (for/and ([rx (in-list (list* #rx"gen" file-rx rxs))])
+                                           (regexp-match? rx (exn-message e)))))
+                        (lambda () (load-dataset-table 'gen))))))))
+    (check-load-fails (subbytes (gzip-bytes good) 0 12) '())
+    (check-load-fails good (list #rx"cannot read dataset data"))
+    (check-load-fails (gzip-bytes bad)
+                      (list #rx"sha256 mismatch"
+                            (regexp (string-append "expected: " (hex (sha256-bytes good))))
+                            (regexp (string-append "actual: " (hex (sha256-bytes bad))))))))

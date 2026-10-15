@@ -1,11 +1,10 @@
 #lang racket/base
 (require (for-syntax racket/base)
-         (only-in file/gunzip gunzip-through-ports)
+         (only-in datasets/core-private/codec gunzip-file hex)
          (only-in racket/contract/base -> ->* contract-out listof or/c)
          (only-in racket/format ~a ~e ~s)
          (only-in racket/list append-map check-duplicates index-of remove-duplicates)
          (only-in racket/match == match)
-         (only-in racket/port call-with-output-bytes)
          (only-in racket/runtime-path define-runtime-path)
          (only-in setup/getinfo find-relevant-directories get-info/full))
 (provide (contract-out
@@ -22,7 +21,8 @@
 (define (dataset-missing? v) (eq? v dataset-missing))
 (struct dataset-table (names columns row-count info) #:transparent)
 (struct catalog (entries data-dirs))
-(define-runtime-path core-registry "core-data/registry.rktd")
+(define-runtime-path core-data "core-data")
+(define core-registry (build-path core-data "registry.rktd"))
 
 (define (freeze v)
   (cond [(string? v) (string->immutable-string v)]
@@ -51,6 +51,7 @@
       (get-info/full dir)))
   (define value (and info (info 'datasets-registries (lambda () #f))))
   (cond
+    [(not info) '()]
     [(not (and (list? value) (andmap registry-path-string? value)))
      (raise-registry-error 'datasets "malformed datasets-registries" "info.rkt" info-file
                            "expected" "a list of relative path strings" "given" (~s value))]
@@ -129,11 +130,19 @@
                           "key" (~s "package") "packages" (~s packages)))
   (freeze registry))
 
-(define (build-catalog dirs)
+(define (core-copy? file registry core-identity)
+  (and (not (= (file-or-directory-identity file) core-identity))
+       (for/and ([entry (in-hash-values registry)])
+         (equal? (hash-ref entry "package") "datasets-core"))))
+
+(define (build-catalog files)
+  (define core-identity (file-or-directory-identity core-registry))
   (for*/fold ([entries (hash)] [data-dirs (hash)] [sources (hash)]
               #:result (catalog entries data-dirs))
-             ([file (in-list (registry-files dirs))]
-              [(name entry) (in-hash (read-registry file))])
+             ([file (in-list files)]
+              [registry (in-value (read-registry file))]
+              #:unless (core-copy? file registry core-identity)
+              [(name entry) (in-hash registry)])
     (define previous (hash-ref sources name #f))
     (when previous
       (raise-registry-error 'datasets "duplicate dataset" "name" (~s name)
@@ -145,21 +154,20 @@
             (hash-set data-dirs name (build-path dir "data"))
             (hash-set sources name file))))
 
-;; Holds (cons discovered-directories catalog-or-exn), replaced whole so no
-;; thread sees a partial merge; a racing thread at worst merges again.
 (define cache (box #f))
 
+(define (file-signature file)
+  (define stat (file-or-directory-stat file))
+  (list file (hash-ref stat 'modify-time-nanoseconds) (hash-ref stat 'size)))
+
 (define (current-catalog)
-  (define dirs (find-relevant-directories '(datasets-registries) 'all-available))
-  (define result
-    (match (unbox cache)
-      [(cons (== dirs) cached) cached]
-      [_ (define fresh (with-handlers ([exn:fail? values]) (build-catalog dirs)))
-         (set-box! cache (cons dirs fresh))
-         fresh]))
-  (when (exn? result)
-    (raise result))
-  result)
+  (define files (registry-files (find-relevant-directories '(datasets-registries) 'all-available)))
+  (define key (map file-signature files))
+  (match (unbox cache)
+    [(cons (== key) cached) cached]
+    [_ (define fresh (build-catalog files))
+       (set-box! cache (cons key fresh))
+       fresh]))
 
 (define (dataset-names #:package [package #f])
   (define names
@@ -193,11 +201,6 @@
                                    "available" (dataset-table-names table)))
   (vector-ref (dataset-table-columns table) i))
 
-(define (hex bs)
-  (apply string-append
-         (for/list ([b (in-bytes bs)])
-           (string-append (if (< b 16) "0" "") (number->string b 16)))))
-
 (define (read-rows name info data-dir)
   (define file (build-path data-dir (format "~a.rktd.gz" name)))
   (define text
@@ -205,8 +208,7 @@
                                  (raise-registry-error 'load-dataset-table "cannot read dataset data"
                                                        "dataset" name "file" file
                                                        "error" (exn-message e)))])
-      (call-with-input-file file
-        (lambda (in) (call-with-output-bytes (lambda (out) (gunzip-through-ports in out)))))))
+      (gunzip-file file)))
   (define expected (hash-ref info "sha256"))
   (define actual (hex (sha256-bytes text)))
   (unless (equal? actual expected)
