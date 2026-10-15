@@ -1,7 +1,7 @@
 #lang scribble/manual
 @(require scribble/eval
           (for-label racket/base datasets datasets/data-frame
-                     math/matrix (prefix-in pl: (except-in polars series-ref ~>)) (prefix-in df: data-frame)))
+                     math/matrix (prefix-in pl: (except-in polars head series-ref ~>)) (prefix-in df: data-frame)))
 @(define ev (make-base-eval))
 
 @title[#:tag "datasets-guide"]{Guide}
@@ -76,7 +76,7 @@ Missing measurements are @tt{null}, and each species' mean body mass skips them:
    (pl:~> penguins
           (pl:group-by "species")
           (pl:agg (pl:mean (pl:col "body-mass-g")))
-          (pl:dataframe-sort '("species"))))
+          (pl:sort '("species"))))
  (for/list ([row 3])
    (list (pl:series-ref (pl:dataframe-column by-species "species") row)
          (pl:series-ref (pl:dataframe-column by-species "body-mass-g") row)))]

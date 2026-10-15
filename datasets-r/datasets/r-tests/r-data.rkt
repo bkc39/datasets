@@ -53,12 +53,29 @@
       [(andmap exact-integer? present) "integer"]
       [(andmap real? present) "real"]
       [else "string"]))
-  (define (key-values path)
-    (for/hash ([line (in-list (file->lines path))])
-      (match-define (list _ key value) (regexp-match #px"^([^:]+): (.*)$" line))
+  (define (key-values lines)
+    (for*/hash ([line (in-list lines)]
+                [pair (in-value (regexp-match #px"^([^:]+): (.*)$" line))]
+                #:when pair)
+      (match-define (list _ key value) pair)
       (values key value)))
+  (define (typed-columns id type)
+    (for/list ([meta (in-list (hash-ref (dataset-info id) "columns"))]
+               #:when (equal? (hash-ref meta "type") type))
+      (hash-ref meta "name")))
   (define spot-checks
-    `((row penguins 0 ,penguins-names ("Adelie" "Torgersen" 39.1 18.7 181 3750 "male" 2007))
+    `((categorical datasaurus-dozen ("dataset"))
+      (categorical gapminder ("country" "continent"))
+      (categorical penguins ("species" "island" "sex"))
+      (categorical penguins-raw
+                   ("study-name" "species" "region" "island" "stage" "clutch-completion" "sex"))
+      (categorical titanic-passengers ("sex" "embarked"))
+      (identifiers datasaurus-dozen ())
+      (identifiers gapminder ())
+      (identifiers penguins ())
+      (identifiers penguins-raw ())
+      (identifiers titanic-passengers ("passenger-id"))
+      (row penguins 0 ,penguins-names ("Adelie" "Torgersen" 39.1 18.7 181 3750 "male" 2007))
       (row penguins 3 ("bill-length-mm" "bill-depth-mm" "flipper-length-mm" "body-mass-g" "sex")
            ,(make-list 5 dataset-missing))
       (row penguins 343 ("species" "bill-length-mm") ("Chinstrap" 50.2))
@@ -95,7 +112,6 @@
       (missing titanic-passengers ("age" "cabin" "embarked") (177 687 2))
       (sum titanic-passengers "survived" 342)
       (sum titanic-passengers "fare" 28693.9493 1e-6)
-      (info titanic-passengers "identifiers" ("passenger-id"))
       (info titanic-passengers "suggested-targets" ("survived"))
       (meta titanic-passengers "passenger-id" "original-name" "PassengerId")))
 
@@ -154,7 +170,10 @@
     (check-not-false (for/or ([file (in-list license-files)])
                        (regexp-match? file-name (path->string file)))
                      license))
-  (define datasaurus-copyright (key-values (build-path r-data "provenance" "datasauRus-LICENSE")))
+  (check-equal? (key-values '("YEAR: 2022" "" "no separator" "COPYRIGHT HOLDER: someone"))
+                (hash "YEAR" "2022" "COPYRIGHT HOLDER" "someone"))
+  (define datasaurus-copyright
+    (key-values (file->lines (build-path r-data "provenance" "datasauRus-LICENSE"))))
   (check-not-false (member (format "Copyright (c) ~a ~a" (hash-ref datasaurus-copyright "YEAR")
                                    (hash-ref datasaurus-copyright "COPYRIGHT HOLDER"))
                            (file->lines (build-path r-data "licenses" "MIT-datasauRus.txt"))))
@@ -172,6 +191,10 @@
        (check-equal? (for/list ([level (in-list (column-meta id name "levels"))])
                        (column-count id name (lambda (v) (equal? v level))))
                      expected)]
+      [(list 'categorical id expected) (check-equal? (typed-columns id "categorical") expected)]
+      [(list 'identifiers id expected)
+       (check-equal? (hash-ref (dataset-info id) "identifiers") expected)
+       (check-equal? (typed-columns id "identifier") expected)]
       [(list 'meta id name key expected) (check-equal? (column-meta id name key) expected)]
       [(list 'info id key expected) (check-equal? (hash-ref (dataset-info id) key) expected)]
       [(list 'info-match id key pattern)
