@@ -14,9 +14,10 @@
           [call-with-http-fixture (-> (hash/c string? response/c) (-> http-fixture? any) any)]
           [http-fixture-url (-> http-fixture? string? string?)]
           [http-fixture-requests (-> http-fixture? (listof string?))]
-          [http-fixture-stalled-evt (-> http-fixture? evt?)]))
+          [http-fixture-stalled-evt (-> http-fixture? evt?)]
+          [http-fixture-closed-evt (-> http-fixture? evt?)]))
 
-(struct http-fixture (port log lock stalled))
+(struct http-fixture (port log lock stalled closed))
 
 (define (http-fixture-url server path)
   (format "http://127.0.0.1:~a~a" (http-fixture-port server) path))
@@ -28,13 +29,17 @@
 (define (http-fixture-stalled-evt server)
   (semaphore-peek-evt (http-fixture-stalled server)))
 
+(define (http-fixture-closed-evt server)
+  (http-fixture-closed server))
+
 (define (call-with-http-fixture routes proc)
   (define custodian (make-custodian))
   (define listener
     (parameterize ([current-custodian custodian])
       (tcp-listen 0 64 #t "127.0.0.1")))
   (define-values (_host port _remote-host _remote-port) (tcp-addresses listener #t))
-  (define server (http-fixture port (box '()) (make-semaphore 1) (make-semaphore 0)))
+  (define server
+    (http-fixture port (box '()) (make-semaphore 1) (make-semaphore 0) (make-semaphore 0)))
   (define barriers (make-hash))
   (define barrier-lock (make-semaphore 1))
   (define (record! path)
@@ -51,7 +56,7 @@
          (cond [(= (length waiting) n) (hash-remove! barriers path) waiting]
                [else (hash-set! barriers path waiting) #f]))))
     (values group done))
-  (define (respond path response out)
+  (define (respond path response in out)
     (match response
       [(list 'ok body) (send-head out 200 body) (write-bytes body out)]
       [(list 'status n) (send-head out n #"")]
@@ -62,7 +67,9 @@
        (write-bytes body out 0 k)
        (flush-output out)
        (semaphore-post (http-fixture-stalled server))
-       (sync never-evt)]
+       (with-handlers ([exn:fail? void])
+         (read-byte in))
+       (semaphore-post (http-fixture-closed server))]
       [(list 'barrier body n)
        (define-values (group done) (join-barrier! path n out))
        (when group (release-barrier! group body))
@@ -73,7 +80,7 @@
         [(list _ path)
          (skip-headers in)
          (record! path)
-         (respond path (hash-ref routes path '(status 404)) out)]
+         (respond path (hash-ref routes path '(status 404)) in out)]
         [#f (void)]))
     (close-output-port out)
     (close-input-port in))

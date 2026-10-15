@@ -2,14 +2,12 @@
 (require (for-syntax racket/base)
          (only-in datasets/core dataset-missing? dataset-table-columns dataset-table-names
                   dataset-table-row-count dataset-table?)
-         (only-in datasets/core-private/codec gunzip-file hex)
-         (only-in file/gunzip gunzip-through-ports)
+         (only-in datasets/core-private/codec gunzip-bytes gunzip-file hex)
          (only-in file/gzip gzip-through-ports)
          (only-in net/url path->url url->string)
          (only-in racket/contract/base -> ->* and/c any any/c contract-out hash/c listof or/c)
          (only-in racket/file delete-directory/files file->bytes make-directory*
                   make-temporary-directory)
-         (only-in racket/match match)
          (only-in racket/path find-relative-path)
          (only-in racket/port call-with-output-bytes)
          (only-in racket/runtime-path define-runtime-path)
@@ -33,7 +31,7 @@
           [call-with-artifact-url (-> bytes? (-> string? any) any)]
           [cache-files (-> path? (listof string?))]
           [wait-until (-> (and/c real? positive?) (-> any/c) boolean?)])
-         rows->rktd-bytes gzip-bytes gunzip-bytes gunzip-file hex gen-entry fetch-ok path-only*)
+         rows->rktd-bytes gzip-bytes gunzip-bytes gunzip-file hex gen-entry fetch-ok)
 
 (define-runtime-path fixtures "fixtures")
 
@@ -126,7 +124,8 @@
      (write-registry-fixture!
       registry #:info '("registry.rktd") #:data (hash)
       #:registries (hash "registry.rktd"
-                         (for/hash ([entry (in-list entries)]) (values (hash-ref entry "name") entry))))
+                         (for/hash ([entry (in-list entries)])
+                           (values (hash-ref entry "name") entry))))
      (call-with-temporary-fixture
       (lambda (root)
         (call-with-registry-fixtures (list registry)
@@ -137,7 +136,9 @@
 (define (call-with-environment changes thunk)
   (define env (environment-variables-copy (current-environment-variables)))
   (for ([(name value) (in-hash changes)])
-    (environment-variables-set! env (string->bytes/utf-8 name) (and value (string->bytes/utf-8 value))))
+    (environment-variables-set! env
+                                (string->bytes/utf-8 name)
+                                (and value (string->bytes/utf-8 value))))
   (parameterize ([current-environment-variables env])
     (thunk)))
 
@@ -162,12 +163,3 @@
     (cond [(ready?) #t]
           [(> (current-inexact-milliseconds) deadline) #f]
           [else (sleep 0.01) (loop)])))
-
-(define (path-only* relative)
-  (match (regexp-match #rx"^(.*)/[^/]*$" relative)
-    [(list _ dir) dir]
-    [#f "."]))
-
-(define (gunzip-bytes bs)
-  (call-with-output-bytes
-   (lambda (out) (gunzip-through-ports (open-input-bytes bs) out))))

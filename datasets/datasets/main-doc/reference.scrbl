@@ -16,7 +16,7 @@ are in @other-doc['(lib "datasets/core-doc/datasets-core.scrbl")].
 
 @defproc[(load-dataset [name symbol?]
                        [#:format format (or/c 'polars 'table 'matrix 'data-frame) 'polars]
-                       [#:columns columns (or/c #f (listof string?)) #f]
+                       [#:columns columns (or/c #f (non-empty-listof string?)) #f]
                        [#:download? download? boolean? #t]) any/c]{
 Loads @racket[name], selects columns, and converts the result to @racket[format].
 @racket[download?] is passed to @racket[load-dataset-table]; see

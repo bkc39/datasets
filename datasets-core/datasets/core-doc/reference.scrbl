@@ -36,7 +36,7 @@ it is independent of any column selection. See
 @secref["datasets-metadata-reference"] for its fields.}
 
 @defproc[(load-dataset-table [name symbol?]
-                             [#:columns columns (or/c #f (listof string?)) #f]
+                             [#:columns columns (or/c #f (non-empty-listof string?)) #f]
                              [#:download? download? boolean? #t])
          dataset-table?]{
 Reads the bundled observations for @racket[name] and returns a table. Data files
@@ -93,8 +93,11 @@ downloads the new file rather than reusing the old one.
 Returns the directory holding downloaded datasets: the value of
 @envvar{DATASETS_HOME} when it is set and nonempty, otherwise
 @racket[(build-path (find-system-path 'cache-dir) "racket-datasets")]. The
-variable is read on every call; a relative value raises @racket[exn:fail]. The
-directory is created by the first download, not by this procedure.}
+variable is read on every call. A relative value makes this procedure,
+@racket[fetch-dataset], @racket[dataset-cached?], @racket[clear-dataset-cache],
+and loading a fetch-tier dataset raise @racket[exn:fail]; loading a bundled
+dataset is unaffected. The directory is created by the first download, not by
+this procedure.}
 @examples[#:eval ev
  (parameterize ([current-environment-variables
                  (make-environment-variables #"DATASETS_HOME" #"/srv/racket-datasets")])
@@ -207,7 +210,11 @@ string keys:
        (list @tt{time-series} "Time-series description hash, or #f.")
        (list @tt{tier} @elem{@tt{bundled} (shipped with its package) or @tt{fetch} (downloaded on first use).})
        (list @tt{package} "Name of the package whose registry declares the dataset.")
-       (list @tt{fetch} @elem{@racket[#f] for bundled data. For fetch-tier data, a hash with @tt{urls} (mirrors, tried in order), @tt{sha256} and @tt{size} of the download, and its @tt{format}. The only format is @tt{rktd.gz}: the download is the dataset's gzip-compressed @tt{.rktd} file, the form bundled data is stored in. Other keys are ignored.}))]
+       (list @tt{fetch} @elem{@racket[#f] for bundled data. For fetch-tier data, a
+             hash with @tt{urls} (mirrors, tried in order), @tt{sha256} and @tt{size}
+             of the download, and its @tt{format}. The only format is @tt{rktd.gz}: the
+             download is the dataset's gzip-compressed @tt{.rktd} file, the form
+             bundled data is stored in. Other keys are ignored.}))]
 
 Each column-description hash has @tt{name}, @tt{original-name}, @tt{type},
 @tt{levels}, @tt{unit}, @tt{description}, and @tt{missing-count} keys.

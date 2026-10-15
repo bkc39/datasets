@@ -4,7 +4,7 @@
                   clear-cache-root download-dataset)
          (only-in datasets/core-private/codec gunzip-file hex)
          (only-in datasets/core-private/error raise-registry-error)
-         (only-in racket/contract/base -> ->* and/c contract-out listof or/c)
+         (only-in racket/contract/base -> ->* and/c contract-out listof non-empty-listof or/c)
          (only-in racket/format ~e ~s)
          (only-in racket/list append-map check-duplicates index-of remove-duplicates)
          (only-in racket/match == match)
@@ -14,7 +14,8 @@
           [dataset-names (->* () (#:package (or/c #f string?)) (listof symbol?))]
           [dataset-packages (-> (listof string?))]
           [load-dataset-table (->* (symbol?)
-                                   (#:columns (or/c #f (listof string?)) #:download? boolean?)
+                                   (#:columns (or/c #f (non-empty-listof string?))
+                                    #:download? boolean?)
                                    dataset-table?)]
           [fetch-dataset (->* (symbol?) (#:idle-timeout (and/c real? positive?)) complete-path?)]
           [dataset-cached? (-> symbol? boolean?)]
@@ -215,7 +216,8 @@
   (define expected (hash-ref info "sha256"))
   (define actual (hex (sha256-bytes text)))
   (unless (equal? actual expected)
-    (apply raise-registry-error 'load-dataset-table "data sha256 mismatch" "dataset" name "file" file
+    (apply raise-registry-error 'load-dataset-table "data sha256 mismatch"
+           "dataset" name "file" file
            "expected" expected "actual" actual remedy-fields))
   (read (open-input-bytes text)))
 
@@ -229,8 +231,6 @@
   (define-values (info data-dir) (dataset-entry 'load-dataset-table name))
   (define all-names (map (lambda (c) (hash-ref c "name")) (hash-ref info "columns")))
   (define names (or selected all-names))
-  (unless (pair? names)
-    (raise-argument-error 'load-dataset-table "nonempty list of column-name strings or #f" selected))
   (when (check-duplicates names)
     (raise-arguments-error 'load-dataset-table "duplicate column" "columns" names))
   (define indices
@@ -238,14 +238,16 @@
       (or (index-of all-names n)
           (raise-arguments-error 'load-dataset-table "unknown column" "column" n "available" all-names))))
   (define final
-    (and (fetch-tier? info) (cache-file (cache-root 'load-dataset-table) (symbol->string name) info)))
+    (and (fetch-tier? info)
+         (cache-file (cache-root 'load-dataset-table) (symbol->string name) info)))
   (define file
     (cond [(not final) (bundled-file name data-dir)]
           [(file-exists? final) final]
           [else (download-dataset 'load-dataset-table (symbol->string name) info final
                                   #:download? download? #:idle-timeout 60)]))
   (define rows
-    (map list->vector (read-rows name info file (and final (format "(clear-dataset-cache '~a)" name)))))
+    (map list->vector
+         (read-rows name info file (and final (format "(clear-dataset-cache '~a)" name)))))
   (define columns
     (vector->immutable-vector
      (for/vector ([i (in-list indices)])

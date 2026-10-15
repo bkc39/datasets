@@ -9,5 +9,7 @@
       (match fields
         ['() '()]
         [(list* label value more)
-         (list* "\n  " label ": " (if (path? value) (path->string value) (~a value)) (loop more))])))
-  (raise (exn:fail (apply string-append (~a who) ": " message details) (current-continuation-marks))))
+         (list* "\n  " label ": " (if (path? value) (path->string value) (~a value))
+                (loop more))])))
+  (raise (exn:fail (apply string-append (~a who) ": " message details)
+                   (current-continuation-marks))))

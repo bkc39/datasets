@@ -3,6 +3,9 @@
 set -euo pipefail
 project_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
 cd "$project_root"
+if [[ $EUID -eq 0 ]] && [[ $(ip link show lo 2>/dev/null || true) == *"state DOWN"* ]]; then
+  ip link set lo up
+fi
 sources=${1:?usage: install-check.sh PREFETCHED-SOURCES [core|full]}
 mode=${2:-full}
 export PLTUSERHOME=$(mktemp -d)

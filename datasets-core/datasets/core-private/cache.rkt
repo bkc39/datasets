@@ -1,10 +1,13 @@
 #lang racket/base
-(require (only-in datasets/core-private/codec file-sha256 gunzip-sha256)
+(require (for-syntax racket/base (only-in syntax/parse ...+ expr id))
+         (only-in datasets/core-private/codec file-sha256 gunzip-sha256)
          (only-in datasets/core-private/error raise-registry-error)
+         (only-in datasets/core-private/resource with-custodian with-resource)
          (only-in net/url get-pure-port/headers string->url url->path url-scheme)
          (only-in racket/file make-directory* make-temporary-file)
          (only-in racket/list append*)
-         (only-in racket/match match))
+         (only-in racket/match match)
+         (only-in syntax/parse/define define-syntax-parse-rule))
 (provide cache-file cache-root clear-cache-directory clear-cache-root download-dataset)
 
 (define-logger datasets)
@@ -46,20 +49,22 @@
     [else
      (define-values (dir _file _dir?) (split-path final))
      (make-directory* dir)
-     (call-with-part-file final (lambda (part) (try-urls name info part final idle)))]))
+     (with-part-file [part final]
+       (try-urls who name info part final idle))]))
 
-(define (call-with-part-file final proc)
+(define-syntax-parse-rule (with-part-file [part:id final:expr] body:expr ...+)
+  (with-resource [part (make-part-file final) (delete-if-present part)]
+    body ...))
+
+(define (make-part-file final)
   (define-values (dir file _dir?) (split-path final))
-  (define part (make-temporary-file (string-append (path->string file) ".~a.part") #:base-dir dir))
-  (dynamic-wind void
-                (lambda () (proc part))
-                (lambda () (delete-if-present part))))
+  (make-temporary-file (string-append (path->string file) ".~a.part") #:base-dir dir))
 
-(define (try-urls name info part final idle)
+(define (try-urls who name info part final idle)
   (define fetch (hash-ref info "fetch"))
   (let loop ([urls (hash-ref fetch "urls")] [failures '()])
     (match urls
-      ['() (apply raise-registry-error 'fetch-dataset "cannot download dataset" "dataset" name
+      ['() (apply raise-registry-error who "cannot download dataset" "dataset" name
                   (append* (reverse failures)))]
       [(cons url more)
        (log-datasets-info "downloading ~a from ~a (~a bytes)" name url (hash-ref fetch "size"))
@@ -70,27 +75,22 @@
          [problem (loop more (cons (list "url" url "error" problem) failures))])])))
 
 (define (download-url url part size idle)
-  (define custodian (make-custodian))
   (define progress (make-semaphore 0))
   (define outcome (box #f))
-  (define worker
-    (parameterize ([current-custodian custodian])
+  (with-custodian
+    (define worker
       (thread (lambda ()
                 (set-box! outcome (with-handlers ([exn:fail? exn-message])
                                     (copy-url url part size progress)
-                                    'done))))))
-  (dynamic-wind
-   void
-   (lambda ()
-     (let loop ()
-       (match (sync/timeout idle (wrap-evt progress (lambda (_) 'progress)) (thread-dead-evt worker))
-         ['progress (loop)]
-         [#f (format "no data for ~a seconds" idle)]
-         [_ (match (unbox outcome)
-              ['done #f]
-              [#f "download stopped"]
-              [problem problem])])))
-   (lambda () (custodian-shutdown-all custodian))))
+                                    'done)))))
+    (let loop ()
+      (match (sync/timeout idle (wrap-evt progress (lambda (_) 'progress)) (thread-dead-evt worker))
+        ['progress (loop)]
+        [#f (format "no data for ~a seconds" idle)]
+        [_ (match (unbox outcome)
+             ['done #f]
+             [#f "download stopped"]
+             [problem problem])]))))
 
 (define (copy-url url part size progress)
   (define in (open-url (string->url url)))
@@ -111,14 +111,17 @@
            (loop (+ received n))])))))
 
 (define (open-url u)
-  (match (and (url-scheme u) (string-downcase (url-scheme u)))
-    ["file" (open-input-file (url->path u))]
-    [(or "http" "https")
+  (match (url-scheme u)
+    [#f (fail "URL has no scheme")]
+    [(app string-downcase "file") (open-input-file (url->path u))]
+    [(app string-downcase (or "http" "https"))
      (define-values (in headers) (get-pure-port/headers u #:redirections 10 #:status? #t))
-     (match (regexp-match #px"^HTTP/\\S+ ([0-9]{3})" headers)
-       [(list _ (? (lambda (s) (regexp-match? #rx"^2" s)))) in]
-       [(list _ status) (close-input-port in) (fail (string-append "HTTP status " status))]
-       [#f (close-input-port in) (fail "malformed HTTP status line")])]
+     (match headers
+       [(regexp #px"^HTTP/\\S+ 2[0-9]{2}") in]
+       [(regexp #px"^HTTP/\\S+ ([0-9]{3})" (list _ status))
+        (close-input-port in)
+        (fail (string-append "HTTP status " status))]
+       [_ (close-input-port in) (fail "malformed HTTP status line")])]
     [scheme (fail (format "unsupported URL scheme ~a" scheme))]))
 
 (define (fail message)
@@ -159,5 +162,6 @@
 (define (clear-cache-root root)
   (for ([sub (in-list (if (directory-exists? root) (directory-list root) '()))]
         #:when (regexp-match? name-rx (path->string sub))
+        #:unless (link-exists? (build-path root sub))
         #:when (directory-exists? (build-path root sub)))
     (clear-cache-directory (build-path root sub))))

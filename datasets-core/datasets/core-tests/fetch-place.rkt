@@ -29,5 +29,6 @@
 (define (read-until-loaded deadline)
   (let loop ([outcomes '()])
     (define-values (loaded? outcome) (attempt-read))
-    (cond [(or loaded? (> (current-inexact-milliseconds) deadline)) (reverse (cons outcome outcomes))]
+    (cond [(or loaded? (> (current-inexact-milliseconds) deadline))
+           (reverse (cons outcome outcomes))]
           [else (loop (cons outcome outcomes))])))

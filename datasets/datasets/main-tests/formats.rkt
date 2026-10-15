@@ -3,9 +3,9 @@
          (only-in datasets dataset-cached? dataset-missing dataset-missing? dataset-names
                   dataset-table-column dataset-table-names dataset-table-row-count load-airquality
                   load-dataset load-dataset-table load-iris)
-         (only-in datasets/core-tests/fixture call-with-artifact-url call-with-environment
-                  call-with-fetch-fixture call-with-registry-fixtures fetch-entry registry-fixture
-                  table-digest toy-artifact toy-table-digest)
+         (only-in datasets/core-tests/fixture cache-files call-with-artifact-url
+                  call-with-environment call-with-fetch-fixture call-with-registry-fixtures
+                  fetch-entry registry-fixture table-digest toy-artifact toy-table-digest)
          (only-in datasets/data-frame data-frame-column-names)
          (only-in math/matrix matrix-ref)
          (prefix-in pl: (only-in polars column-names dataframe-column dataframe-column-names
@@ -64,10 +64,14 @@
       (lambda (url)
         (call-with-fetch-fixture (list (fetch-entry (list url)))
           (lambda (root registry)
+            (check-exn #rx"reason: #:download\\? #f"
+                       (lambda () (load-dataset 'toy-remote #:format 'table #:download? #f)))
+            (check-equal? (cache-files root) '())
             (call-with-environment (hash "DATASETS_OFFLINE" "1")
               (lambda ()
                 (check-exn #rx"not cached"
                            (lambda () (load-dataset 'toy-remote #:format 'table #:download? #f)))))
-            (check-equal? (table-digest (load-dataset 'toy-remote #:format 'table)) toy-table-digest)
+            (check-equal? (table-digest (load-dataset 'toy-remote #:format 'table))
+                          toy-table-digest)
             (check-equal? (pl:dataframe-height (load-dataset 'toy-remote)) 3)))))
     (check-exn #rx"blaming: [^\n]*formats\\.rkt" (lambda () (load-dataset 'iris #:download? 1)))))
