@@ -16,8 +16,11 @@ are in @other-doc['(lib "datasets/core-doc/datasets-core.scrbl")].
 
 @defproc[(load-dataset [name symbol?]
                        [#:format format (or/c 'polars 'table 'matrix 'data-frame) 'polars]
-                       [#:columns columns (or/c #f (listof string?)) #f]) any/c]{
+                       [#:columns columns (or/c #f (listof string?)) #f]
+                       [#:download? download? boolean? #t]) any/c]{
 Loads @racket[name], selects columns, and converts the result to @racket[format].
+@racket[download?] is passed to @racket[load-dataset-table]; see
+@secref["datasets-core-offline-reference" #:doc '(lib "datasets/core-doc/datasets-core.scrbl")].
 The return value is a Polars dataframe, an immutable dataset table, a
 @tt{math/matrix} matrix, or a @tt{data-frame} object as specified by the format.
 

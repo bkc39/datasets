@@ -29,5 +29,7 @@ jobs:
         run: bash scripts/prefetch.sh /tmp/datasets-dependencies
       - name: Isolated offline installs, tests, documentation and dependency checks
         run: |
-          sudo unshare --net -- env PATH="$PATH" bash "$GITHUB_WORKSPACE/scripts/install-check.sh" /tmp/datasets-dependencies/sources core
-          sudo unshare --net -- env PATH="$PATH" bash "$GITHUB_WORKSPACE/scripts/install-check.sh" /tmp/datasets-dependencies/sources full
+          sudo unshare --net -- env PATH="$PATH" bash -c 'ip link set lo up && exec bash "$@"' _ \
+            "$GITHUB_WORKSPACE/scripts/install-check.sh" /tmp/datasets-dependencies/sources core
+          sudo unshare --net -- env PATH="$PATH" bash -c 'ip link set lo up && exec bash "$@"' _ \
+            "$GITHUB_WORKSPACE/scripts/install-check.sh" /tmp/datasets-dependencies/sources full

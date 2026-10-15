@@ -1,7 +1,7 @@
 #lang racket/base
 (require (for-syntax racket/base)
          (only-in datasets/core-private/codec gunzip-file hex)
-         (only-in racket/contract/base -> ->* contract-out listof or/c)
+         (only-in racket/contract/base -> ->* and/c contract-out listof or/c)
          (only-in racket/format ~a ~e ~s)
          (only-in racket/list append-map check-duplicates index-of remove-duplicates)
          (only-in racket/match == match)
@@ -9,8 +9,15 @@
          (only-in setup/getinfo find-relevant-directories get-info/full))
 (provide (contract-out
           [dataset-names (->* () (#:package (or/c #f string?)) (listof symbol?))]
-          [dataset-packages (-> (listof string?))])
-         dataset-info load-dataset-table
+          [dataset-packages (-> (listof string?))]
+          [load-dataset-table (->* (symbol?)
+                                   (#:columns (or/c #f (listof string?)) #:download? boolean?)
+                                   dataset-table?)]
+          [fetch-dataset (->* (symbol?) (#:idle-timeout (and/c real? positive?)) complete-path?)]
+          [dataset-cached? (-> symbol? boolean?)]
+          [dataset-cache-directory (-> complete-path?)]
+          [clear-dataset-cache (->* () ((or/c #f symbol?)) void?)])
+         dataset-info
          dataset-missing dataset-missing?
          dataset-table? dataset-table-names dataset-table-columns
          dataset-table-row-count dataset-table-info dataset-table-column)
@@ -216,7 +223,7 @@
                           "expected" expected "actual" actual))
   (read (open-input-bytes text)))
 
-(define (load-dataset-table name #:columns [selected #f])
+(define (load-dataset-table name #:columns [selected #f] #:download? [download? #t])
   (define-values (info data-dir) (dataset-entry name))
   (define all-names (map (lambda (c) (hash-ref c "name")) (hash-ref info "columns")))
   (define names (or selected all-names))
@@ -240,3 +247,8 @@
           (define v (vector-ref row i))
           (if (eq? v 'missing) dataset-missing (freeze v)))))))
   (dataset-table (map string->immutable-string names) columns (length rows) info))
+
+(define (fetch-dataset name #:idle-timeout [idle 60]) (error 'unimplemented))
+(define (dataset-cached? name) (error 'unimplemented))
+(define (dataset-cache-directory) (error 'unimplemented))
+(define (clear-dataset-cache [name #f]) (error 'unimplemented))

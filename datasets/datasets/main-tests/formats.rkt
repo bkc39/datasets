@@ -1,9 +1,11 @@
 #lang racket/base
 (require (prefix-in df: (only-in data-frame df-is-na? df-na-value df-ref df-set!))
-         (only-in datasets dataset-missing dataset-missing? dataset-names dataset-table-column
-                  dataset-table-names dataset-table-row-count load-airquality load-dataset
-                  load-dataset-table load-iris)
-         (only-in datasets/core-tests/fixture call-with-registry-fixtures registry-fixture)
+         (only-in datasets dataset-cached? dataset-missing dataset-missing? dataset-names
+                  dataset-table-column dataset-table-names dataset-table-row-count load-airquality
+                  load-dataset load-dataset-table load-iris)
+         (only-in datasets/core-tests/fixture call-with-artifact-url call-with-environment
+                  call-with-fetch-fixture call-with-registry-fixtures fetch-entry registry-fixture
+                  table-digest toy-artifact toy-table-digest)
          (only-in datasets/data-frame data-frame-column-names)
          (only-in math/matrix matrix-ref)
          (prefix-in pl: (only-in polars column-names dataframe-column dataframe-column-names
@@ -11,8 +13,8 @@
                                  shape))
          (only-in racket/list last))
 (module+ test
-  (require (only-in rackunit check-= check-eq? check-equal? check-exn check-true))
-  (for ([id (in-list (dataset-names))])
+  (require (only-in rackunit check-= check-eq? check-equal? check-exn check-true test-case))
+  (for ([id (in-list (dataset-names))] #:when (dataset-cached? id))
     (define t (load-dataset id #:format 'table))
     (define names (reverse (dataset-table-names t)))
     (define p (load-dataset id #:columns names))
@@ -56,4 +58,16 @@
   (call-with-registry-fixtures (list (registry-fixture "sibling"))
     (lambda ()
       (check-equal? (load-dataset 'toy #:format 'table) (load-dataset-table 'toy))
-      (check-equal? (pl:dataframe-height (load-dataset 'toy)) 3))))
+      (check-equal? (pl:dataframe-height (load-dataset 'toy)) 3)))
+  (test-case "M1 load-dataset passes #:download? through; blame names the caller"
+    (call-with-artifact-url toy-artifact
+      (lambda (url)
+        (call-with-fetch-fixture (list (fetch-entry (list url)))
+          (lambda (root registry)
+            (call-with-environment (hash "DATASETS_OFFLINE" "1")
+              (lambda ()
+                (check-exn #rx"not cached"
+                           (lambda () (load-dataset 'toy-remote #:format 'table #:download? #f)))))
+            (check-equal? (table-digest (load-dataset 'toy-remote #:format 'table)) toy-table-digest)
+            (check-equal? (pl:dataframe-height (load-dataset 'toy-remote)) 3)))))
+    (check-exn #rx"blaming: [^\n]*formats\\.rkt" (lambda () (load-dataset 'iris #:download? 1)))))

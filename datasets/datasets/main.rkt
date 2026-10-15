@@ -1,11 +1,18 @@
 #lang racket/base
-(require datasets/core datasets/polars datasets/matrix datasets/data-frame)
-(provide (all-from-out datasets/core) load-dataset
+(require datasets/core datasets/polars datasets/matrix datasets/data-frame
+         (only-in racket/contract/base ->* any/c contract-out listof or/c))
+(provide (contract-out
+          [load-dataset (->* (symbol?)
+                             (#:format (or/c 'polars 'table 'matrix 'data-frame)
+                              #:columns (or/c #f (listof string?))
+                              #:download? boolean?)
+                             any/c)])
+         (all-from-out datasets/core)
          load-air-passengers load-airquality load-anscombe load-breast-cancer load-diabetes load-faithful load-iris load-mtcars load-plant-growth load-titanic load-tooth-growth load-us-arrests load-wine)
-(define (load-dataset name #:format [format 'polars] #:columns [columns #f])
+(define (load-dataset name #:format [format 'polars] #:columns [columns #f] #:download? [download? #t])
   (unless (memq format '(polars table matrix data-frame))
     (raise-argument-error 'load-dataset "(or/c 'polars 'table 'matrix 'data-frame)" format))
-  (define table (load-dataset-table name #:columns columns))
+  (define table (load-dataset-table name #:columns columns #:download? download?))
   (case format
     [(table) table]
     [(polars) (table->polars table)]

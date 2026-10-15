@@ -5,8 +5,9 @@
          (only-in racket/list append*)
          (only-in racket/match match-define)
          (only-in racket/runtime-path define-runtime-path)
-         (only-in "fixture.rkt" call-with-registry-fixtures call-with-temporary-fixture fetch-ok
-                  gen-entry registry-fixture write-registry-fixture!))
+         (only-in "fixture.rkt" call-with-environment call-with-registry-fixtures
+                  call-with-temporary-fixture fetch-ok gen-entry registry-fixture
+                  write-registry-fixture!))
 (define-runtime-path core-registry "../core-data/registry.rktd")
 (module+ test
   (require (only-in rackunit check-equal? check-exn check-false check-not-exn check-not-false
@@ -39,7 +40,7 @@
                    (member p '("datasets-duplicate" "datasets-fixture" "datasets-other"))))
     (check-equal? (dataset-names #:package "datasets-core") core-13))
 
-  (test-case "R1 R8 R12 sibling registry discovered and loads; fetch tier refused"
+  (test-case "R1 R8 R12 sibling registry discovered and loads; uncached fetch tier refused offline"
     (call-with-registry-fixtures (list (registry-fixture "sibling"))
       (lambda ()
         (check-equal? (dataset-names) (sort (list* 'toy 'toy-remote installed) symbol<?))
@@ -53,8 +54,12 @@
         (check-equal? (hash-ref (dataset-info 'toy) "package") "datasets-fixture")
         (check-equal? (hash-ref (dataset-info 'toy-remote) "tier") "fetch")
         (check-true (immutable? (hash-ref (dataset-info 'toy-remote) "fetch")))
-        (check-exn (registry-error? #rx"fetch tier" #rx"toy-remote")
-                   (lambda () (load-dataset-table 'toy-remote))))))
+        (call-with-temporary-fixture
+         (lambda (root)
+           (call-with-environment (hash "DATASETS_HOME" (path->string root) "DATASETS_OFFLINE" "1")
+             (lambda ()
+               (check-exn (registry-error? #rx"not cached" #rx"toy-remote")
+                          (lambda () (load-dataset-table 'toy-remote))))))))))
 
   (test-case "R13 registry cache follows discovery"
     (check-equal? (dataset-names) installed))
