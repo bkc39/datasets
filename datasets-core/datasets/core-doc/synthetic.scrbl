@@ -37,7 +37,8 @@ parameters gain a @litchar{?}, and @tt{random_state} becomes @racket[#:seed].
 
 Arguments scikit-learn accepts but ignores, such as an @racket[#:n-features] that
 disagrees with the given centres, are contract violations here. Numbers must be
-finite.
+finite as flonums: an exact argument such as @racket[(expt 10 400)], whose
+@racket[real->double-flonum] is infinite, is a contract violation.
 
 @section[#:tag "datasets-synthetic-seeds"]{Seeds and reproducibility}
 
@@ -50,7 +51,9 @@ finite.
  @item{a state vector, as from @racket[pseudo-random-generator->vector]: a new generator in that state.}
  @item{a pseudo-random generator: used and advanced in place.}]
 
-@racket[current-pseudo-random-generator] is never read or advanced. On one
+@racket[current-pseudo-random-generator] is never read or advanced. Each
+generator draws in the order of scikit-learn 1.8's NumPy calls, including draws
+whose values are then multiplied by zero. On one
 platform, the same arguments and seed give @racket[equal?] tables. Across
 platforms, labels and uniform-only columns are bit-identical; values passed
 through @racket[log], @racket[exp], @racket[sin], @racket[cos] or @racket[atan]

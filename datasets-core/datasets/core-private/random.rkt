@@ -2,7 +2,8 @@
 (require (only-in racket/flonum fl* fl+ fl- flcos fllog flsin flsqrt)
          (only-in racket/math pi)
          (only-in racket/random crypto-random-bytes))
-(provide seed->generator uniform uniform-in random-index normal-source permutation)
+(provide seed->generator seeded uniform uniform-in random-index normal-source permutation
+         shuffled-order)
 
 ;; Stream version 1. Any change to how a value below is drawn from the generator
 ;; changes every generated table and must bump the `stream` number in the metadata.
@@ -20,7 +21,8 @@
 (define (seed->generator seed)
   (cond [(pseudo-random-generator? seed)
          (values seed (vector->immutable-vector (pseudo-random-generator->vector seed)))]
-        [(vector? seed) (values (vector->pseudo-random-generator seed) (vector->immutable-vector seed))]
+        [(vector? seed)
+         (values (vector->pseudo-random-generator seed) (vector->immutable-vector seed))]
         [else (define k (or seed (fresh-seed)))
               (values (seeded k) k)]))
 
@@ -28,8 +30,6 @@
 (define (uniform-in g a b) (fl+ a (fl* (fl- b a) (random g))))
 (define (random-index g k) (random k g))
 
-;; One source per generator call: Box–Muller pairs, cosine branch first; the sine branch
-;; is kept for the next draw and discarded with the source.
 (define (normal-source g)
   (define spare #f)
   (λ ()
@@ -47,3 +47,5 @@
     (vector-set! p i (vector-ref p j))
     (vector-set! p j x))
   p)
+
+(define (shuffled-order g shuffle? n) (if shuffle? (permutation g n) (build-vector n values)))

@@ -151,8 +151,17 @@ lars 1.3 archive; R's numeric export uses 17 significant digits for binary64
 round trips. ZIP sources are also hash-verified before use. End-user builds
 consume only committed `.rktd` files. Reimport, inspect the diff, then run checks.
 Source selection is in `scripts/sources.json`; original documentation is copied
-alongside data. No synthetic generators, caching, X/y helpers, or additional
-datasets are included in v0.1.
+alongside data. No caching, X/y helpers, or additional datasets are included in v0.1.
+
+### Synthetic generator fixtures
+
+The stream-1 golden values change only when the random stream version is bumped;
+the scikit-learn parity fixture only when the reference version changes:
+
+```sh
+racket scripts/synthetic-golden.rkt  # core-tests/fixtures/synthetic-golden.rktd
+nix shell nixpkgs#python3Packages.scikit-learn -c python3 scripts/sklearn-synthetic-fixtures.py
+```
 
 ## Downstream integration without a dependency cycle
 

@@ -1,5 +1,10 @@
 #lang racket/base
-(require racket/list racket/runtime-path racket/vector datasets/core-private/table)
+(require (for-syntax racket/base)
+         (only-in racket/list check-duplicates index-of)
+         (only-in racket/runtime-path define-runtime-path)
+         (only-in datasets/core-private/table
+                  dataset-missing dataset-missing? dataset-table dataset-table-columns
+                  dataset-table-info dataset-table-names dataset-table-row-count dataset-table?))
 (provide dataset-names dataset-info load-dataset-table
          dataset-missing dataset-missing?
          dataset-table? dataset-table-names dataset-table-columns
