@@ -24,12 +24,14 @@
         [else (pl:series-new-f64 name (map (λ (v) (if (pl:polars-null? v) v (exact->inexact v)))
                                            values))]))
 
+(define (column-type table name)
+  (for/first ([c (in-list (hash-ref (dataset-table-info table) "columns" '()))]
+              #:when (equal? (hash-ref c "name" #f) name))
+    (hash-ref c "type" #f)))
+
 (define (table->polars table)
-  (define types
-    (for/hash ([c (in-list (hash-ref (dataset-table-info table) "columns"))])
-      (values (hash-ref c "name") (hash-ref c "type"))))
   (pl:dataframe
    (for/list ([name (in-list (dataset-table-names table))]
               [column (in-vector (dataset-table-columns table))])
-     (cond [(zero? (vector-length column)) (empty-series name (hash-ref types name))]
+     (cond [(zero? (vector-length column)) (empty-series name (column-type table name))]
            [else (filled-series name column)]))))

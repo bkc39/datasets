@@ -3,15 +3,18 @@
          (only-in datasets dataset-missing dataset-missing? dataset-names dataset-table-column
                   dataset-table-names dataset-table-row-count load-airquality load-dataset
                   load-dataset-table load-iris)
-         (only-in datasets/core-tests/fixture call-with-registry-fixtures registry-fixture)
+         (only-in datasets/core-private/table dataset-table)
+         (only-in datasets/core-tests/fixture call-with-registry-fixtures call-with-temporary-fixture
+                  gen-entry gzip-bytes hex registry-fixture rows->rktd-bytes write-registry-fixture!)
          (only-in datasets/data-frame data-frame-column-names)
+         (only-in datasets/polars table->polars)
          (only-in math/matrix matrix-ref)
          (prefix-in pl: (only-in polars column-names dataframe-column dataframe-column-names
-                                 dataframe-height dataframe-rename dataframe? polars-null? series-ref
-                                 shape))
+                                 dataframe-height dataframe-rename dataframe? polars-null? series-dtype
+                                 series-ref shape))
          (only-in racket/list last))
 (module+ test
-  (require (only-in rackunit check-= check-eq? check-equal? check-exn check-true))
+  (require (only-in rackunit check-= check-eq? check-equal? check-exn check-true test-case))
   (define (check-formats)
     (for ([id (in-list (dataset-names #:package "datasets-core"))])
       (define t (load-dataset id #:format 'table))
@@ -61,4 +64,37 @@
       (check-equal? (load-dataset 'toy #:format 'table) (load-dataset-table 'toy))
       (check-equal? (pl:dataframe-height (load-dataset 'toy)) 3)
       (check-formats)
-      (check-loaders))))
+      (check-loaders)))
+  (define (dtypes p)
+    (map (lambda (c) (pl:series-dtype (pl:dataframe-column p c))) (pl:dataframe-column-names p)))
+  (define untyped-rows (hash "nt" '((1 2.5) (2 3.5)) "nz" '()))
+  (define untyped-text
+    (for/hash ([(name rows) (in-hash untyped-rows)]) (values name (rows->rktd-bytes rows))))
+  (test-case "registry columns without \"type\" convert to polars"
+    (call-with-temporary-fixture
+     (lambda (dir)
+       (write-registry-fixture!
+        dir #:info '("registry.rktd")
+        #:registries (hash "registry.rktd"
+                           (for/hash ([(name rows) (in-hash untyped-rows)])
+                             (values name
+                                     (hash-set* (gen-entry name
+                                                           #:sha256 (hex (sha256-bytes
+                                                                          (hash-ref untyped-text name))))
+                                                "rows" (length rows) "column-count" 2
+                                                "columns" (list (hash "name" "a") (hash "name" "b"))))))
+        #:data (for/hash ([(name text) (in-hash untyped-text)]) (values name (gzip-bytes text))))
+       (call-with-registry-fixtures (list dir)
+         (lambda ()
+           (check-equal? (pl:dataframe-height (load-dataset 'nt)) 2)
+           (define empty (load-dataset 'nz))
+           (check-equal? (pl:dataframe-height empty) 0)
+           (check-equal? (dtypes empty) '(string string)))))))
+  (test-case "info without \"columns\" converts to polars"
+    (define no-columns (table->polars (dataset-table '("a" "b") #(#(1 2) #(2.5 3.5)) 2 (hash))))
+    (check-equal? (pl:dataframe-height no-columns) 2)
+    (check-equal? (dtypes no-columns) '(int64 float64)))
+  (test-case "zero rows and no \"columns\" give empty string columns"
+    (define no-columns-empty (table->polars (dataset-table '("a" "b") #(#() #()) 0 (hash))))
+    (check-equal? (pl:dataframe-height no-columns-empty) 0)
+    (check-equal? (dtypes no-columns-empty) '(string string))))
