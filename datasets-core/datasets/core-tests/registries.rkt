@@ -12,7 +12,8 @@
 (define-runtime-path core-registry "../core-data/registry.rktd")
 (module+ test
   (require (only-in rackunit check-equal? check-exn check-false check-not-exn check-not-false
-                    check-true test-case))
+                    check-regexp-match check-true test-case)
+           (only-in racket/sandbox kill-evaluator make-evaluator))
   (define core-13 '(air-passengers airquality anscombe breast-cancer diabetes faithful
                     iris mtcars plant-growth titanic tooth-growth us-arrests wine))
   (define ((registry-error? . rxs) e)
@@ -35,21 +36,28 @@
              (check-exn (apply registry-error? (regexp (regexp-quote (path->string dir))) rxs) call)))))))
   (define (one entry) (hash "registry.rktd" (hash (hash-ref entry "name" "gen") entry)))
   (define (listed? name) (and (memq name (dataset-names)) #t))
-  (define (call-with-unreadable file thunk)
+  (define (call-with-unreadable file thunk #:denial [denial "denied"])
     (parameterize ([current-security-guard
                     (make-security-guard (current-security-guard)
                                          (lambda (who path modes)
                                            (when (and path (memq 'read modes) (equal? (simplify-path path) file))
-                                             (error who "denied: ~a" path)))
+                                             (error who "~a: ~a" denial path)))
                                          void)])
       (thunk)))
-  (define (call-with-core-copy registry thunk)
+  (define (fixture-index)
+    (build-path (car (current-library-collection-paths)) "info-domain" "compiled" "cache.rktd"))
+  (define (call-with-core-copy registries thunk)
     (call-with-temporary-fixture
      (lambda (root)
        (define dir (build-path root "datasets" "core-data"))
        (make-directory* dir)
-       (write-registry-fixture! dir #:info '("registry.rktd") #:registries (hash "registry.rktd" registry)
+       (write-registry-fixture! dir #:info (sort (hash-keys registries) string<?) #:registries registries
                                 #:data (hash))
+       (call-with-registry-fixtures (list dir) thunk))))
+  (define (call-with-gen thunk)
+    (call-with-temporary-fixture
+     (lambda (dir)
+       (rewrite-gen! dir "gen")
        (call-with-registry-fixtures (list dir) thunk))))
   (define (rewrite-gen! dir name #:modify-seconds [seconds #f])
     (write-registry-fixture! dir #:info '("registry.rktd") #:registries (one (gen-entry name)) #:data (hash))
@@ -232,14 +240,15 @@
           (check-equal? (map (lambda (r) (unbox (car r))) results) (make-list 8 '(#t #t #t)))))))
 
   (test-case "a discovered copy of the core registry is not a duplicate"
-    (call-with-core-copy (call-with-input-file core-registry read)
+    (call-with-core-copy (hash "registry.rktd" (call-with-input-file core-registry read))
       (lambda ()
         (check-equal? (dataset-names) installed)
         (check-equal? (dataset-table-row-count (load-dataset-table 'iris)) 150))))
 
   (test-case "a discovered copy of the core registry is skipped unread"
-    (call-with-core-copy (for/hash ([(name entry) (in-hash (call-with-input-file core-registry read))])
-                           (values name (hash-remove entry "source-version")))
+    (call-with-core-copy (hash "registry.rktd"
+                               (for/hash ([(name entry) (in-hash (call-with-input-file core-registry read))])
+                                 (values name (hash-remove entry "source-version"))))
       (lambda () (check-equal? (dataset-names #:package "datasets-core") core-13))))
 
   (test-case "a registry outside datasets/core-data cannot declare datasets-core"
@@ -275,4 +284,88 @@
               (define victim (thread dataset-names))
               (sleep (* (random) 0.002))
               (kill-thread victim)
-              (and (sync/timeout 5 (thread-dead-evt (thread dataset-names))) #t)))))))))
+              (and (sync/timeout 5 (thread-dead-evt (thread dataset-names))) #t))))))))
+
+  (test-case "a discovered core copy listing other registry files is skipped"
+    (call-with-core-copy (hash "registry.rktd" (call-with-input-file core-registry read)
+                               "fetch.rktd" (hash "gen" (gen-entry "gen" #:package "datasets-core")))
+      (lambda () (check-equal? (dataset-names) installed))))
+
+  (test-case "a discovery failure is not cached"
+    (call-with-gen
+     (lambda ()
+       (call-with-unreadable (fixture-index) (lambda () (check-exn #rx"denied" dataset-names)))
+       (check-true (listed? 'gen)))))
+
+  (test-case "a caller's custodian shut down mid-discovery is not cached"
+    (call-with-temporary-fixture
+     (lambda (dir)
+       (rewrite-gen! dir "gen")
+       (check-true
+        (for/and ([round (in-range 5)])
+          (call-with-registry-fixtures (list dir)
+            (lambda ()
+              (define caller (make-custodian))
+              (define index (fixture-index))
+              (define guard
+                (make-security-guard (current-security-guard)
+                                     (lambda (who path modes)
+                                       (when (and path (equal? (simplify-path path) index))
+                                         (custodian-shutdown-all caller)))
+                                     void))
+              (define victim
+                (parameterize ([current-custodian caller] [current-security-guard guard])
+                  (thread dataset-names)))
+              (define seen (box #f))
+              (and (sync/timeout 5 (thread-dead-evt victim))
+                   (sync/timeout 5 (thread (lambda () (set-box! seen (listed? 'gen)))))
+                   (unbox seen)))))))))
+
+  (test-case "access denied to the index falls back to datasets-core, warns, and is retried"
+    (call-with-gen
+     (lambda ()
+       (define receiver (make-log-receiver (current-logger) 'warning 'datasets))
+       (call-with-unreadable (fixture-index) #:denial "access denied"
+         (lambda ()
+           (check-equal? (dataset-names) installed)
+           (check-exn #rx"unknown dataset.*sibling-package discovery failed.*access denied"
+                      (lambda () (dataset-info 'gen)))))
+       (check-true (listed? 'gen))
+       (check-regexp-match #rx"sibling-package discovery failed.*access denied"
+                           (vector-ref (sync/timeout 0 receiver) 1)))))
+
+  (test-case "a default sandbox evaluator loads the core datasets"
+    (define ev (make-evaluator 'racket/base))
+    (ev '(require datasets/core))
+    (check-equal? (ev '(dataset-table-row-count (load-dataset-table 'iris))) 150)
+    (check-exn #rx"unknown dataset.*sibling-package discovery failed"
+               (lambda () (ev '(dataset-info 'absent))))
+    (kill-evaluator ev))
+
+  (test-case "the catalog manager survives the custodian that required datasets/core"
+    (define owner (make-custodian))
+    (define names
+      (parameterize ([current-custodian owner] [current-namespace (make-base-namespace)])
+        (dynamic-require 'datasets/core 'dataset-names)))
+    (custodian-shutdown-all owner)
+    (define result (box '()))
+    (check-not-false (sync/timeout 5 (thread (lambda () (set-box! result (names))))))
+    (check-not-false (memq 'iris (unbox result))))
+
+  (test-case "a computed datasets-registries value is re-read when info.rkt changes"
+    (call-with-temporary-fixture
+     (lambda (dir)
+       (define (write-info! names)
+         (call-with-output-file (build-path dir "info.rkt") #:exists 'truncate
+           (lambda (out)
+             (write `(module info info (#%module-begin (define datasets-registries (list ,@names)))) out))))
+       (write-registry-fixture! dir #:info '()
+                                #:registries (hash "registry.rktd" (hash "gen" (gen-entry "gen"))
+                                                   "two.rktd" (hash "second" (gen-entry "second")))
+                                #:data (hash))
+       (call-with-registry-fixtures (list dir)
+         (lambda ()
+           (check-equal? (for/list ([round (in-range 10)])
+                           (write-info! (if (even? round) '("registry.rktd") '("registry.rktd" "two.rktd")))
+                           (listed? 'second))
+                         (for/list ([round (in-range 10)]) (odd? round)))))))))

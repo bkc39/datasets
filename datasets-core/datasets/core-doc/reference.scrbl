@@ -77,6 +77,11 @@ name declared twice is an error naming both packages. A malformed registry is an
 error naming its file. Either error makes every
 registry operation raise until the package at fault is fixed or removed.
 
+When reading the installed package index is denied, as in a default
+@racketmodname[racket/sandbox] evaluator, only the @tt{datasets-core} registries
+are used: a warning is logged to the @tt{datasets} topic, an unknown dataset's
+error gives the reason, and the next call tries discovery again.
+
 @section[#:tag "datasets-core-table-reference"]{Table inspection}
 
 @defproc[(dataset-table? [value any/c]) boolean?]{

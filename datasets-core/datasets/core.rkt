@@ -6,10 +6,10 @@
          (only-in datasets/core-private/codec gunzip-file hex)
          (only-in racket/contract/base -> ->* contract-out listof or/c)
          (only-in racket/format ~a ~e ~s)
-         (only-in racket/list append-map check-duplicates index-of remove-duplicates take take-right)
+         (only-in racket/list append-map check-duplicates index-of remove-duplicates take)
          (only-in racket/match == match match-define)
          (only-in racket/runtime-path define-runtime-path)
-         (only-in setup/getinfo find-relevant-directories get-info/full))
+         (only-in setup/getinfo find-relevant-directories get-info/full reset-relevant-directories-state!))
 (provide (contract-out
           [dataset-names (->* () (#:package (or/c #f string?)) (listof symbol?))]
           [dataset-packages (-> (listof string?))])
@@ -23,9 +23,10 @@
 (define dataset-missing (missing-value))
 (define (dataset-missing? v) (eq? v dataset-missing))
 (struct dataset-table (names columns row-count info) #:transparent)
-(struct catalog (entries data-dirs))
+(struct catalog (entries data-dirs discovery-failure))
 (struct source (file core? signature) #:transparent)
 (define-runtime-path core-data "core-data")
+(define-logger datasets)
 
 (define-syntax (declared-core-registries stx)
   (syntax-parse stx
@@ -62,7 +63,7 @@
     (with-handlers ([exn:fail? (lambda (e)
                                  (raise-registry-error 'datasets "cannot read info.rkt"
                                                        "info.rkt" info-file "error" (exn-message e)))])
-      (get-info/full dir)))
+      (get-info/full dir #:namespace (make-base-empty-namespace))))
   (check-registries dir (if info (info 'datasets-registries (lambda () '())) '())))
 
 (define (check-registries dir value)
@@ -105,19 +106,16 @@
   (set-box! info-cache current)
   (append-map (lambda (dir) (resolve-registries dir (cdr (hash-ref current dir)))) dirs))
 
-(define (core-copy? file core-names)
-  (define parts (explode-path file))
-  (for/or ([name (in-list core-names)])
-    (define suffix (explode-path (build-path "datasets" "core-data" name)))
-    (and (<= (length suffix) (length parts))
-         (equal? (take-right parts (length suffix)) suffix))))
+(define (core-copy? dir)
+  (match (map path->string (explode-path dir))
+    [(list _ ... "datasets" "core-data") #t]
+    [_ #f]))
 
 (define (registry-sources dirs)
   (define core-names (check-registries core-data core-registry-names))
   (define core (resolve-registries core-data core-names))
   (define discovered
-    (sort (for/list ([file (in-list (declared-registries dirs))] #:unless (core-copy? file core-names))
-            file)
+    (sort (declared-registries (for/list ([dir (in-list dirs)] #:unless (core-copy? dir)) dir))
           string<? #:key path->string))
   (remove-duplicates
    (append (for/list ([file (in-list core)]) (source file #t (file-signature file)))
@@ -190,7 +188,7 @@
 
 (define (build-catalog sources)
   (for*/fold ([entries (hash)] [data-dirs (hash)] [registries (hash)]
-              #:result (catalog entries data-dirs))
+              #:result (catalog entries data-dirs #f))
              ([src (in-list sources)]
               [file (in-value (source-file src))]
               [(name entry) (in-hash (read-registry file (source-core? src)))])
@@ -229,13 +227,31 @@
   (semaphore-wait done)
   ((unbox reply)))
 
+(define (access-denied? e)
+  (and (exn:fail? e)
+       (or (exn:fail:filesystem? e) (regexp-match? #rx"access denied" (exn-message e)))))
+
+(define (discovered-directories)
+  (with-handlers ([access-denied?
+                   (lambda (e)
+                     (log-datasets-warning "sibling-package discovery failed; using datasets-core only: ~a"
+                                           (exn-message e))
+                     (values '() (exn-message e)))])
+    (values (with-handlers ([(lambda (_) #t)
+                             (lambda (e) (reset-relevant-directories-state!) (raise e))])
+              (find-relevant-directories '(datasets-registries) 'all-available))
+            #f)))
+
 (define (unlocked-catalog)
-  (define sources (registry-sources (find-relevant-directories '(datasets-registries) 'all-available)))
-  (match (unbox cache)
-    [(cons (== sources) cached) cached]
-    [_ (define fresh (build-catalog sources))
-       (set-box! cache (cons sources fresh))
-       fresh]))
+  (define-values (dirs failure) (discovered-directories))
+  (define sources (registry-sources dirs))
+  (define built
+    (match (unbox cache)
+      [(cons (== sources) cached) cached]
+      [_ (define fresh (build-catalog sources))
+         (set-box! cache (cons sources fresh))
+         fresh]))
+  (struct-copy catalog built [discovery-failure failure]))
 
 (define (dataset-names #:package [package #f])
   (define names
@@ -255,7 +271,10 @@
 (define (dataset-entry name)
   (define known (current-catalog))
   (unless (and (symbol? name) (hash-has-key? (catalog-entries known) (symbol->string name)))
-    (raise-arguments-error 'dataset-info "unknown dataset" "name" name "available" (dataset-names)))
+    (apply raise-arguments-error 'dataset-info "unknown dataset" "name" name "available" (dataset-names)
+           (match (catalog-discovery-failure known)
+             [#f '()]
+             [reason (list "sibling-package discovery failed" reason)])))
   (values (hash-ref (catalog-entries known) (symbol->string name))
           (hash-ref (catalog-data-dirs known) (symbol->string name))))
 
