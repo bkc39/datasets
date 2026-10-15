@@ -25,6 +25,7 @@
   (define (snapshot) (for/list ([n (in-list (dataset-names))]) (cons n (dataset-info n))))
   (define installed (dataset-names))
   (define installed-packages (dataset-packages))
+  (define installed-core (dataset-names #:package "datasets-core"))
   (define both (list (registry-fixture "sibling") (registry-fixture "other")))
   (define (check-malformed info registries rxs)
     (call-with-temporary-fixture
@@ -332,7 +333,7 @@
        (define receiver (make-log-receiver (current-logger) 'warning 'datasets))
        (call-with-unreadable (fixture-index) #:raise (denial "`read' access denied for ")
          (lambda ()
-           (check-equal? (dataset-names) installed)
+           (check-equal? (dataset-names) installed-core)
            (check-exn #rx"unknown dataset.*sibling-package discovery failed.*access denied"
                       (lambda () (dataset-info 'gen)))))
        (check-true (listed? 'gen))
@@ -382,7 +383,7 @@
          #:raise (errno-denial "Too many open files; errno=24" '(24 . posix))
          (lambda () (check-exn #rx"Too many open files" dataset-names)))
        (call-with-unreadable (fixture-index) #:raise (errno-denial "Permission denied; errno=13" '(13 . posix))
-         (lambda () (check-equal? (dataset-names) installed)))
+         (lambda () (check-equal? (dataset-names) installed-core)))
        (check-true (listed? 'gen)))))
 
   (test-case "a malformed index raises, even one mentioning access denied, and is retried once restored"
