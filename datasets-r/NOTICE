@@ -1,0 +1,30 @@
+New code: Copyright (c) 2026 datasets contributors, Apache-2.0 OR MIT.
+Bundled observations are distributed separately under the upstream terms:
+- penguins, penguins-raw from palmerpenguins 0.1.1: CC0-1.0. Allison Horst,
+  Alison Hill and Kristen Gorman; data from Palmer Station Antarctica LTER and
+  K. Gorman; Gorman, Williams and Fraser, PLoS ONE 9(3) e90081 (2014).
+  https://CRAN.R-project.org/package=palmerpenguins
+- gapminder from gapminder 1.0.1: CC0-1.0. Jennifer Bryan; data from the
+  Gapminder Foundation, https://www.gapminder.org/data/.
+  https://CRAN.R-project.org/package=gapminder
+- datasaurus-dozen from datasauRus 0.1.9: MIT, Copyright (c) 2022 datasauRus
+  authors. Matejka and Fitzmaurice, Same Stats, Different Graphs (CHI 2017).
+  https://CRAN.R-project.org/package=datasauRus
+- titanic-passengers from titanic 0.1.0 (titanic_train): CC0-1.0. Paul
+  Hendricks; data from Kaggle, https://www.kaggle.com/c/titanic/data.
+  https://CRAN.R-project.org/package=titanic
+
+This records the accepted upstream redistribution basis, and does not assert
+independent original-owner permission. These authors do not endorse this work.
+
+Transformations: names normalized to kebab-case, with the original names in
+the registry; R factors rendered as labels with levels in metadata; R NA
+rendered as the dedicated missing sentinel; penguins-raw Date Egg rendered as
+an ISO 8601 string and its delta columns renamed delta-15-n and delta-13-c;
+datasaurus-dozen kept in long form; titanic-passengers empty cabin and
+embarked strings rendered as missing, test set omitted. Source row order and
+numeric precision retained. Source versions, archive and normalized SHA-256
+hashes, variable descriptions, and dataset-specific notes are in the registry
+(datasets/r-data/registry.rktd). Upstream documentation is retained in
+datasets/r-data/provenance; full data license texts are in
+datasets/r-data/licenses.

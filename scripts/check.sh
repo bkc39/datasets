@@ -7,12 +7,13 @@ export DATASETS_OFFLINE=1
 mode=${1:-full}
 if [[ "$mode" == full ]]; then
   # Render the manuals referenced by the evaluated guide examples.
-  raco setup --pkgs polars data-frame threading-doc
+  raco setup --avoid-main --pkgs polars data-frame threading-doc
+  raco setup --no-docs --pkgs datasets-r
 fi
 raco setup --check-pkg-deps --unused-pkg-deps --pkgs datasets-core
 raco test --timeout 600 -x datasets-core
 if [[ "$mode" == full ]]; then
-  raco setup --check-pkg-deps --unused-pkg-deps --pkgs datasets
-  raco test --timeout 600 -x datasets
+  raco setup --check-pkg-deps --unused-pkg-deps --pkgs datasets-r datasets
+  raco test --timeout 600 -x datasets-r datasets
   racket examples/core-with-polars.rkt
 fi

@@ -4,19 +4,21 @@ The documentation is a work in progress. Basic loading, table access, metadata,
 and format conversion are documented; explanations and worked examples are
 still being expanded.
 
-Thirteen bundled datasets for Racket 9.3+: mtcars, iris, faithful, anscombe,
+Bundled datasets for Racket 9.3+: mtcars, iris, faithful, anscombe,
 airquality, us-arrests, plant-growth, tooth-growth, titanic, air-passengers,
-diabetes, breast-cancer, and wine. No downloads occur when loading data.
+diabetes, breast-cancer, and wine in `datasets-core`, plus penguins,
+penguins-raw, gapminder, datasaurus-dozen, and titanic-passengers in
+`datasets-r`. No downloads occur when loading data.
 
 ```sh
 raco pkg install --auto datasets
 ```
 
 For the lightweight table API alone, install `datasets-core` instead.
-From a checkout, install the two packages with:
+From a checkout, install the three packages with:
 
 ```sh
-raco pkg install ./datasets-core
+raco pkg install ./datasets-core ./datasets-r
 raco pkg install --auto ./datasets
 ```
 
@@ -37,9 +39,12 @@ source abbreviations such as `mpg` remain. Selection preserves requested order.
 Empty selections and duplicate names are rejected. Matrices require numeric,
 nonmissing values: categories are not encoded, nor missing values imputed.
 
-The repository has two top-level, independently installable package directories:
-`datasets-core/` and `datasets/`. Both declare `collection 'multi` and contribute
-distinct modules to the shared `datasets` collection.
+The repository has three top-level, independently installable package directories:
+`datasets-core/`, `datasets-r/`, and `datasets/`. Each declares `collection 'multi`
+and contributes distinct directories to the shared `datasets` collection.
+`datasets-r` contributes `datasets/r-data`, found through its registry, and its
+tests; it depends on `datasets-core`, and `datasets` depends on it. Its sets have
+no named loader: use `(load-dataset 'penguins)`.
 
 `datasets-core` contributes `datasets/core` and depends only on `base` at runtime.
 It provides `load-dataset-table`, `dataset-names`, `dataset-info`, table predicates
@@ -71,6 +76,11 @@ columns yourself. Every dataframe load has independent storage.
 | tooth-growth | 60 | 3 | OJ/VC labels and dose |
 | titanic | 32 | 5 | contingency counts, including eight zero cells |
 | air-passengers | 144 | 3 | year, month, count in thousands |
+| penguins | 344 | 8 | palmerpenguins; species/island/sex labels, missing retained |
+| penguins-raw | 344 | 17 | unprocessed Palmer Station LTER records |
+| gapminder | 1704 | 6 | 142 countries, 1952–2007 every five years |
+| datasaurus-dozen | 1846 | 3 | 13 datasets in long form, `dataset` column |
+| titanic-passengers | 891 | 12 | Kaggle training set, one row per passenger |
 | diabetes | 442 | 11 | lars standardized predictors and response |
 | breast-cancer | 569 | 32 | measurements, M/B labels, source ID |
 | wine | 178 | 14 | measurements and cultivar labels |
@@ -81,9 +91,13 @@ GPL-2 for [lars 1.3](https://CRAN.R-project.org/package=lars), and CC BY 4.0 for
 [UCI Iris](https://archive.ics.uci.edu/dataset/53/iris),
 [Wine](https://archive.ics.uci.edu/dataset/109/wine), and
 [Breast Cancer Wisconsin (Diagnostic)](https://archive.ics.uci.edu/dataset/17/breast+cancer+wisconsin+diagnostic).
+The `datasets-r` sets are CC0 (palmerpenguins 0.1.1, gapminder 1.0.1,
+titanic 0.1.0) and MIT (datasauRus 0.1.9).
 This is a redistribution basis, not a claim of independent original-owner
-permission. See [NOTICE](datasets-core/NOTICE), bundled license texts,
-and upstream documentation under `datasets-core/datasets/provenance/`.
+permission. See [NOTICE](datasets-core/NOTICE) and
+[datasets-r/NOTICE](datasets-r/NOTICE), bundled license texts, and upstream
+documentation under `datasets-core/datasets/provenance/` and
+`datasets-r/datasets/r-data/provenance/`.
 The registry records original spellings, units, descriptions, levels, identifiers,
 suggested targets, citations, transformation notes, and source/normalized SHA-256.
 Diabetes does not promise raw measurements or exact scikit-learn parity.
@@ -151,11 +165,12 @@ lars 1.3 archive; R's numeric export uses 17 significant digits for binary64
 round trips. ZIP sources are also hash-verified before use. End-user builds
 consume only the committed gzip-compressed `.rktd.gz` files under
 `datasets-core/datasets/core-data`; registry checksums cover the uncompressed
-text. `--package NAME --target DIR` writes another package's registry and data.
+text. `--package datasets-r` imports the CRAN teaching sets into
+`datasets-r/datasets/r-data`; `--target DIR` writes elsewhere.
 Reimport, inspect the diff, then run checks.
 Source selection is in `scripts/sources.json`; original documentation is copied
-alongside data. No synthetic generators, caching, X/y helpers, or additional
-datasets are included in v0.1.
+alongside data. No synthetic generators, caching, or X/y helpers are included
+in v0.1.
 
 ## Downstream integration without a dependency cycle
 
