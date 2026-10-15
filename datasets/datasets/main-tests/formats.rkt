@@ -1,8 +1,17 @@
 #lang racket/base
-(require racket/list datasets datasets/data-frame datasets/core-tests/fixture math/matrix
-         (prefix-in pl: polars) (prefix-in df: data-frame))
+(require (prefix-in df: (only-in data-frame df-is-na? df-na-value df-ref df-set!))
+         (only-in datasets dataset-missing dataset-missing? dataset-names dataset-table-column
+                  dataset-table-names dataset-table-row-count load-airquality load-dataset
+                  load-dataset-table load-iris)
+         (only-in datasets/core-tests/fixture call-with-registry-fixtures registry-fixture)
+         (only-in datasets/data-frame data-frame-column-names)
+         (only-in math/matrix matrix-ref)
+         (prefix-in pl: (only-in polars column-names dataframe-column dataframe-column-names
+                                 dataframe-height dataframe-rename dataframe? polars-null? series-ref
+                                 shape))
+         (only-in racket/list last))
 (module+ test
-  (require rackunit)
+  (require (only-in rackunit check-= check-eq? check-equal? check-exn check-true))
   (for ([id (in-list (dataset-names))])
     (define t (load-dataset id #:format 'table))
     (define names (reverse (dataset-table-names t)))

@@ -6,7 +6,6 @@ cd "$project_root"
 mkdir -p "$project_root/.cache"
 staging=$(mktemp -d "$project_root/.cache/docs.XXXXXX")
 trap 'rm -rf -- "$staging"' EXIT
-# Linked packages are discovered through the info-domain index that setup writes.
 raco setup --no-docs --pkgs datasets-core datasets-r datasets
 raco scribble --htmls --dest "$staging/site" --dest-base ../ \
   --redirect-main https://docs.racket-lang.org/ \

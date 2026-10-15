@@ -2,7 +2,7 @@
 (require (for-syntax racket/base)
          (only-in datasets/core dataset-missing? dataset-table-columns dataset-table-names
                   dataset-table-row-count dataset-table?)
-         (only-in file/gunzip gunzip-through-ports)
+         (only-in datasets/core-private/codec gunzip-file hex)
          (only-in file/gzip gzip-through-ports)
          (only-in racket/contract/base -> any any/c contract-out hash/c listof)
          (only-in racket/file delete-directory/files make-directory* make-temporary-directory)
@@ -63,15 +63,6 @@
 (define (gzip-bytes bs)
   (call-with-output-bytes
    (lambda (out) (gzip-through-ports (open-input-bytes bs) out #f 0))))
-
-(define (gunzip-file path)
-  (call-with-input-file path
-    (lambda (in) (call-with-output-bytes (lambda (out) (gunzip-through-ports in out))))))
-
-(define (hex bs)
-  (apply string-append
-         (for/list ([b (in-bytes bs)])
-           (string-append (if (< b 16) "0" "") (number->string b 16)))))
 
 (define (table-digest table)
   (hex (sha256-bytes
