@@ -14,7 +14,6 @@ raco scribble --htmls --dest "$staging/site" --dest-base ../ \
   datasets-core/datasets/core-doc/datasets-core.scrbl \
   datasets/datasets/main-doc/datasets.scrbl
 python3 scripts/finish-docs.py "$staging/site"
-# Replace the previous preview only after rendering and link checks succeed.
 if [[ -e "$project_root/doc" ]]; then
   mv "$project_root/doc" "$staging/previous"
 fi

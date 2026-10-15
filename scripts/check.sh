@@ -6,8 +6,7 @@ cd "$project_root"
 mode=${1:-full}
 if [[ "$mode" == full ]]; then
   # Render the manuals referenced by the evaluated guide examples.
-  raco setup --pkgs polars data-frame threading-doc
-  # Index sibling registries before core's catalog is rendered.
+  raco setup --avoid-main --pkgs polars data-frame threading-doc
   raco setup --no-docs --pkgs datasets-r
 fi
 raco setup --check-pkg-deps --unused-pkg-deps --pkgs datasets-core

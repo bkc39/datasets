@@ -28,7 +28,7 @@ packages. @tt{datasets-core} provides @racketmodname[datasets/core];
 @tt{datasets-r} adds datasets from CRAN packages to its catalog;
 @tt{datasets} adds the convenient loaders and adapters to the same collection.
 The Polars package supplies its native library. With Nix, @tt{nix develop}
-prepares an isolated environment containing both packages and that library.
+prepares an isolated environment containing the three packages and that library.
 
 @examples[#:eval ev
  (require datasets (prefix-in pl: polars))
@@ -60,19 +60,16 @@ selections, and unknown columns are reported as errors.
 
 @section[#:tag "datasets-penguins-guide"]{A first look at the Palmer penguins}
 
-The @racket['penguins] dataset comes from @tt{datasets-r}, which @tt{datasets}
-installs. It records 344 penguins of three species on three islands near Palmer
-Station, Antarctica: four body measurements, sex, and the study year.
+Datasets from @tt{datasets-r} have no named loader; load them by name. The
+@racket['penguins] set records 344 penguins of three species near Palmer
+Station, Antarctica:
 
 @examples[#:eval ev
  (define penguins (load-dataset 'penguins))
- (pl:shape penguins)
  (pl:head penguins 4)
  (hash-ref (dataset-info 'penguins) "suggested-targets")]
 
-Species, island, and sex are labels whose levels are in the metadata. The fourth
-penguin, like one other, was never measured; Polars shows its missing values as
-@tt{null}, and the mean of each species' body mass skips them:
+Missing measurements are @tt{null}, and each species' mean body mass skips them:
 
 @examples[#:eval ev
  (define by-species
@@ -80,7 +77,7 @@ penguin, like one other, was never measured; Polars shows its missing values as
           (pl:group-by "species")
           (pl:agg (pl:mean (pl:col "body-mass-g")))
           (pl:dataframe-sort '("species"))))
- (for/list ([row (in-range (pl:dataframe-height by-species))])
+ (for/list ([row 3])
    (list (pl:series-ref (pl:dataframe-column by-species "species") row)
          (pl:series-ref (pl:dataframe-column by-species "body-mass-g") row)))]
 

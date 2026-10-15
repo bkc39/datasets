@@ -42,8 +42,9 @@ nonmissing values: categories are not encoded, nor missing values imputed.
 The repository has three top-level, independently installable package directories:
 `datasets-core/`, `datasets-r/`, and `datasets/`. Each declares `collection 'multi`
 and contributes distinct directories to the shared `datasets` collection.
-`datasets-r` contributes only data (`datasets/r-data`), found through its
-registry; it depends on `datasets-core`, and `datasets` depends on it.
+`datasets-r` contributes `datasets/r-data`, found through its registry, and its
+tests; it depends on `datasets-core`, and `datasets` depends on it. Its sets have
+no named loader: use `(load-dataset 'penguins)`.
 
 `datasets-core` contributes `datasets/core` and depends only on `base` at runtime.
 It provides `load-dataset-table`, `dataset-names`, `dataset-info`, table predicates
