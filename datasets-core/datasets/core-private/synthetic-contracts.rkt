@@ -22,7 +22,8 @@
 (define finite/c
   (flat-named-contract 'finite/c
     (λ (x) (and (rational? x) (rational? (real->double-flonum x))))))
-(define (flonum-in ok?) (and/c finite/c (λ (x) (ok? (real->double-flonum x)))))
+(define (flonum-in ok?)
+  (and/c finite/c (λ (x) (and (ok? x) (ok? (real->double-flonum x))))))
 (define nonnegative/c (flat-named-contract 'nonnegative/c (flonum-in (λ (x) (>= x 0.0)))))
 (define positive/c (flat-named-contract 'positive/c (flonum-in (λ (x) (> x 0.0)))))
 (define probability/c (flat-named-contract 'probability/c (flonum-in (λ (x) (<= 0.0 x 1.0)))))

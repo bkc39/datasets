@@ -165,7 +165,10 @@
       (for ([n (features quiet)]) (check-equal? (col quiet n) (col loud n))))
     (for ([gen (list make-swiss-roll make-s-curve)])
       (define-values (quiet loud) (pair gen))
-      (check-equal? (col quiet "t") (col loud "t"))))
+      (check-equal? (col quiet "t") (col loud "t")))
+    (check-equal? (dataset-table-columns
+                   (make-regression #:n-samples 20 #:n-features 3 #:noise (/ 1 (expt 10 400)) #:seed 0))
+                  (dataset-table-columns (make-regression #:n-samples 20 #:n-features 3 #:seed 0))))
 
   (test-case "exact: class sizes"
     (check-equal? (label-counts (make-blobs #:n-samples 10 #:centers 3 #:seed 0))
@@ -393,6 +396,8 @@
                    (make-blobs #:cluster-std -1.0) (make-moons #:n-samples 0)
                    (make-moons #:noise -0.1)
                    (make-moons #:noise (expt 10 400))
+                   (make-moons #:noise (- (/ 1 (expt 10 400))))
+                   (make-classification #:flip-y (+ 1 (/ 1 (expt 10 400))))
                    (make-moons #:n-samples '(1 2 3)) (make-circles #:factor 1.0)
                    (make-circles #:factor (- 1 (/ 1 (expt 10 400))))
                    (make-classification #:scale (/ 1 (expt 10 400)))

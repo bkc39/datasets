@@ -261,7 +261,8 @@
   (define offset (real->double-flonum bias))
   (define y
     (map-rows (λ (row) (vector-map (λ (v) (fl+ v offset)) row)) (rows-times x coef n-targets)))
-  (when (positive? noise) (add-noise! y (real->double-flonum noise) normal))
+  (define scale (real->double-flonum noise))
+  (when (fl> scale 0.0) (add-noise! y scale normal))
   (define-values (rows targets) (maybe-shuffle g shuffle? x y))
   (define-values (order columns) (shuffled-features g shuffle? rows n-features))
   (define coef-rows (permute coef order))

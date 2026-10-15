@@ -38,7 +38,10 @@ parameters gain a @litchar{?}, and @tt{random_state} becomes @racket[#:seed].
 Arguments scikit-learn accepts but ignores, such as an @racket[#:n-features] that
 disagrees with the given centres, are contract violations here. Numbers must be
 finite as flonums: an exact argument such as @racket[(expt 10 400)], whose
-@racket[real->double-flonum] is infinite, is a contract violation.
+@racket[real->double-flonum] is infinite, is a contract violation. A bound on an
+argument must hold for both the value and its flonum, so an exact
+@racket[#:factor] just below 1 that rounds to @racket[1.0], or a positive
+@racket[#:class-sep] that underflows to @racket[0.0], is also a violation.
 
 @section[#:tag "datasets-synthetic-seeds"]{Seeds and reproducibility}
 
