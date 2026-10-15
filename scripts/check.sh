@@ -9,9 +9,9 @@ if [[ "$mode" == full ]]; then
   raco setup --pkgs polars data-frame threading-doc
 fi
 raco setup --check-pkg-deps --unused-pkg-deps --pkgs datasets-core
-raco test -x datasets-core
+raco test --timeout 600 -x datasets-core
 if [[ "$mode" == full ]]; then
   raco setup --check-pkg-deps --unused-pkg-deps --pkgs datasets
-  raco test -x datasets
+  raco test --timeout 600 -x datasets
   racket examples/core-with-polars.rkt
 fi

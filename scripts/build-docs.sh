@@ -6,6 +6,7 @@ cd "$project_root"
 mkdir -p "$project_root/.cache"
 staging=$(mktemp -d "$project_root/.cache/docs.XXXXXX")
 trap 'rm -rf -- "$staging"' EXIT
+raco setup --no-docs --pkgs datasets-core datasets
 raco scribble --htmls --dest "$staging/site" --dest-base ../ \
   --redirect-main https://docs.racket-lang.org/ \
   --redirect https://docs.racket-lang.org/local-redirect/index.html \

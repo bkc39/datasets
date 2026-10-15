@@ -69,7 +69,34 @@
               cp -r "$PLTUSERHOME" $out/share/racket-home
             '';
           };
-        in { default = build true; core = build false; inherit native; });
+          racket-linters = pkgs.callPackage ./nix/racket-linters.nix { };
+          # Dependencies and the pinned Resyntax, independent of this repository's
+          # source, so entering the dev shell never rebuilds or re-tests the packages.
+          dev-home = pkgs.stdenvNoCC.mkDerivation {
+            name = "datasets-dev-home";
+            dontUnpack = true;
+            dontFixup = true;
+            nativeBuildInputs = [ pkgs.racket ];
+            RKT_POLARS_COMPAT_LIB_PATH = "${native}";
+            buildPhase = ''
+              runHook preBuild
+              export HOME=$TMPDIR/home
+              export PLTUSERHOME=$TMPDIR/plt
+              mkdir -p "$PLTUSERHOME"
+              raco pkg install --batch --deps fail --copy --no-setup --scope user ${deps}/*/
+              raco pkg install --batch --deps fail --copy --no-setup --scope user --name al2-test-runner ${al2-test-runner}
+              raco pkg install --batch --deps fail --copy --no-setup --scope user --name data-frame ${data-frame}
+              raco pkg install --batch --deps fail --copy --no-setup --scope user --name polars ${polars}/polars
+              raco pkg install --batch --deps fail --copy --no-setup --scope user ${racket-linters}/*/
+              raco setup -j "$NIX_BUILD_CORES" --pkgs tzdata polars data-frame threading-doc resyntax
+              runHook postBuild
+            '';
+            installPhase = ''
+              mkdir -p $out/share
+              cp -r "$PLTUSERHOME" $out/share/racket-home
+            '';
+          };
+        in { default = build true; core = build false; inherit native racket-linters dev-home; });
       checks = each (system: {
         inherit (self.packages.${system}) core;
         full = self.packages.${system}.default;
@@ -81,9 +108,9 @@
             RKT_POLARS_COMPAT_LIB_PATH = "${self.packages.${system}.native}";
             shellHook = ''
               export PLTUSERHOME=$(mktemp -d /tmp/datasets-dev.XXXXXXXX)
-              cp -R ${self.packages.${system}.default}/share/racket-home/. "$PLTUSERHOME/"
+              cp -R ${self.packages.${system}.dev-home}/share/racket-home/. "$PLTUSERHOME/"
               chmod -R u+w "$PLTUSERHOME"
-              raco pkg update --batch --deps fail --no-setup --link --scope user \
+              raco pkg install --batch --deps fail --no-setup --link --scope user \
                 "$PWD/datasets-core" "$PWD/datasets"
               echo "Isolated Racket environment: $PLTUSERHOME"
             '';

@@ -149,7 +149,10 @@ python3 scripts/import-data.py /tmp/datasets-sources  # subsequent offline impor
 Python and R evaluate the hash-pinned R 4.3.3 source dataset definitions and
 lars 1.3 archive; R's numeric export uses 17 significant digits for binary64
 round trips. ZIP sources are also hash-verified before use. End-user builds
-consume only committed `.rktd` files. Reimport, inspect the diff, then run checks.
+consume only the committed gzip-compressed `.rktd.gz` files under
+`datasets-core/datasets/core-data`; registry checksums cover the uncompressed
+text. `--package NAME --target DIR` writes another package's registry and data.
+Reimport, inspect the diff, then run checks.
 Source selection is in `scripts/sources.json`; original documentation is copied
 alongside data. No caching, X/y helpers, or additional datasets are included in v0.1.
 

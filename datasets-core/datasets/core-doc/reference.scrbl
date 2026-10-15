@@ -14,9 +14,20 @@ results using the notation of
 
 @section[#:tag "datasets-core-loading-reference"]{Registry and loading}
 
-@defproc[(dataset-names) (listof symbol?)]{
-Returns all available dataset identifiers, sorted alphabetically. The result
-is stable for the bundled catalog.}
+@defproc[(dataset-names [#:package package (or/c #f string?) #f]) (listof symbol?)]{
+Returns the identifiers of every dataset declared by an installed registry,
+sorted alphabetically, including fetch-tier datasets. If @racket[package] is a
+string, returns only that package's datasets; a package that declares no
+installed dataset raises @racket[exn:fail:contract] listing the available
+packages. Conflicting or malformed registries raise @racket[exn:fail]; see
+@secref["datasets-registries-reference"].}
+@examples[#:eval ev (dataset-names #:package "datasets-core")]
+
+@defproc[(dataset-packages) (listof string?)]{
+Returns the names of the packages that declare at least one installed dataset,
+sorted by @racket[string<?]. Every identifier in @racket[(dataset-names)] belongs
+to exactly one of them, recorded in its metadata as @tt{package}.}
+@examples[#:eval ev (dataset-packages) (hash-ref (dataset-info 'iris) "package")]
 
 @defproc[(dataset-info [name symbol?]) (and/c hash? immutable?)]{
 Returns deeply immutable metadata for @racket[name]. An unknown identifier
@@ -39,12 +50,29 @@ invalid argument types raise @racket[exn:fail:contract].
 
 The result contains immutable column vectors. Strings inside those vectors are
 also immutable. Missing observations are @racket[dataset-missing]. Repeated
-loads are equal; callers should not rely on object identity.}
+loads are equal; callers should not rely on object identity.
+
+Bundled data is stored gzip-compressed and decompressed on each call; its
+SHA-256 is checked against the @tt{sha256} metadata before parsing. A checksum
+mismatch, an unreadable file, or a fetch-tier dataset raises @racket[exn:fail].}
 
 @examples[#:eval ev
  (dataset-table-names
   (load-dataset-table 'mtcars #:columns '("mpg" "model")))
  (eval:error (load-dataset-table 'iris #:columns '("unknown")))]
+
+@subsection[#:tag "datasets-registries-reference"]{Registries}
+
+A registry is a file mapping dataset names to metadata hashes. Any installed
+package can declare registries with the @tt{datasets-registries} key in a
+collection-level @tt{info.rkt}: a list of paths relative to that file's
+directory. Each dataset's data is @tt{data/@italic{name}.rktd.gz} beside its
+registry. The registries of all installed packages are merged when first used,
+and merged again when a registry file changes. A registry declaring
+@tt{datasets-core} datasets is ignored unless it is the one bundled with
+@racket[datasets/core]. A name declared twice is an error naming both packages. A
+malformed registry is an error naming its file. Either error makes every
+registry operation raise until the package at fault is fixed or removed.
 
 @section[#:tag "datasets-core-table-reference"]{Table inspection}
 
@@ -97,11 +125,14 @@ string keys:
        (list @tt{source-url} "URL of the pinned upstream archive.")
        (list @tt{source-version} "Upstream version or hash-pinned snapshot description.")
        (list @tt{source-sha256} "Hexadecimal SHA-256 of the upstream archive.")
-       (list @tt{sha256} "Hexadecimal SHA-256 of the normalized .rktd file's UTF-8 bytes.")
+       (list @tt{sha256} "Hexadecimal SHA-256 of the normalized .rktd content's UTF-8 bytes, before compression.")
        (list @tt{license} "Accepted upstream redistribution terms.")
        (list @tt{citation} "Source attribution and bibliographic citation.")
        (list @tt{notes} "Transformations, representation choices, and historical quirks.")
-       (list @tt{time-series} "Time-series description hash, or #f."))]
+       (list @tt{time-series} "Time-series description hash, or #f.")
+       (list @tt{tier} @elem{@tt{bundled} (shipped with its package) or @tt{fetch} (downloaded on first use).})
+       (list @tt{package} "Name of the package whose registry declares the dataset.")
+       (list @tt{fetch} @elem{@racket[#f] for bundled data; for fetch-tier data, a hash with @tt{urls}, @tt{sha256} and @tt{size} of the download, and its @tt{format}.}))]
 
 Each column-description hash has @tt{name}, @tt{original-name}, @tt{type},
 @tt{levels}, @tt{unit}, @tt{description}, and @tt{missing-count} keys.
