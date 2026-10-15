@@ -75,12 +75,20 @@ package can declare registries with the @tt{datasets-registries} key in a
 collection-level @tt{info.rkt}: a list of paths relative to that file's
 directory. Each dataset's data is @tt{data/@italic{name}.rktd.gz} beside its
 registry. The registries of all installed packages are merged when first used,
-and merged again when a registry file changes. A registry declaring
-@tt{datasets-core} datasets is ignored unless it is the one bundled with
-@racket[datasets/core]. A name declared twice is an error naming both packages. A
-malformed registry is an error naming its file. Either error makes every
+and merged again when a registry file or a declaring @tt{info.rkt} changes.
+Package @tt{datasets-core} is reserved for the registries that
+@tt{datasets/core-data/info.rkt} lists. Copies of those files discovered under
+another installation's @tt{datasets/core-data} are skipped unread; any other
+registry declaring @tt{datasets-core} is an error naming its file. A
+name declared twice is an error naming both packages. A malformed registry is an
+error naming its file. Either error makes every
 registry operation raise until the package at fault is fixed or removed.
 A fetch-tier entry has no data file; see @secref["datasets-core-cache-reference"].
+
+When reading the installed package index is denied, as in a default
+@racketmodname[racket/sandbox] evaluator, only the @tt{datasets-core} registries
+are used: a warning is logged to the @tt{datasets} topic, an unknown dataset's
+error gives the reason, and the next call tries discovery again.
 
 @section[#:tag "datasets-core-cache-reference"]{Downloads and the cache}
 

@@ -1,15 +1,19 @@
 #lang racket/base
-(require (for-syntax racket/base)
+(require (for-syntax (only-in compiler/cm-accomplice register-external-file)
+                     racket/base
+                     (only-in setup/getinfo get-info/full)
+                     (only-in syntax/parse syntax-parse))
          (only-in datasets/core-private/cache cache-file cache-root clear-cache-directory
                   clear-cache-root download-dataset)
          (only-in datasets/core-private/codec gunzip-file hex)
          (only-in datasets/core-private/error raise-registry-error)
+         (only-in datasets/core-private/log log-datasets-warning)
          (only-in racket/contract/base -> ->* and/c contract-out listof non-empty-listof or/c)
          (only-in racket/format ~e ~s)
-         (only-in racket/list append-map check-duplicates index-of remove-duplicates)
-         (only-in racket/match == match)
+         (only-in racket/list append-map check-duplicates index-of remove-duplicates take)
+         (only-in racket/match == match match-define)
          (only-in racket/runtime-path define-runtime-path)
-         (only-in setup/getinfo find-relevant-directories get-info/full))
+         (only-in setup/getinfo find-relevant-directories get-info/full reset-relevant-directories-state!))
 (provide (contract-out
           [dataset-names (->* () (#:package (or/c #f string?)) (listof symbol?))]
           [dataset-packages (-> (listof string?))]
@@ -31,9 +35,20 @@
 (define dataset-missing (missing-value))
 (define (dataset-missing? v) (eq? v dataset-missing))
 (struct dataset-table (names columns row-count info) #:transparent)
-(struct catalog (entries data-dirs))
+(struct catalog (entries data-dirs discovery-failure))
+(struct source (file core? signature) #:transparent)
 (define-runtime-path core-data "core-data")
-(define core-registry (build-path core-data "registry.rktd"))
+
+(define-syntax (declared-core-registries stx)
+  (syntax-parse stx
+    [(_)
+     #:do [(define-values (dir _name _dir?) (split-path (syntax-source stx)))
+           (define info-dir (build-path dir "core-data"))
+           (register-external-file (build-path info-dir "info.rkt"))]
+     #:with names (datum->syntax stx ((get-info/full info-dir) 'datasets-registries))
+     #'(quote names)]))
+
+(define core-registry-names (declared-core-registries))
 
 (define (freeze v)
   (cond [(string? v) (string->immutable-string v)]
@@ -44,31 +59,70 @@
 (define (registry-path-string? v)
   (and (string? v) (relative-path? v) (andmap path? (explode-path v))))
 
-(define (declared-registries dir)
+(define (info-registries dir)
   (define info-file (build-path dir "info.rkt"))
   (define info
     (with-handlers ([exn:fail? (lambda (e)
                                  (raise-registry-error 'datasets "cannot read info.rkt"
                                                        "info.rkt" info-file "error" (exn-message e)))])
-      (get-info/full dir)))
-  (define value (and info (info 'datasets-registries (lambda () #f))))
-  (cond
-    [(not info) '()]
-    [(not (and (list? value) (andmap registry-path-string? value)))
-     (raise-registry-error 'datasets "malformed datasets-registries" "info.rkt" info-file
-                           "expected" "a list of relative path strings" "given" (~s value))]
-    [else
-     (for/list ([file (in-list value)])
-       (define path (simplify-path (build-path dir file)))
-       (cond [(file-exists? path) path]
-             [else (raise-registry-error 'datasets "registry file not found" "info.rkt" info-file
-                                         "datasets-registries" (~s value) "file" path)]))]))
+      (get-info/full dir #:namespace (make-base-empty-namespace))))
+  (check-registries dir (if info (info 'datasets-registries (lambda () '())) '())))
 
-(define (registry-files dirs)
+(define (check-registries dir value)
+  (cond
+    [(and (list? value) (andmap registry-path-string? value)) value]
+    [else (raise-registry-error 'datasets "malformed datasets-registries"
+                                "info.rkt" (build-path dir "info.rkt")
+                                "expected" "a list of relative path strings" "given" (~s value))]))
+
+(define (resolve-registries dir names)
+  (for/list ([name (in-list names)])
+    (define path (simplify-path (build-path dir name)))
+    (cond [(file-exists? path) path]
+          [else (raise-registry-error 'datasets "registry file not found"
+                                      "info.rkt" (build-path dir "info.rkt")
+                                      "datasets-registries" (~s names) "file" path)])))
+
+(define (file-signature file)
+  (define stat (file-or-directory-stat file))
+  (for/list ([key (in-list '(device-id inode change-time-nanoseconds modify-time-nanoseconds size))])
+    (hash-ref stat key)))
+
+(define (info-signature dir)
+  (for/list ([file (in-list (cons (build-path dir "info.rkt")
+                                  (for/list ([compiled (in-list (use-compiled-file-paths))])
+                                    (build-path dir compiled "info_rkt.zo"))))]
+             #:when (file-exists? file))
+    (cons file (file-signature file))))
+
+(define info-cache (box (hash)))
+
+(define (declared-registries dirs)
+  (define previous (unbox info-cache))
+  (define current
+    (for/hash ([dir (in-list dirs)])
+      (define signature (info-signature dir))
+      (values dir (match (hash-ref previous dir #f)
+                    [(and hit (cons (== signature) _names)) hit]
+                    [_ (cons signature (info-registries dir))]))))
+  (set-box! info-cache current)
+  (append-map (lambda (dir) (resolve-registries dir (cdr (hash-ref current dir)))) dirs))
+
+(define (core-copy? dir)
+  (match (map path->string (explode-path dir))
+    [(list _ ... "datasets" "core-data") #t]
+    [_ #f]))
+
+(define (registry-sources dirs)
+  (define core-names (check-registries core-data core-registry-names))
+  (define core (resolve-registries core-data core-names))
+  (define discovered
+    (sort (declared-registries (for/list ([dir (in-list dirs)] #:unless (core-copy? dir)) dir))
+          string<? #:key path->string))
   (remove-duplicates
-   (sort (cons (simplify-path core-registry) (append-map declared-registries dirs))
-         string<? #:key path->string)
-   #:key file-or-directory-identity))
+   (append (for/list ([file (in-list core)]) (source file #t (file-signature file)))
+           (for/list ([file (in-list discovered)]) (source file #f (file-signature file))))
+   #:key (lambda (s) (take (source-signature s) 2))))
 
 (define (sha256-string? v) (and (string? v) (regexp-match? #px"^[0-9a-f]{64}$" v)))
 (define ((nonempty-list-of ok?) v)
@@ -105,7 +159,7 @@
     [(not (string? (fetch-ref "format"))) (list "format" "a string")]
     [else #f]))
 
-(define (read-registry file)
+(define (read-registry file core?)
   (define registry
     (with-handlers ([exn:fail? (lambda (e)
                                  (raise-registry-error 'datasets "cannot read registry"
@@ -130,22 +184,17 @@
   (when (> (length packages) 1)
     (raise-registry-error 'datasets "one registry declares several packages" "registry" file
                           "key" (~s "package") "packages" (~s packages)))
+  (when (and (not core?) (equal? packages '("datasets-core")))
+    (raise-registry-error 'datasets "package datasets-core is reserved" "registry" file))
   (freeze registry))
 
-(define (core-copy? file registry core-identity)
-  (and (not (= (file-or-directory-identity file) core-identity))
-       (for/and ([entry (in-hash-values registry)])
-         (equal? (hash-ref entry "package") "datasets-core"))))
-
-(define (build-catalog files)
-  (define core-identity (file-or-directory-identity core-registry))
-  (for*/fold ([entries (hash)] [data-dirs (hash)] [sources (hash)]
-              #:result (catalog entries data-dirs))
-             ([file (in-list files)]
-              [registry (in-value (read-registry file))]
-              #:unless (core-copy? file registry core-identity)
-              [(name entry) (in-hash registry)])
-    (define previous (hash-ref sources name #f))
+(define (build-catalog sources)
+  (for*/fold ([entries (hash)] [data-dirs (hash)] [registries (hash)]
+              #:result (catalog entries data-dirs #f))
+             ([src (in-list sources)]
+              [file (in-value (source-file src))]
+              [(name entry) (in-hash (read-registry file (source-core? src)))])
+    (define previous (hash-ref registries name #f))
     (when previous
       (raise-registry-error 'datasets "duplicate dataset" "name" (~s name)
                             "package" (~s (hash-ref (hash-ref entries name) "package"))
@@ -154,25 +203,57 @@
     (define-values (dir _name _dir?) (split-path file))
     (values (hash-set entries name entry)
             (hash-set data-dirs name (build-path dir "data"))
-            (hash-set sources name file))))
+            (hash-set registries name file))))
 
 (define cache (box #f))
 
-(define (file-signature file)
-  (define stat (file-or-directory-stat file))
-  (list file (hash-ref stat 'modify-time-nanoseconds) (hash-ref stat 'size)))
+(define catalog-requests (make-channel))
 
-(define catalog-lock (make-semaphore 1))
-(define (current-catalog) (call-with-semaphore catalog-lock unlocked-catalog))
+(define catalog-manager
+  (thread/suspend-to-kill
+   (lambda ()
+     (let loop ()
+       (match-define (list parameterization reply done) (channel-get catalog-requests))
+       (set-box! reply
+                 (with-handlers ([(lambda (_) #t) (lambda (e) (lambda () (raise e)))])
+                   (define catalog (call-with-parameterization parameterization unlocked-catalog))
+                   (lambda () catalog)))
+       (semaphore-post done)
+       (loop)))))
+
+(define (current-catalog)
+  (define reply (box #f))
+  (define done (make-semaphore 0))
+  (thread-resume catalog-manager (current-thread))
+  (channel-put catalog-requests (list (current-parameterization) reply done))
+  (semaphore-wait done)
+  ((unbox reply)))
+
+(define (access-denied? e)
+  (and (exn:fail? e)
+       (or (exn:fail:filesystem? e) (regexp-match? #rx"access denied" (exn-message e)))))
+
+(define (discovered-directories)
+  (with-handlers ([access-denied?
+                   (lambda (e)
+                     (log-datasets-warning "sibling-package discovery failed; using datasets-core only: ~a"
+                                           (exn-message e))
+                     (values '() (exn-message e)))])
+    (values (with-handlers ([(lambda (_) #t)
+                             (lambda (e) (reset-relevant-directories-state!) (raise e))])
+              (find-relevant-directories '(datasets-registries) 'all-available))
+            #f)))
 
 (define (unlocked-catalog)
-  (define files (registry-files (find-relevant-directories '(datasets-registries) 'all-available)))
-  (define key (map file-signature files))
-  (match (unbox cache)
-    [(cons (== key) cached) cached]
-    [_ (define fresh (build-catalog files))
-       (set-box! cache (cons key fresh))
-       fresh]))
+  (define-values (dirs failure) (discovered-directories))
+  (define sources (registry-sources dirs))
+  (define built
+    (match (unbox cache)
+      [(cons (== sources) cached) cached]
+      [_ (define fresh (build-catalog sources))
+         (set-box! cache (cons sources fresh))
+         fresh]))
+  (struct-copy catalog built [discovery-failure failure]))
 
 (define (dataset-names #:package [package #f])
   (define names
@@ -192,7 +273,10 @@
 (define (dataset-entry who name)
   (define known (current-catalog))
   (unless (and (symbol? name) (hash-has-key? (catalog-entries known) (symbol->string name)))
-    (raise-arguments-error who "unknown dataset" "name" name "available" (dataset-names)))
+    (apply raise-arguments-error who "unknown dataset" "name" name "available" (dataset-names)
+           (match (catalog-discovery-failure known)
+             [#f '()]
+             [reason (list "sibling-package discovery failed" reason)])))
   (values (hash-ref (catalog-entries known) (symbol->string name))
           (hash-ref (catalog-data-dirs known) (symbol->string name))))
 

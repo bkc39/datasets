@@ -2,6 +2,7 @@
 (require (for-syntax racket/base (only-in syntax/parse ...+ expr id))
          (only-in datasets/core-private/codec file-sha256 gunzip-sha256)
          (only-in datasets/core-private/error raise-registry-error)
+         (only-in datasets/core-private/log log-datasets-info)
          (only-in datasets/core-private/resource with-custodian with-resource)
          (only-in net/url get-pure-port/headers string->url url->path url-scheme)
          (only-in racket/file make-directory* make-temporary-file)
@@ -9,8 +10,6 @@
          (only-in racket/match match)
          (only-in syntax/parse/define define-syntax-parse-rule))
 (provide cache-file cache-root clear-cache-directory clear-cache-root download-dataset)
-
-(define-logger datasets)
 
 (define name-rx #px"^[a-z0-9]+(-[a-z0-9]+)*$")
 (define cache-file-rx #px"^[0-9a-f]{64}\\.rktd\\.gz(\\.[A-Za-z0-9]+\\.part)?$")
