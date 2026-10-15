@@ -1,15 +1,10 @@
 #lang racket/base
-(require racket/list racket/runtime-path racket/vector)
+(require racket/list racket/runtime-path racket/vector datasets/core-private/table)
 (provide dataset-names dataset-info load-dataset-table
          dataset-missing dataset-missing?
          dataset-table? dataset-table-names dataset-table-columns
          dataset-table-row-count dataset-table-info dataset-table-column)
 
-;; Opaque, singleton sentinel: cannot be confused with any ordinary observation.
-(struct missing-value ())
-(define dataset-missing (missing-value))
-(define (dataset-missing? v) (eq? v dataset-missing))
-(struct dataset-table (names columns row-count info) #:transparent)
 (define-runtime-path registry-path "private/registry.rktd")
 (define-runtime-path data-path "private/data")
 (define (freeze v)

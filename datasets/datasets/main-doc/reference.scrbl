@@ -1,6 +1,6 @@
 #lang scribble/manual
 @(require (for-label racket/base racket/contract/base datasets datasets/polars
-                     datasets/matrix datasets/data-frame))
+                     datasets/matrix datasets/data-frame (prefix-in s: datasets/synthetic)))
 
 @title[#:tag "datasets-reference"]{Reference}
 
@@ -51,6 +51,169 @@ types are the same. Variable descriptions and provenance appear in the
 @defproc[(load-diabetes [#:format format symbol? 'polars] [#:columns columns (or/c #f (listof string?)) #f]) any/c]{Loads the standardized lars representation.}
 @defproc[(load-breast-cancer [#:format format symbol? 'polars] [#:columns columns (or/c #f (listof string?)) #f]) any/c]{Loads UCI diagnostic measurements, M/B labels, and identifiers.}
 @defproc[(load-wine [#:format format symbol? 'polars] [#:columns columns (or/c #f (listof string?)) #f]) any/c]{Loads wine measurements and cultivar labels.}
+
+@section[#:tag "datasets-synthetic-formats-reference"]{Synthetic generators}
+
+These procedures take the arguments of the same-named generators of
+@racketmodname[datasets/synthetic], documented in
+@secref["datasets-synthetic-reference" #:doc '(lib "datasets/core-doc/datasets-core.scrbl")],
+plus @racket[#:format], and convert the generated table as @racket[load-dataset]
+does. Every generated table is numeric, so all four formats apply.
+@racketmodname[datasets] does not re-export @racketmodname[datasets/synthetic]:
+the names are the same, so a module that requires both gets an import conflict
+and should use @racket[prefix-in] or @racket[only-in] for one of them.
+
+@defproc[(make-blobs [#:format format (or/c 'polars 'table 'matrix 'data-frame) 'polars]
+                     [#:n-samples n-samples (or/c exact-positive-integer?
+                                                  (and/c (non-empty-listof exact-nonnegative-integer?)
+                                                         (λ (ns) (positive? (apply + ns)))))
+                                  100]
+                     [#:n-features n-features (or/c #f exact-positive-integer?) #f]
+                     [#:centers centers (or/c #f exact-positive-integer?
+                                              (non-empty-listof (non-empty-listof rational?)))
+                                #f]
+                     [#:cluster-std cluster-std (or/c (and/c rational? (>=/c 0))
+                                                      (non-empty-listof (and/c rational? (>=/c 0))))
+                                    1.0]
+                     [#:center-box center-box (list/c rational? rational?) '(-10.0 10.0)]
+                     [#:shuffle? shuffle? boolean? #t]
+                     [#:seed seed (or/c #f (integer-in 0 (sub1 (expt 2 31)))
+                                        pseudo-random-generator? pseudo-random-generator-vector?)
+                             #f])
+         any/c]{
+Generates as @racket[s:make-blobs] and converts the table as @racket[load-dataset] does.}
+
+@defproc[(make-moons [#:format format (or/c 'polars 'table 'matrix 'data-frame) 'polars]
+                     [#:n-samples n-samples (or/c exact-positive-integer?
+                                                  (list/c exact-nonnegative-integer? exact-nonnegative-integer?))
+                                  100]
+                     [#:shuffle? shuffle? boolean? #t]
+                     [#:noise noise (or/c #f (and/c rational? (>=/c 0))) #f]
+                     [#:seed seed (or/c #f (integer-in 0 (sub1 (expt 2 31)))
+                                        pseudo-random-generator? pseudo-random-generator-vector?)
+                             #f])
+         any/c]{
+Generates as @racket[s:make-moons] and converts the table as @racket[load-dataset] does.}
+
+@defproc[(make-circles [#:format format (or/c 'polars 'table 'matrix 'data-frame) 'polars]
+                       [#:n-samples n-samples (or/c exact-nonnegative-integer?
+                                                    (list/c exact-nonnegative-integer? exact-nonnegative-integer?))
+                                    100]
+                       [#:shuffle? shuffle? boolean? #t]
+                       [#:noise noise (or/c #f (and/c rational? (>=/c 0))) #f]
+                       [#:factor factor (and/c rational? (>=/c 0) (</c 1)) 0.8]
+                       [#:seed seed (or/c #f (integer-in 0 (sub1 (expt 2 31)))
+                                          pseudo-random-generator? pseudo-random-generator-vector?)
+                               #f])
+         any/c]{
+Generates as @racket[s:make-circles] and converts the table as @racket[load-dataset] does.}
+
+@defproc[(make-classification [#:format format (or/c 'polars 'table 'matrix 'data-frame) 'polars]
+                              [#:n-samples n-samples exact-positive-integer? 100]
+                              [#:n-features n-features exact-positive-integer? 20]
+                              [#:n-informative n-informative exact-positive-integer? 2]
+                              [#:n-redundant n-redundant exact-nonnegative-integer? 2]
+                              [#:n-repeated n-repeated exact-nonnegative-integer? 0]
+                              [#:n-classes n-classes exact-positive-integer? 2]
+                              [#:n-clusters-per-class n-clusters-per-class exact-positive-integer? 2]
+                              [#:weights weights (or/c #f (listof (and/c rational? (real-in 0 1)))) #f]
+                              [#:flip-y flip-y (and/c rational? (real-in 0 1)) 0.01]
+                              [#:class-sep class-sep (and/c rational? (>/c 0)) 1.0]
+                              [#:hypercube? hypercube? boolean? #t]
+                              [#:shift shift (or/c #f rational? (non-empty-listof rational?)) 0.0]
+                              [#:scale scale (or/c #f (and/c rational? (>/c 0))
+                                                   (non-empty-listof (and/c rational? (>/c 0))))
+                                       1.0]
+                              [#:shuffle? shuffle? boolean? #t]
+                              [#:seed seed (or/c #f (integer-in 0 (sub1 (expt 2 31)))
+                                                 pseudo-random-generator? pseudo-random-generator-vector?)
+                                      #f])
+         any/c]{
+Generates as @racket[s:make-classification] and converts the table as @racket[load-dataset] does.}
+
+@defproc[(make-regression [#:format format (or/c 'polars 'table 'matrix 'data-frame) 'polars]
+                          [#:n-samples n-samples exact-positive-integer? 100]
+                          [#:n-features n-features exact-positive-integer? 100]
+                          [#:n-informative n-informative exact-nonnegative-integer? 10]
+                          [#:n-targets n-targets exact-positive-integer? 1]
+                          [#:bias bias rational? 0.0]
+                          [#:effective-rank effective-rank (or/c #f exact-positive-integer?) #f]
+                          [#:tail-strength tail-strength (and/c rational? (real-in 0 1)) 0.5]
+                          [#:noise noise (and/c rational? (>=/c 0)) 0.0]
+                          [#:shuffle? shuffle? boolean? #t]
+                          [#:seed seed (or/c #f (integer-in 0 (sub1 (expt 2 31)))
+                                             pseudo-random-generator? pseudo-random-generator-vector?)
+                                  #f])
+         any/c]{
+Generates as @racket[s:make-regression] and converts the table as @racket[load-dataset] does.}
+
+@defproc[(make-friedman1 [#:format format (or/c 'polars 'table 'matrix 'data-frame) 'polars]
+                         [#:n-samples n-samples exact-positive-integer? 100]
+                         [#:n-features n-features (integer-in 5 #f) 10]
+                         [#:noise noise (and/c rational? (>=/c 0)) 0.0]
+                         [#:seed seed (or/c #f (integer-in 0 (sub1 (expt 2 31)))
+                                            pseudo-random-generator? pseudo-random-generator-vector?)
+                                 #f])
+         any/c]{
+Generates as @racket[s:make-friedman1] and converts the table as @racket[load-dataset] does.}
+
+@defproc[(make-friedman2 [#:format format (or/c 'polars 'table 'matrix 'data-frame) 'polars]
+                         [#:n-samples n-samples exact-positive-integer? 100]
+                         [#:noise noise (and/c rational? (>=/c 0)) 0.0]
+                         [#:seed seed (or/c #f (integer-in 0 (sub1 (expt 2 31)))
+                                            pseudo-random-generator? pseudo-random-generator-vector?)
+                                 #f])
+         any/c]{
+Generates as @racket[s:make-friedman2] and converts the table as @racket[load-dataset] does.}
+
+@defproc[(make-friedman3 [#:format format (or/c 'polars 'table 'matrix 'data-frame) 'polars]
+                         [#:n-samples n-samples exact-positive-integer? 100]
+                         [#:noise noise (and/c rational? (>=/c 0)) 0.0]
+                         [#:seed seed (or/c #f (integer-in 0 (sub1 (expt 2 31)))
+                                            pseudo-random-generator? pseudo-random-generator-vector?)
+                                 #f])
+         any/c]{
+Generates as @racket[s:make-friedman3] and converts the table as @racket[load-dataset] does.}
+
+@defproc[(make-hastie-10-2 [#:format format (or/c 'polars 'table 'matrix 'data-frame) 'polars]
+                           [#:n-samples n-samples exact-positive-integer? 12000]
+                           [#:seed seed (or/c #f (integer-in 0 (sub1 (expt 2 31)))
+                                              pseudo-random-generator? pseudo-random-generator-vector?)
+                                   #f])
+         any/c]{
+Generates as @racket[s:make-hastie-10-2] and converts the table as @racket[load-dataset] does.}
+
+@defproc[(make-swiss-roll [#:format format (or/c 'polars 'table 'matrix 'data-frame) 'polars]
+                          [#:n-samples n-samples exact-positive-integer? 100]
+                          [#:noise noise (and/c rational? (>=/c 0)) 0.0]
+                          [#:hole? hole? boolean? #f]
+                          [#:seed seed (or/c #f (integer-in 0 (sub1 (expt 2 31)))
+                                             pseudo-random-generator? pseudo-random-generator-vector?)
+                                  #f])
+         any/c]{
+Generates as @racket[s:make-swiss-roll] and converts the table as @racket[load-dataset] does.}
+
+@defproc[(make-s-curve [#:format format (or/c 'polars 'table 'matrix 'data-frame) 'polars]
+                       [#:n-samples n-samples exact-positive-integer? 100]
+                       [#:noise noise (and/c rational? (>=/c 0)) 0.0]
+                       [#:seed seed (or/c #f (integer-in 0 (sub1 (expt 2 31)))
+                                          pseudo-random-generator? pseudo-random-generator-vector?)
+                               #f])
+         any/c]{
+Generates as @racket[s:make-s-curve] and converts the table as @racket[load-dataset] does.}
+
+@defproc[(make-gaussian-quantiles [#:format format (or/c 'polars 'table 'matrix 'data-frame) 'polars]
+                                  [#:mean mean (or/c #f (non-empty-listof rational?)) #f]
+                                  [#:cov cov (and/c rational? (>=/c 0)) 1.0]
+                                  [#:n-samples n-samples exact-positive-integer? 100]
+                                  [#:n-features n-features (or/c #f exact-positive-integer?) #f]
+                                  [#:n-classes n-classes exact-positive-integer? 3]
+                                  [#:shuffle? shuffle? boolean? #t]
+                                  [#:seed seed (or/c #f (integer-in 0 (sub1 (expt 2 31)))
+                                                     pseudo-random-generator? pseudo-random-generator-vector?)
+                                          #f])
+         any/c]{
+Generates as @racket[s:make-gaussian-quantiles] and converts the table as @racket[load-dataset] does.}
 
 @section[#:tag "datasets-formats-reference"]{Value representations}
 
