@@ -14,10 +14,12 @@ results using the notation of
 
 @section[#:tag "datasets-core-loading-reference"]{Registry and loading}
 
-@racket[dataset-names], @racket[dataset-packages], @racket[dataset-info] and
-@racket[load-dataset-table] are not thread-safe: concurrent calls can silently
-omit the datasets of other packages. Callers using several threads must
-serialize these calls.
+Procedures in this module that discover registries or take a dataset name
+(@racket[dataset-names], @racket[dataset-packages], @racket[dataset-info],
+@racket[load-dataset-table], @racket[fetch-dataset], @racket[dataset-cached?]
+and @racket[clear-dataset-cache]) are not thread-safe: concurrent calls can
+silently omit the datasets of other packages. Callers using several threads
+must serialize these calls.
 
 @defproc[(dataset-names [#:package package (or/c #f string?) #f]) (listof symbol?)]{
 Returns the identifiers of every dataset declared by an installed registry,
@@ -67,7 +69,9 @@ and how to fetch it (see @secref["datasets-core-offline-reference"]). Every load
 checks the data's SHA-256 against the @tt{sha256} metadata before parsing, for
 bundled and cached data alike; a mismatch or an unreadable file raises
 @racket[exn:fail] naming the file, and for a cached file
-@racket[clear-dataset-cache] as the remedy.}
+@racket[clear-dataset-cache] as the remedy. A cached file that matches its
+pinned download hash but not @tt{sha256} raises @racket[exn:fail] naming the
+dataset and package, without a remedy: the registry is wrong.}
 
 @examples[#:eval ev
  (dataset-table-names
@@ -168,9 +172,8 @@ A download happens only when a fetch-tier dataset is not cached.
 @racket[#:download? #f] disables it for one call to @racket[load-dataset-table]; a
 refused download raises @racket[exn:fail] naming the dataset, the expected cache
 file and how to fetch it. Bundled and cached datasets load as usual. Every load
-checks the data's SHA-256, for both tiers; a cached file that fails the check or
-fails to decode raises @racket[exn:fail] naming @racket[clear-dataset-cache] as
-the remedy.
+checks the data's SHA-256, for both tiers; a corrupt cached file raises
+@racket[exn:fail] naming @racket[clear-dataset-cache] as the remedy.
 
 Downloads are logged at level @racket['info] with topic @racket['datasets]; set
 @envvar{PLTSTDERR} to @tt{info@"@"datasets} to see them.

@@ -324,6 +324,21 @@
           (lambda (o) (write-bytes (subbytes toy-artifact 0 (- (bytes-length toy-artifact) 8)) o)))
         (check-equal? (table-digest (load-dataset-table 'toy-remote)) toy-table-digest))))
 
+  (test-case "C20b a registry sha256 that disagrees with the pinned download has no remedy"
+    (define registry-error
+      (fetch-error? #rx"^load-dataset-table: registry sha256 does not match the pinned download"
+                    "dataset: toy-remote" "package: datasets-fetch-fixture"))
+    (with-server (hash "/toy" `(ok ,toy-artifact))
+                 (lambda (u) (list (fetch-entry (list (u "/toy")) #:data-sha256 (make-string 64 #\b))))
+      (lambda (srv root registry)
+        (check-true (file-exists? (fetch-dataset 'toy-remote)))
+        (for ([_ (in-range 2)])
+          (check-exn (lambda (e)
+                       (and (registry-error e)
+                            (not (regexp-match? #rx"clear-dataset-cache" (exn-message e)))))
+                     (lambda () (load-dataset-table 'toy-remote))))
+        (check-equal? (http-fixture-requests srv) '("/toy")))))
+
   (test-case "C21 unsupported format refused before network"
     (with-server (hash "/toy" `(ok ,toy-artifact))
                  (lambda (u) (list (fetch-entry (list (u "/toy")) #:format "zip")))

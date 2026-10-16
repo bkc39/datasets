@@ -85,7 +85,7 @@
                   (map (match-lambda [(list id _) (format "~a.rktd.gz" id)]) pinned-sha256))
     (check-false (directory-exists? (build-path core-data 'up "private"))))
 
-  (test-case "S7 corrupt or mismatched data raises a non-contract exn:fail naming the dataset"
+  (test-case "S7 corrupt or mismatched data raises a non-contract exn:fail naming the dataset, no remedy"
     (define good (rows->rktd-bytes '((1))))
     (define bad (rows->rktd-bytes '((2))))
     (define (check-load-fails bytes rxs)
@@ -98,6 +98,7 @@
          (call-with-registry-fixtures (list dir)
            (lambda ()
              (check-exn (lambda (e) (and (exn:fail? e) (not (exn:fail:contract? e))
+                                         (not (regexp-match? #rx"remedy:" (exn-message e)))
                                          (for/and ([rx (in-list (list* #rx"gen" file-rx rxs))])
                                            (regexp-match? rx (exn-message e)))))
                         (lambda () (load-dataset-table 'gen))))))))

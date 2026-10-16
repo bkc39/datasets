@@ -5,7 +5,7 @@
                      (only-in syntax/parse syntax-parse))
          (only-in datasets/core-private/cache cache-file cache-root clear-cache-directory
                   clear-cache-root download-dataset)
-         (only-in datasets/core-private/codec gunzip-file hex)
+         (only-in datasets/core-private/codec file-sha256 gunzip-file hex)
          (only-in datasets/core-private/error raise-registry-error)
          (only-in datasets/core-private/log log-datasets-warning)
          (only-in racket/contract/base -> ->* and/c contract-out listof non-empty-listof or/c)
@@ -285,8 +285,10 @@
                                    "available" (dataset-table-names table)))
   (vector-ref (dataset-table-columns table) i))
 
-(define (read-rows name file expected remedy)
-  (define remedy-fields (if remedy (list "remedy" remedy) '()))
+(define (read-rows name file info)
+  (define expected (hash-ref info "sha256"))
+  (define fetch (hash-ref info "fetch"))
+  (define remedy-fields (if fetch (list "remedy" (format "(clear-dataset-cache '~a)" name)) '()))
   (define (unreadable e)
     (apply raise-registry-error 'load-dataset-table "cannot read dataset data" "dataset" name
            "file" file "error" (exn-message e) remedy-fields))
@@ -294,6 +296,10 @@
   (define actual (hex (sha256-bytes text)))
   (cond
     [(equal? actual expected) (with-handlers ([exn:fail? unreadable]) (read (open-input-bytes text)))]
+    [(and fetch (equal? (file-sha256 file) (hash-ref fetch "sha256")))
+     (raise-registry-error 'load-dataset-table "registry sha256 does not match the pinned download"
+                           "dataset" name "package" (hash-ref info "package") "file" file
+                           "expected" expected "actual" actual)]
     [else (apply raise-registry-error 'load-dataset-table "data sha256 mismatch" "dataset" name
                  "file" file "expected" expected "actual" actual remedy-fields)]))
 
@@ -321,10 +327,7 @@
           [(file-exists? final) final]
           [else (download-dataset 'load-dataset-table (symbol->string name) info final
                                   #:download? download? #:idle-timeout 60)]))
-  (define rows
-    (map list->vector
-         (read-rows name file (hash-ref info "sha256")
-                    (and final (format "(clear-dataset-cache '~a)" name)))))
+  (define rows (map list->vector (read-rows name file info)))
   (define columns
     (vector->immutable-vector
      (for/vector ([i (in-list indices)])
