@@ -7,7 +7,7 @@
          (only-in racket/match match-define)
          (only-in racket/runtime-path define-runtime-path)
          (only-in "fixture.rkt" call-with-registry-fixtures call-with-temporary-fixture fetch-ok
-                  gen-entry registry-fixture write-registry-fixture!))
+                  gen-entry registry-fixture write-fixture-index! write-registry-fixture!))
 (define-runtime-path core-module "../core.rkt")
 (define-runtime-path core-registry "../core-data/registry.rktd")
 (module+ test
@@ -277,6 +277,41 @@
      (lambda ()
        (call-with-unreadable (fixture-index) (lambda () (check-exn #rx"denied" dataset-names)))
        (check-true (listed? 'gen)))))
+
+  (test-case "a caller's custodian shut down mid-discovery is not cached"
+    (call-with-temporary-fixture
+     (lambda (dir)
+       (rewrite-gen! dir "gen")
+       (check-true
+        (for/and ([round (in-range 5)])
+          (call-with-registry-fixtures (list dir)
+            (lambda ()
+              (define caller (make-custodian))
+              (define index (fixture-index))
+              (define guard
+                (make-security-guard (current-security-guard)
+                                     (lambda (who path modes)
+                                       (when (and path (equal? (simplify-path path) index))
+                                         (custodian-shutdown-all caller)))
+                                     void))
+              (define victim
+                (parameterize ([current-custodian caller] [current-security-guard guard])
+                  (thread dataset-names)))
+              (define seen (box #f))
+              (and (sync/timeout 5 (thread-dead-evt victim))
+                   (sync/timeout 5 (thread (lambda () (set-box! seen (listed? 'gen)))))
+                   (unbox seen)))))))))
+
+  (test-case "a package indexed after the first call in a process is not seen"
+    (call-with-temporary-fixture
+     (lambda (dir)
+       (rewrite-gen! dir "gen")
+       (call-with-registry-fixtures '()
+         (lambda ()
+           (check-false (listed? 'gen))
+           (write-fixture-index! (car (current-library-collection-paths)) (list dir)
+                                 '((lib "datasets-fixture-0")))
+           (check-false (listed? 'gen)))))))
 
   (test-case "access denied to the index falls back to datasets-core, warns, and is retried"
     (call-with-gen
