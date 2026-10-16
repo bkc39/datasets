@@ -12,6 +12,7 @@
           [registry-fixture (-> string? complete-path?)]
           [call-with-registry-fixtures (->* ((listof complete-path?) (-> any)) (#:specs (listof any/c)) any)]
           [call-with-temporary-fixture (-> (-> complete-path? any) any)]
+          [write-fixture-index! (-> complete-path? (listof complete-path?) (listof any/c) void?)]
           [write-registry-fixture! (-> path? #:info any/c #:registries (hash/c string? any/c)
                                        #:data (hash/c string? bytes?) void?)]
           [table-digest (-> dataset-table? string?)])
@@ -36,16 +37,19 @@
                                                       `(lib ,(format "datasets-fixture-~a" i)))])
   (call-with-temporary-fixture
    (lambda (root)
-     (define compiled (build-path root "info-domain" "compiled"))
-     (make-directory* compiled)
-     (call-with-output-file (build-path compiled "cache.rktd")
-       (lambda (out)
-         (write (for/list ([dir (in-list dirs)] [spec (in-list specs)])
-                  `(,(path->bytes dir) (datasets-registries) ,spec 0 0))
-                out)))
+     (write-fixture-index! root dirs specs)
      (parameterize ([current-library-collection-paths
                      (cons root (current-library-collection-paths))])
        (thunk)))))
+
+(define (write-fixture-index! root dirs specs)
+  (define compiled (build-path root "info-domain" "compiled"))
+  (make-directory* compiled)
+  (call-with-output-file (build-path compiled "cache.rktd") #:exists 'truncate
+    (lambda (out)
+      (write (for/list ([dir (in-list dirs)] [spec (in-list specs)])
+               `(,(path->bytes dir) (datasets-registries) ,spec 0 0))
+             out))))
 
 (define (write-registry-fixture! dir #:info info #:registries registries #:data data)
   (call-with-output-file (build-path dir "info.rkt") #:exists 'truncate

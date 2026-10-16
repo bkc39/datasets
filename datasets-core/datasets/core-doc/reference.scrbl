@@ -14,6 +14,11 @@ results using the notation of
 
 @section[#:tag "datasets-core-loading-reference"]{Registry and loading}
 
+@racket[dataset-names], @racket[dataset-packages], @racket[dataset-info] and
+@racket[load-dataset-table] are not thread-safe: concurrent calls can silently
+omit the datasets of other packages. Callers using several threads must
+serialize these calls.
+
 @defproc[(dataset-names [#:package package (or/c #f string?) #f]) (listof symbol?)]{
 Returns the identifiers of every dataset declared by an installed registry,
 sorted alphabetically, including fetch-tier datasets. If @racket[package] is a
@@ -67,8 +72,13 @@ A registry is a file mapping dataset names to metadata hashes. Any installed
 package can declare registries with the @tt{datasets-registries} key in a
 collection-level @tt{info.rkt}: a list of paths relative to that file's
 directory. Each dataset's data is @tt{data/@italic{name}.rktd.gz} beside its
-registry. The registries of all installed packages are merged when first used,
-and merged again when a registry file or a declaring @tt{info.rkt} changes.
+registry. The registries of all installed packages are merged when first used.
+Each later call checks the registry files and declaring @tt{info.rkt} files of
+the packages already found, and merges again when one changes. The installed
+package index is read again only when the collection search path changes, as
+with @racket[current-library-collection-paths], or after a call whose discovery
+failed or was interrupted, so a package installed after the first call is seen
+only after a restart.
 Package @tt{datasets-core} is reserved for the registries that
 @tt{datasets/core-data/info.rkt} lists. Another installation's
 @tt{datasets/core-data} collection is skipped unread; any other registry
@@ -83,9 +93,6 @@ evaluator, only the @tt{datasets-core} registries are used: a warning is logged
 to the @tt{datasets} topic, an unknown dataset or package error gives the
 reason, and the next call tries discovery again. Any other failure to read the
 index raises.
-
-Registry discovery and dataset loading are not thread-safe: callers that use
-them from several Racket threads must serialize those calls.
 
 @section[#:tag "datasets-core-table-reference"]{Table inspection}
 
