@@ -68,10 +68,9 @@ and @racket[download?] is @racket[#f], raises @racket[exn:fail] naming the datas
 and how to fetch it (see @secref["datasets-core-offline-reference"]). Every load
 checks the data's SHA-256 against the @tt{sha256} metadata before parsing, for
 bundled and cached data alike; a mismatch or an unreadable file raises
-@racket[exn:fail] naming the file, and for a cached file
-@racket[clear-dataset-cache] as the remedy. A cached file that matches its
-pinned download hash but not @tt{sha256} raises @racket[exn:fail] naming the
-dataset and package, without a remedy: the registry is wrong.}
+@racket[exn:fail] naming the file. For a cached file that is not the pinned
+download, the error gives @racket[clear-dataset-cache] as the remedy; for one
+that is, it names the dataset and package instead: the registry entry is wrong.}
 
 @examples[#:eval ev
  (dataset-table-names

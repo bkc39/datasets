@@ -339,6 +339,29 @@
                      (lambda () (load-dataset-table 'toy-remote))))
         (check-equal? (http-fixture-requests srv) '("/toy")))))
 
+  (test-case "C20c an unreadable pinned download has no remedy"
+    (define registry-error
+      (fetch-error? #rx"^load-dataset-table: cannot read the pinned download"
+                    "dataset: toy-remote" "package: datasets-fetch-fixture"))
+    (define plain (rows->rktd-bytes '((1 "a" 0.5))))
+    (define truncated #"(1 2")
+    (define gzipped (gzip-bytes truncated))
+    (for ([artifact (list plain gzipped)]
+          [data-sha256 (list (hash-ref (fetch-entry '()) "sha256") (hex (sha256-bytes truncated)))])
+      (with-server (hash "/toy" `(ok ,artifact))
+                   (lambda (u)
+                     (list (fetch-entry (list (u "/toy")) #:sha256 (hex (sha256-bytes artifact))
+                                        #:data-sha256 data-sha256)))
+        (lambda (srv root registry)
+          (check-true (file-exists? (fetch-dataset 'toy-remote)))
+          (for ([_ (in-range 2)])
+            (check-exn (lambda (e)
+                         (and (registry-error e)
+                              (not (regexp-match? #rx"clear-dataset-cache|remedy:"
+                                                  (exn-message e)))))
+                       (lambda () (load-dataset-table 'toy-remote))))
+          (check-equal? (http-fixture-requests srv) '("/toy"))))))
+
   (test-case "C21 unsupported format refused before network"
     (with-server (hash "/toy" `(ok ,toy-artifact))
                  (lambda (u) (list (fetch-entry (list (u "/toy")) #:format "zip")))

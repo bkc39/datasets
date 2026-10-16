@@ -289,14 +289,21 @@
   (define expected (hash-ref info "sha256"))
   (define fetch (hash-ref info "fetch"))
   (define remedy-fields (if fetch (list "remedy" (format "(clear-dataset-cache '~a)" name)) '()))
+  (define (pinned?)
+    (and fetch (equal? (file-sha256 file) (hash-ref fetch "sha256"))))
   (define (unreadable e)
-    (apply raise-registry-error 'load-dataset-table "cannot read dataset data" "dataset" name
-           "file" file "error" (exn-message e) remedy-fields))
+    (cond
+      [(pinned?)
+       (raise-registry-error 'load-dataset-table "cannot read the pinned download"
+                             "dataset" name "package" (hash-ref info "package") "file" file
+                             "error" (exn-message e))]
+      [else (apply raise-registry-error 'load-dataset-table "cannot read dataset data"
+                   "dataset" name "file" file "error" (exn-message e) remedy-fields)]))
   (define text (with-handlers ([exn:fail? unreadable]) (gunzip-file file)))
   (define actual (hex (sha256-bytes text)))
   (cond
     [(equal? actual expected) (with-handlers ([exn:fail? unreadable]) (read (open-input-bytes text)))]
-    [(and fetch (equal? (file-sha256 file) (hash-ref fetch "sha256")))
+    [(pinned?)
      (raise-registry-error 'load-dataset-table "registry sha256 does not match the pinned download"
                            "dataset" name "package" (hash-ref info "package") "file" file
                            "expected" expected "actual" actual)]
