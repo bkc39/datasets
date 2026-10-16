@@ -92,6 +92,9 @@ to the @tt{datasets} topic, an unknown dataset or package error gives the
 reason, and the next call tries discovery again. Any other failure to read the
 index raises.
 
+Registry discovery and dataset loading are not thread-safe: callers that use
+them from several Racket threads must serialize those calls.
+
 @section[#:tag "datasets-core-cache-reference"]{Downloads and the cache}
 
 Fetch-tier datasets are not stored in any package. Their data is downloaded once

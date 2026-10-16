@@ -11,7 +11,7 @@
          (only-in racket/contract/base -> ->* and/c contract-out listof non-empty-listof or/c)
          (only-in racket/format ~e ~s)
          (only-in racket/list append-map check-duplicates index-of remove-duplicates take)
-         (only-in racket/match == match match-define)
+         (only-in racket/match == match)
          (only-in racket/runtime-path define-runtime-path)
          (only-in setup/getinfo directory-record-path directory-record-spec find-relevant-directory-records
                   get-info/full reset-relevant-directories-state!))
@@ -203,28 +203,6 @@
 
 (define cache (box #f))
 
-(define catalog-requests (make-channel))
-
-(define catalog-manager
-  (thread/suspend-to-kill
-   (lambda ()
-     (let loop ()
-       (match-define (list parameterization reply done) (channel-get catalog-requests))
-       (set-box! reply
-                 (with-handlers ([(lambda (_) #t) (lambda (e) (lambda () (raise e)))])
-                   (define catalog (call-with-parameterization parameterization unlocked-catalog))
-                   (lambda () catalog)))
-       (semaphore-post done)
-       (loop)))))
-
-(define (current-catalog)
-  (define reply (box #f))
-  (define done (make-semaphore 0))
-  (thread-resume catalog-manager (current-thread))
-  (channel-put catalog-requests (list (current-parameterization) reply done))
-  (semaphore-wait done)
-  ((unbox reply)))
-
 (define (access-denied? e)
   (or (and (exn:fail:filesystem:errno? e)
            (member (exn:fail:filesystem:errno-errno e) '((13 . posix) (1 . posix) (5 . windows))))
@@ -243,7 +221,7 @@
                 (directory-record-path record)))
             #f)))
 
-(define (unlocked-catalog)
+(define (current-catalog)
   (define-values (dirs failure) (discovered-directories))
   (define sources (registry-sources dirs))
   (define built

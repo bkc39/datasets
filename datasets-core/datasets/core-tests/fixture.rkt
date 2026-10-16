@@ -38,8 +38,11 @@
 (define (registry-fixture name)
   (simplify-path (build-path fixtures name)))
 
+(define fixture-count (box 0))
+
 (define (call-with-temporary-fixture proc)
-  (define dir (make-temporary-directory))
+  (set-box! fixture-count (add1 (unbox fixture-count)))
+  (define dir (make-temporary-directory (format "datasets-fixture-~a-~~a" (unbox fixture-count))))
   (dynamic-wind void
                 (lambda () (proc dir))
                 (lambda () (delete-directory/files dir #:must-exist? #f))))

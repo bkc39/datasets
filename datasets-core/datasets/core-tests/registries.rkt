@@ -3,7 +3,7 @@
          (only-in datasets/core dataset-info dataset-missing? dataset-names dataset-packages
                   dataset-table-column dataset-table-names dataset-table-row-count load-dataset-table)
          (only-in racket/file make-directory*)
-         (only-in racket/list append* make-list)
+         (only-in racket/list append*)
          (only-in racket/match match-define)
          (only-in racket/runtime-path define-runtime-path)
          (only-in "fixture.rkt" call-with-environment call-with-registry-fixtures
@@ -239,17 +239,6 @@
            (check-true (listed? 'gen))
            (call-with-unreadable (build-path dir "info.rkt") (lambda () (check-true (listed? 'gen)))))))))
 
-  (test-case "concurrent calls after a discovery change all see the sibling registry"
-    (for ([round (in-range 20)])
-      (call-with-registry-fixtures (list (registry-fixture "sibling"))
-        (lambda ()
-          (define results
-            (for/list ([worker (in-range 8)])
-              (define result (box '()))
-              (cons result (thread (lambda () (set-box! result (for/list ([call (in-range 3)]) (listed? 'toy))))))))
-          (for ([r (in-list results)]) (thread-wait (cdr r)))
-          (check-equal? (map (lambda (r) (unbox (car r))) results) (make-list 8 '(#t #t #t)))))))
-
   (test-case "a discovered copy of the core registry is not a duplicate"
     (call-with-core-copy (hash "registry.rktd" (call-with-input-file core-registry read))
       (lambda ()
@@ -283,20 +272,6 @@
          (check-equal? ((dynamic-require 'datasets/core 'dataset-names) #:package "datasets-core")
                        (sort (cons 'gen core-13) symbol<?))))))
 
-  (test-case "a thread killed mid-rebuild does not block later calls"
-    (call-with-temporary-fixture
-     (lambda (dir)
-       (rewrite-gen! dir "gen")
-       (call-with-registry-fixtures (list dir)
-         (lambda ()
-           (check-true
-            (for/and ([i (in-range 50)])
-              (rewrite-gen! dir (format "gen-~a" i))
-              (define victim (thread dataset-names))
-              (sleep (* (random) 0.002))
-              (kill-thread victim)
-              (and (sync/timeout 5 (thread-dead-evt (thread dataset-names))) #t))))))))
-
   (test-case "a discovered core copy listing other registry files is skipped"
     (call-with-core-copy (hash "registry.rktd" (call-with-input-file core-registry read)
                                "fetch.rktd" (hash "gen" (gen-entry "gen" #:package "datasets-core")))
@@ -307,30 +282,6 @@
      (lambda ()
        (call-with-unreadable (fixture-index) (lambda () (check-exn #rx"denied" dataset-names)))
        (check-true (listed? 'gen)))))
-
-  (test-case "a caller's custodian shut down mid-discovery is not cached"
-    (call-with-temporary-fixture
-     (lambda (dir)
-       (rewrite-gen! dir "gen")
-       (check-true
-        (for/and ([round (in-range 5)])
-          (call-with-registry-fixtures (list dir)
-            (lambda ()
-              (define caller (make-custodian))
-              (define index (fixture-index))
-              (define guard
-                (make-security-guard (current-security-guard)
-                                     (lambda (who path modes)
-                                       (when (and path (equal? (simplify-path path) index))
-                                         (custodian-shutdown-all caller)))
-                                     void))
-              (define victim
-                (parameterize ([current-custodian caller] [current-security-guard guard])
-                  (thread dataset-names)))
-              (define seen (box #f))
-              (and (sync/timeout 5 (thread-dead-evt victim))
-                   (sync/timeout 5 (thread (lambda () (set-box! seen (listed? 'gen)))))
-                   (unbox seen)))))))))
 
   (test-case "access denied to the index falls back to datasets-core, warns, and is retried"
     (call-with-gen
@@ -352,16 +303,6 @@
     (check-exn #rx"unknown dataset.*sibling-package discovery failed"
                (lambda () (ev '(dataset-info 'absent))))
     (kill-evaluator ev))
-
-  (test-case "the catalog manager survives the custodian that required datasets/core"
-    (define owner (make-custodian))
-    (define names
-      (parameterize ([current-custodian owner] [current-namespace (make-base-namespace)])
-        (dynamic-require 'datasets/core 'dataset-names)))
-    (custodian-shutdown-all owner)
-    (define result (box '()))
-    (check-not-false (sync/timeout 5 (thread (lambda () (set-box! result (names))))))
-    (check-not-false (memq 'iris (unbox result))))
 
   (test-case "a computed datasets-registries value is re-read when info.rkt changes"
     (call-with-temporary-fixture
