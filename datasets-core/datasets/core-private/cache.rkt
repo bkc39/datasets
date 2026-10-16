@@ -65,7 +65,10 @@
        (match (with-handlers ([exn:fail? exn-message])
                 (download-url url part idle)
                 (hash-problem part (hash-ref fetch "sha256")))
-         [#f (rename-file-or-directory part final #t) final]
+         [#f
+          (with-cache-failure [who "cannot write the dataset cache" "dataset" name "file" final]
+            (rename-file-or-directory part final #t))
+          final]
          [problem (loop more (cons (list "url" url "error" problem) failures))])])))
 
 (define (download-url url part idle)

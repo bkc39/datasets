@@ -58,9 +58,11 @@ fetch-tier dataset is read from @racket[(dataset-cache-directory)] in the same
 form, after downloading it as by @racket[fetch-dataset] if it is not cached.
 Column arguments are checked before any download. If the dataset is not cached
 and @racket[download?] is @racket[#f], raises @racket[exn:fail] naming the dataset
-and how to fetch it (see @secref["datasets-core-offline-reference"]). Loading
-bundled data checks its SHA-256 against the @tt{sha256} metadata before parsing; a
-mismatch or an unreadable file raises @racket[exn:fail] naming the file.}
+and how to fetch it (see @secref["datasets-core-offline-reference"]). Every load
+checks the data's SHA-256 against the @tt{sha256} metadata before parsing, for
+bundled and cached data alike; a mismatch or an unreadable file raises
+@racket[exn:fail] naming the file, and for a cached file
+@racket[clear-dataset-cache] as the remedy.}
 
 @examples[#:eval ev
  (dataset-table-names
@@ -119,7 +121,8 @@ this procedure.}
 Returns @racket[#t] if loading @racket[name] needs no download: always for a
 bundled dataset, and for a fetch-tier dataset when its file is in
 @racket[(dataset-cache-directory)]. Never contacts a server and does not read the
-file. An unknown dataset raises @racket[exn:fail:contract].}
+file; @racket[load-dataset-table] checks its SHA-256. An unknown dataset raises
+@racket[exn:fail:contract].}
 @examples[#:eval ev (dataset-cached? 'iris)]
 
 @defproc[(fetch-dataset [name symbol?]
@@ -132,8 +135,10 @@ dataset that is not cached is downloaded from the @tt{urls} in its @tt{fetch}
 metadata, in order, until one succeeds. Each download goes to a temporary file
 beside its destination and is renamed into place only after its SHA-256 matches
 the metadata, so an interrupted or failed download never leaves a partial file
-under the cached name. A URL that delivers no data for @racket[idle-timeout]
-seconds fails; connecting has no timeout of its own. If every URL fails, raises
+under the cached name. A URL whose body delivers no data for
+@racket[idle-timeout] seconds fails. The idle timeout bounds waits for body data
+only; connecting, the TLS handshake and waiting for response headers, including
+redirects, have no timeout. If every URL fails, raises
 @racket[exn:fail] listing each URL and its failure, with the expected and actual
 SHA-256 for a mismatch. Raises @racket[exn:fail] without contacting a server when
 the @tt{format} is not supported; an unknown dataset raises
@@ -154,9 +159,10 @@ dataset while another program downloads it makes that download fail.}
 A download happens only when a fetch-tier dataset is not cached.
 @racket[#:download? #f] disables it for one call to @racket[load-dataset-table]; a
 refused download raises @racket[exn:fail] naming the dataset, the expected cache
-file and how to fetch it. Bundled and cached datasets load as usual. A cached file
-is trusted by its name: one that fails to decode raises @racket[exn:fail] naming
-@racket[clear-dataset-cache] as the remedy.
+file and how to fetch it. Bundled and cached datasets load as usual. Every load
+checks the data's SHA-256, for both tiers; a cached file that fails the check or
+fails to decode raises @racket[exn:fail] naming @racket[clear-dataset-cache] as
+the remedy.
 
 Downloads are logged at level @racket['info] with topic @racket['datasets]; set
 @envvar{PLTSTDERR} to @tt{info@"@"datasets} to see them.

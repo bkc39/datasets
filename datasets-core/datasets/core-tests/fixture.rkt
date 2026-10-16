@@ -23,7 +23,7 @@
           [toy-artifact-sha256 string?]
           [toy-table-digest string?]
           [fetch-entry (->* ((listof string?))
-                            (#:sha256 string? #:format string?)
+                            (#:data-sha256 string? #:format string? #:sha256 string?)
                             (and/c hash? immutable?))]
           [call-with-fetch-fixture (-> (listof hash?) (-> complete-path? complete-path? any) any)]
           [call-with-environment (-> (hash/c string? (or/c #f string?)) (-> any) any)]
@@ -112,9 +112,11 @@
 (define toy-remote
   (hash-ref (call-with-input-file (build-path fixtures "sibling" "remote.rktd") read) "toy-remote"))
 
-(define (fetch-entry urls #:sha256 [sha256 toy-artifact-sha256] #:format [format "rktd.gz"])
+(define (fetch-entry urls #:sha256 [sha256 toy-artifact-sha256] #:format [format "rktd.gz"]
+                     #:data-sha256 [data-sha256 (hash-ref toy-remote "sha256")])
   (hash-set* toy-remote
              "package" "datasets-fetch-fixture"
+             "sha256" data-sha256
              "fetch" (hash "urls" urls "sha256" sha256 "format" format)))
 
 (define (call-with-fetch-fixture entries proc)

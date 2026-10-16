@@ -161,7 +161,8 @@ metadata pins the SHA-256 of the file to download.
 
 The first @racket[load-dataset-table] of a fetch-tier dataset downloads the file,
 checks its SHA-256, and stores it in the cache; later loads read the cache and
-contact no server. A failed or mismatched download leaves nothing behind.
+contact no server. Every load checks the data's SHA-256. A failed or mismatched
+download leaves nothing behind.
 
 The cache is @racket[(dataset-cache-directory)]: @filepath{racket-datasets} in
 Racket's cache directory, or the directory named by @envvar{DATASETS_HOME}.

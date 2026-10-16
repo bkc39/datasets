@@ -2,9 +2,10 @@
 (require (only-in datasets/core clear-dataset-cache dataset-cache-directory dataset-cached?
                   dataset-info dataset-names dataset-table-column dataset-table-names fetch-dataset
                   load-dataset-table)
+         (only-in datasets/core-private/cache download-dataset)
          (only-in datasets/core-private/resource with-resource)
          (only-in racket/file file->bytes make-directory*)
-         (only-in racket/match match)
+         (only-in racket/match match match-define)
          (only-in racket/path path-only)
          (only-in "fixture.rkt" cache-files call-with-artifact-url call-with-environment
                   call-with-fetch-fixture call-with-temporary-fixture fetch-entry gzip-bytes hex
@@ -192,6 +193,20 @@
         (check-equal? (cache-files root) (list final-rel))
         (check-equal? (http-fixture-requests srv) '("/toy")))))
 
+  (test-case "C14 a download renames over a file already at the cached name"
+    (call-with-artifact-url toy-artifact
+      (lambda (url)
+        (call-with-fetch-fixture (list (fetch-entry (list url)))
+          (lambda (root registry)
+            (define final (build-path root final-rel))
+            (make-directory* (path-only final))
+            (call-with-output-file final (lambda (o) (write-bytes bad o)))
+            (check-equal? (download-dataset 'fetch-dataset "toy-remote" (dataset-info 'toy-remote)
+                                            final #:download? #t #:idle-timeout 5)
+                          final)
+            (check-equal? (file->bytes final) toy-artifact)
+            (check-equal? (cache-files root) (list final-rel)))))))
+
   (test-case "C16 DATASETS_HOME"
     (call-with-environment (hash "DATASETS_HOME" "/srv/racket-datasets")
       (lambda () (check-equal? (dataset-cache-directory) (string->path "/srv/racket-datasets"))))
@@ -281,20 +296,33 @@
         (check-equal? (load-dataset-table 'iris #:download? #f) (load-dataset-table 'iris))
         (check-equal? (cache-files root) '()))))
 
-  (test-case "C20 a cache file that fails to decode raises with remedy, never re-downloads"
+  (test-case "C20 a corrupt cache file raises with remedy, never re-downloads"
+    (define flipped (bytes-copy toy-artifact))
+    (bytes-set! flipped 16 (bitwise-xor 1 (bytes-ref flipped 16)))
+    (define unreadable #rx"^load-dataset-table: cannot read dataset data")
+    (define mismatch #rx"^load-dataset-table: data sha256 mismatch")
+    (define corrupt-cases
+      (list (cons (subbytes toy-artifact 0 30) mismatch)
+            (cons #"not gzip" unreadable)
+            (cons (subbytes toy-artifact 0 10) unreadable)
+            (cons flipped mismatch)))
     (with-server (hash "/toy" `(ok ,toy-artifact)) (toy-at "/toy")
       (lambda (srv root registry)
-        (for ([corrupt (in-list (list (subbytes toy-artifact 0 30) #"not gzip"))]
+        (for ([corrupt-case (in-list corrupt-cases)]
               [downloads (in-naturals 1)])
+          (match-define (cons corrupt message) corrupt-case)
           (define p (fetch-dataset 'toy-remote))
           (call-with-output-file p #:exists 'truncate (lambda (o) (write-bytes corrupt o)))
-          (check-exn (fetch-error? #rx"^load-dataset-table: cannot read dataset data"
-                                   (path->string p) "(clear-dataset-cache 'toy-remote)")
+          (check-exn (fetch-error? message (path->string p) "(clear-dataset-cache 'toy-remote)")
                      (lambda () (load-dataset-table 'toy-remote)))
           (check-true (dataset-cached? 'toy-remote))
           (check-equal? (http-fixture-requests srv) (build-list downloads (lambda (_) "/toy")))
           (clear-dataset-cache 'toy-remote)
-          (check-equal? (table-digest (load-dataset-table 'toy-remote)) toy-table-digest)))))
+          (check-equal? (table-digest (load-dataset-table 'toy-remote)) toy-table-digest))
+        (define p (fetch-dataset 'toy-remote))
+        (call-with-output-file p #:exists 'truncate
+          (lambda (o) (write-bytes (subbytes toy-artifact 0 (- (bytes-length toy-artifact) 8)) o)))
+        (check-equal? (table-digest (load-dataset-table 'toy-remote)) toy-table-digest))))
 
   (test-case "C21 unsupported format refused before network"
     (with-server (hash "/toy" `(ok ,toy-artifact))
@@ -309,7 +337,8 @@
         (check-equal? (http-fixture-requests srv) '()))))
 
   (test-case "C22 the cache is keyed by the pinned hash"
-    (define other (gzip-bytes (rows->rktd-bytes '((7 "c" 2.5) (8 "a" 3.5) (9 missing missing)))))
+    (define other-text (rows->rktd-bytes '((7 "c" 2.5) (8 "a" 3.5) (9 missing missing))))
+    (define other (gzip-bytes other-text))
     (define other-sha (hex (sha256-bytes other)))
     (call-with-fetch-fixture '()
       (lambda (root _)
@@ -322,7 +351,8 @@
         (call-with-artifact-url other
           (lambda (url)
             (call-with-fetch-fixture
-             (list (fetch-entry (list url) #:sha256 other-sha))
+             (list (fetch-entry (list url) #:sha256 other-sha
+                                #:data-sha256 (hex (sha256-bytes other-text))))
              (lambda (_r _g)
                (with-home
                 (lambda ()
@@ -384,4 +414,28 @@
               (check-exn (regexp (string-append "^clear-dataset-cache: cannot clear the dataset cache"
                                                 "\n  directory: " (regexp-quote (path->string root))))
                          (lambda () (ev '(clear-dataset-cache)))))
-            (check-equal? (cache-files root) (list final-rel))))))))
+            (check-equal? (cache-files root) (list final-rel)))))))
+
+  (test-case "C28 a cached name that cannot be replaced raises a registry error, removes the part"
+    (with-server (hash "/toy" `(ok ,toy-artifact)) (toy-at "/toy")
+      (lambda (srv root registry)
+        (make-directory* (build-path root final-rel))
+        (check-exn (fetch-error? #rx"^fetch-dataset: cannot write the dataset cache"
+                                 "\n  dataset: toy-remote\n" (path->string (build-path root final-rel)))
+                   (lambda () (fetch-dataset 'toy-remote)))
+        (check-equal? (http-fixture-requests srv) '("/toy"))
+        (check-equal? (cache-files root) '()))))
+
+  (test-case "C29 a server that never responds: break ends the fetch, removes the part, closes"
+    (with-server (hash "/silent" '(silent)) (toy-at "/silent")
+      (lambda (srv root registry)
+        (define result (make-channel))
+        (define t (thread (lambda () (channel-put result (with-handlers ([exn:break? values])
+                                                           (fetch-dataset 'toy-remote))))))
+        (check-not-false (sync/timeout 5 (http-fixture-stalled-evt srv)))
+        (check-regexp-match part-rx (car (cache-files root)))
+        (break-thread t)
+        (check-pred exn:break? (sync/timeout 5 result))
+        (check-not-false (sync/timeout 5 (http-fixture-closed-evt srv)))
+        (check-equal? (cache-files root) '())
+        (check-equal? (http-fixture-requests srv) '("/silent"))))))

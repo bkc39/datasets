@@ -273,15 +273,16 @@
   (vector-ref (dataset-table-columns table) i))
 
 (define (read-rows name file expected remedy)
+  (define remedy-fields (if remedy (list "remedy" remedy) '()))
   (define (unreadable e)
     (apply raise-registry-error 'load-dataset-table "cannot read dataset data" "dataset" name
-           "file" file "error" (exn-message e) (if remedy (list "remedy" remedy) '())))
+           "file" file "error" (exn-message e) remedy-fields))
   (define text (with-handlers ([exn:fail? unreadable]) (gunzip-file file)))
-  (define actual (and expected (hex (sha256-bytes text))))
+  (define actual (hex (sha256-bytes text)))
   (cond
     [(equal? actual expected) (with-handlers ([exn:fail? unreadable]) (read (open-input-bytes text)))]
-    [else (raise-registry-error 'load-dataset-table "data sha256 mismatch" "dataset" name
-                                "file" file "expected" expected "actual" actual)]))
+    [else (apply raise-registry-error 'load-dataset-table "data sha256 mismatch" "dataset" name
+                 "file" file "expected" expected "actual" actual remedy-fields)]))
 
 (define (fetch-tier? info)
   (equal? (hash-ref info "tier") "fetch"))
@@ -309,7 +310,7 @@
                                   #:download? download? #:idle-timeout 60)]))
   (define rows
     (map list->vector
-         (read-rows name file (and (not final) (hash-ref info "sha256"))
+         (read-rows name file (hash-ref info "sha256")
                     (and final (format "(clear-dataset-cache '~a)" name)))))
   (define columns
     (vector->immutable-vector

@@ -7,7 +7,7 @@
   (flat-named-contract 'http-fixture-response
     (or/c (list/c 'ok bytes?) (list/c 'status (integer-in 100 599)) (list/c 'redirect string?)
           (list/c 'truncate bytes? exact-nonnegative-integer?)
-          (list/c 'stall bytes? exact-nonnegative-integer?))))
+          (list/c 'stall bytes? exact-nonnegative-integer?) (list/c 'silent))))
 (provide (contract-out
           [call-with-http-fixture (-> (hash/c string? response/c) (-> http-fixture? any) any)]
           [http-fixture-url (-> http-fixture? string? string?)]
@@ -52,10 +52,13 @@
        (send-head out 200 body)
        (write-bytes body out 0 k)
        (flush-output out)
-       (semaphore-post (http-fixture-stalled server))
-       (with-handlers ([exn:fail? void])
-         (read-byte in))
-       (semaphore-post (http-fixture-closed server))]))
+       (hold-until-closed in)]
+      [(list 'silent) (hold-until-closed in)]))
+  (define (hold-until-closed in)
+    (semaphore-post (http-fixture-stalled server))
+    (with-handlers ([exn:fail? void])
+      (read-byte in))
+    (semaphore-post (http-fixture-closed server)))
   (define (serve in out)
     (with-handlers ([exn:fail? void])
       (match (regexp-match #rx"^GET ([^ ]+) HTTP/" (read-line in 'return-linefeed))
