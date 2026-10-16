@@ -399,6 +399,28 @@
                                 #:registries (one (gen-entry "lab" #:package "mylab-data")) #:data (hash))
        (call-with-registry-fixtures (list dir) (lambda () (check-true (listed? 'lab)))))))
 
+  (define (call-with-foreign-reading thunk)
+    (parameterize ([current-readtable (make-readtable #f #\" #\a #f #\# #\a #f)]
+                   [read-accept-reader #f]
+                   [read-decimal-as-inexact #f]
+                   [read-square-bracket-as-paren #f])
+      (thunk)))
+
+  (test-case "a caller's reading parameters do not change a load"
+    (check-equal? (call-with-foreign-reading (lambda () (load-dataset-table 'iris)))
+                  (load-dataset-table 'iris))
+    (check-equal? (vector-ref (call-with-foreign-reading
+                               (lambda () (dataset-table-column (load-dataset-table 'iris) "sepal-length")))
+                              0)
+                  5.1))
+
+  (test-case "a caller's reading parameters do not change registry discovery"
+    (define expected (call-with-registry-fixtures (list (registry-fixture "sibling")) snapshot))
+    (check-equal? (call-with-registry-fixtures (list (registry-fixture "sibling"))
+                    (lambda () (call-with-foreign-reading snapshot)))
+                  expected)
+    (check-not-false (assq 'toy expected)))
+
   (test-case "an unknown package in the fallback gives the discovery failure"
     (call-with-gen
      (lambda ()

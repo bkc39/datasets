@@ -158,7 +158,7 @@
     (with-handlers ([exn:fail? (lambda (e)
                                  (raise-registry-error 'datasets "cannot read registry"
                                                        "registry" file "error" (exn-message e)))])
-      (call-with-input-file file read)))
+      (call-with-default-reading-parameterization (lambda () (call-with-input-file file read)))))
   (unless (and (hash? registry) (immutable? registry) (andmap string? (hash-keys registry)))
     (raise-registry-error 'datasets "malformed registry" "registry" file
                           "expected" "an immutable hash from dataset names to metadata hashes"
@@ -217,7 +217,8 @@
                      (lambda (e)
                        (reset-relevant-directories-state!)
                        (raise e))])
-      (find-relevant-directory-records '(datasets-registries) 'all-available)))
+      (call-with-default-reading-parameterization
+       (lambda () (find-relevant-directory-records '(datasets-registries) 'all-available)))))
   (set-box! discovery-in-progress #f)
   records)
 
@@ -298,7 +299,7 @@
   (unless (equal? actual expected)
     (raise-registry-error 'load-dataset-table "data sha256 mismatch" "dataset" name "file" file
                           "expected" expected "actual" actual))
-  (read (open-input-bytes text)))
+  (call-with-default-reading-parameterization (lambda () (read (open-input-bytes text)))))
 
 (define (load-dataset-table name #:columns [selected #f])
   (define-values (info data-dir) (dataset-entry name))
