@@ -6,8 +6,8 @@
                   load-dataset-table load-diabetes load-faithful load-iris load-mtcars
                   load-plant-growth load-titanic load-tooth-growth load-us-arrests load-wine)
          (only-in datasets/core-tests/fixture cache-files call-with-artifact-url
-                  call-with-environment call-with-fetch-fixture call-with-registry-fixtures
-                  fetch-entry registry-fixture table-digest toy-artifact toy-table-digest)
+                  call-with-fetch-fixture call-with-registry-fixtures fetch-entry registry-fixture
+                  table-digest toy-artifact toy-table-digest)
          (only-in datasets/data-frame data-frame-column-names)
          (only-in math/matrix matrix-ref)
          (prefix-in pl: (only-in polars column-names dataframe-column dataframe-column-names
@@ -81,10 +81,6 @@
             (check-exn #rx"reason: #:download\\? #f"
                        (lambda () (load-dataset 'toy-remote #:format 'table #:download? #f)))
             (check-equal? (cache-files root) '())
-            (call-with-environment (hash "DATASETS_OFFLINE" "1")
-              (lambda ()
-                (check-exn #rx"not cached"
-                           (lambda () (load-dataset 'toy-remote #:format 'table #:download? #f)))))
             (check-equal? (table-digest (load-dataset 'toy-remote #:format 'table))
                           toy-table-digest)
             (check-equal? (pl:dataframe-height (load-dataset 'toy-remote)) 3)))))

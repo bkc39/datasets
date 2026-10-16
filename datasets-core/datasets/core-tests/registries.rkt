@@ -76,7 +76,7 @@
                    (member p '("datasets-duplicate" "datasets-fixture" "datasets-other"))))
     (check-equal? (dataset-names #:package "datasets-core") core-13))
 
-  (test-case "R1 R8 R12 sibling registry discovered and loads; uncached fetch tier refused offline"
+  (test-case "R1 R8 R12 sibling registry discovered and loads; uncached fetch tier refused with #:download? #f"
     (call-with-registry-fixtures (list (registry-fixture "sibling"))
       (lambda ()
         (check-equal? (dataset-names) (sort (list* 'toy 'toy-remote installed) symbol<?))
@@ -92,10 +92,10 @@
         (check-true (immutable? (hash-ref (dataset-info 'toy-remote) "fetch")))
         (call-with-temporary-fixture
          (lambda (root)
-           (call-with-environment (hash "DATASETS_HOME" (path->string root) "DATASETS_OFFLINE" "1")
+           (call-with-environment (hash "DATASETS_HOME" (path->string root))
              (lambda ()
                (check-exn (registry-error? #rx"not cached" #rx"toy-remote")
-                          (lambda () (load-dataset-table 'toy-remote))))))))))
+                          (lambda () (load-dataset-table 'toy-remote #:download? #f))))))))))
 
   (test-case "R13 registry cache follows discovery"
     (check-equal? (dataset-names) installed))

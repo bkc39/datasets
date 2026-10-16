@@ -151,7 +151,6 @@
     [(equal? tier "bundled") #f]
     [(not ((nonempty-list-of string?) (fetch-ref "urls"))) (list "urls" "a nonempty list of strings")]
     [(not (sha256-string? (fetch-ref "sha256"))) (list "sha256" "64 lowercase hexadecimal digits")]
-    [(not (exact-positive-integer? (fetch-ref "size"))) (list "size" "a positive byte count")]
     [(not (string? (fetch-ref "format"))) (list "format" "a string")]
     [else #f]))
 
@@ -273,21 +272,16 @@
                                    "available" (dataset-table-names table)))
   (vector-ref (dataset-table-columns table) i))
 
-(define (read-rows name info file remedy)
-  (define remedy-fields (if remedy (list "remedy" remedy) '()))
-  (define text
-    (with-handlers ([exn:fail? (lambda (e)
-                                 (apply raise-registry-error 'load-dataset-table
-                                        "cannot read dataset data" "dataset" name "file" file
-                                        "error" (exn-message e) remedy-fields))])
-      (gunzip-file file)))
-  (define expected (hash-ref info "sha256"))
-  (define actual (hex (sha256-bytes text)))
-  (unless (equal? actual expected)
-    (apply raise-registry-error 'load-dataset-table "data sha256 mismatch"
-           "dataset" name "file" file
-           "expected" expected "actual" actual remedy-fields))
-  (read (open-input-bytes text)))
+(define (read-rows name file expected remedy)
+  (define (unreadable e)
+    (apply raise-registry-error 'load-dataset-table "cannot read dataset data" "dataset" name
+           "file" file "error" (exn-message e) (if remedy (list "remedy" remedy) '())))
+  (define text (with-handlers ([exn:fail? unreadable]) (gunzip-file file)))
+  (define actual (and expected (hex (sha256-bytes text))))
+  (cond
+    [(equal? actual expected) (with-handlers ([exn:fail? unreadable]) (read (open-input-bytes text)))]
+    [else (raise-registry-error 'load-dataset-table "data sha256 mismatch" "dataset" name
+                                "file" file "expected" expected "actual" actual)]))
 
 (define (fetch-tier? info)
   (equal? (hash-ref info "tier") "fetch"))
@@ -315,7 +309,8 @@
                                   #:download? download? #:idle-timeout 60)]))
   (define rows
     (map list->vector
-         (read-rows name info file (and final (format "(clear-dataset-cache '~a)" name)))))
+         (read-rows name file (and (not final) (hash-ref info "sha256"))
+                    (and final (format "(clear-dataset-cache '~a)" name)))))
   (define columns
     (vector->immutable-vector
      (for/vector ([i (in-list indices)])

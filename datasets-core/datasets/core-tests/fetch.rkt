@@ -1,22 +1,17 @@
 #lang racket/base
-(require (for-syntax racket/base)
-         (only-in datasets/core clear-dataset-cache dataset-cache-directory dataset-cached?
+(require (only-in datasets/core clear-dataset-cache dataset-cache-directory dataset-cached?
                   dataset-info dataset-names dataset-table-column dataset-table-names fetch-dataset
                   load-dataset-table)
          (only-in datasets/core-private/resource with-resource)
          (only-in racket/file file->bytes make-directory*)
-         (only-in racket/list last remove-duplicates)
-         (only-in racket/match match match-define)
+         (only-in racket/match match)
          (only-in racket/path path-only)
-         (only-in racket/place dynamic-place place-channel-put)
-         (only-in racket/runtime-path define-runtime-path)
          (only-in "fixture.rkt" cache-files call-with-artifact-url call-with-environment
-                  call-with-fetch-fixture call-with-temporary-fixture fetch-entry gunzip-bytes
-                  gzip-bytes hex rows->rktd-bytes table-digest toy-artifact toy-artifact-sha256
-                  toy-table-digest wait-until)
+                  call-with-fetch-fixture call-with-temporary-fixture fetch-entry gzip-bytes hex
+                  rows->rktd-bytes table-digest toy-artifact toy-artifact-sha256 toy-table-digest
+                  wait-until)
          (only-in "http-fixture.rkt" call-with-http-fixture http-fixture-closed-evt
                   http-fixture-requests http-fixture-stalled-evt http-fixture-url))
-(define-runtime-path fetch-place "fetch-place.rkt")
 (module+ test
   (require (only-in racket/sandbox kill-evaluator make-evaluator sandbox-path-permissions)
            (only-in rackunit check-equal? check-exn check-false check-not-false check-pred
@@ -73,40 +68,27 @@
         (check-equal? (http-fixture-requests srv) '("/toy"))
         (check-equal? (cache-files root) (list final-rel))
         (check-equal? (table-digest (load-dataset-table 'toy-remote)) toy-table-digest)
-        (call-with-environment (hash "DATASETS_OFFLINE" "1")
-          (lambda ()
-            (check-equal? (table-digest (load-dataset-table 'toy-remote #:download? #f))
-                          toy-table-digest)
-            (check-equal? (dataset-table-names
-                           (load-dataset-table 'toy-remote #:columns '("score" "id")))
-                          '("score" "id"))
-            (check-equal? (fetch-dataset 'toy-remote) (build-path root final-rel))))
+        (check-equal? (table-digest (load-dataset-table 'toy-remote #:download? #f))
+                      toy-table-digest)
+        (check-equal? (dataset-table-names
+                       (load-dataset-table 'toy-remote #:columns '("score" "id") #:download? #f))
+                      '("score" "id"))
+        (check-equal? (fetch-dataset 'toy-remote) (build-path root final-rel))
         (check-equal? (http-fixture-requests srv) '("/toy")))))
 
   (test-case "C4 mismatch names dataset, url, expected, actual; nothing cached"
-    (define zeros (make-string 64 #\0))
-    (for ([c (in-list
-              (list (list bad (lambda (u) (fetch-entry (list u) #:size (bytes-length bad)))
-                          (list "sha256 mismatch" toy-artifact-sha256 (hex (sha256-bytes bad))))
-                    (list toy-artifact (lambda (u) (fetch-entry (list u) #:size 61))
-                          (list "size mismatch" "61" "60"))
-                    (list toy-artifact (lambda (u) (fetch-entry (list u) #:content-sha256 zeros))
-                          (list "content sha256 mismatch" zeros
-                                (string-append "80b5018dc4754eafe4a8105356287019"
-                                               "f87c4b5c8a081bb590ef131d0e815a5c")))))])
-      (match-define (list served entry-of rxs) c)
-      (call-with-artifact-url served
-        (lambda (url)
-          (call-with-fetch-fixture (list (entry-of url))
-            (lambda (root registry)
-              (check-exn (apply fetch-error? #rx"^fetch-dataset: cannot download" "toy-remote" url
-                                rxs)
-                         (lambda () (fetch-dataset 'toy-remote)))
-              (check-exn (apply fetch-error? #rx"^load-dataset-table: cannot download" "toy-remote"
-                                url rxs)
-                         (lambda () (load-dataset-table 'toy-remote)))
-              (check-equal? (cache-files root) '())
-              (check-false (dataset-cached? 'toy-remote))))))))
+    (define rxs (list "sha256 mismatch" toy-artifact-sha256 (hex (sha256-bytes bad))))
+    (call-with-artifact-url bad
+      (lambda (url)
+        (call-with-fetch-fixture (list (fetch-entry (list url)))
+          (lambda (root registry)
+            (check-exn (apply fetch-error? #rx"^fetch-dataset: cannot download" "toy-remote" url rxs)
+                       (lambda () (fetch-dataset 'toy-remote)))
+            (check-exn (apply fetch-error? #rx"^load-dataset-table: cannot download" "toy-remote"
+                              url rxs)
+                       (lambda () (load-dataset-table 'toy-remote)))
+            (check-equal? (cache-files root) '())
+            (check-false (dataset-cached? 'toy-remote)))))))
 
   (test-case "C5 C13 C23 mirrors in order, redirect followed, all-fail lists each url"
     (define routes (hash "/missing" '(status 404) "/bad" `(ok ,bad) "/good" `(ok ,toy-artifact)
@@ -126,11 +108,11 @@
         (check-exn (fetch-error? "ftp://127.0.0.1/x" "unsupported URL scheme ftp"
                                  "127.0.0.1/toy.rktd.gz" "URL has no scheme"
                                  (http-fixture-url srv "/missing") "HTTP status 404"
-                                 (http-fixture-url srv "/bad") #rx"size mismatch|sha256 mismatch")
+                                 (http-fixture-url srv "/bad") "sha256 mismatch")
                    (lambda () (fetch-dataset 'toy-remote)))
         (check-equal? (cache-files root) '()))))
 
-  (test-case "C6 C7 offline refusal: no request, nothing written, env beats keyword"
+  (test-case "C6 #:download? #f refusal: no request, nothing written"
     (with-server (hash "/toy" `(ok ,toy-artifact)) (toy-at "/toy")
       (lambda (srv root registry)
         (check-exn (fetch-error? #rx"^load-dataset-table: dataset is not cached" "toy-remote"
@@ -138,24 +120,10 @@
                    (lambda () (load-dataset-table 'toy-remote #:download? #f)))
         (check-exn exn:fail:contract?
                    (lambda () (load-dataset-table 'toy-remote #:columns '("absent"))))
-        (for ([v (in-list '("1" "true" "TRUE" "yes" "on" "anything"))])
-          (call-with-environment (hash "DATASETS_OFFLINE" v)
-            (lambda ()
-              (check-exn (fetch-error? #rx"^load-dataset-table: dataset is not cached" "toy-remote"
-                                       "DATASETS_OFFLINE" "fetch-dataset")
-                         (lambda () (load-dataset-table 'toy-remote #:download? #t)))
-              (check-exn (fetch-error? #rx"^fetch-dataset: dataset is not cached" "toy-remote"
-                                       "DATASETS_OFFLINE")
-                         (lambda () (fetch-dataset 'toy-remote)))
-              (check-equal? (hash-ref (dataset-info 'toy-remote) "tier") "fetch"))))
         (check-equal? (http-fixture-requests srv) '())
         (check-equal? (cache-files root) '())
-        (for ([v (in-list '("" "0" "false" "no" "off" "OFF"))] [downloads (in-naturals 1)])
-          (clear-dataset-cache)
-          (call-with-environment (hash "DATASETS_OFFLINE" v)
-            (lambda ()
-              (check-equal? (table-digest (load-dataset-table 'toy-remote)) toy-table-digest)))
-          (check-equal? (http-fixture-requests srv) (build-list downloads (lambda (_) "/toy")))))))
+        (check-equal? (table-digest (load-dataset-table 'toy-remote)) toy-table-digest)
+        (check-equal? (http-fixture-requests srv) '("/toy")))))
 
   (test-case "C8 C11 break aborts the fetch and removes the part; idle timeout falls through"
     (with-server (hash "/stall" `(stall ,toy-artifact 30) "/good" `(ok ,toy-artifact))
@@ -186,20 +154,17 @@
         (check-exn (fetch-error? "no data for 0.5 seconds") failed)
         (check-equal? (cache-files root) '()))))
 
-  (test-case "C9 C12 truncated and oversized bodies fail the url, nothing cached"
+  (test-case "C9 C12 a truncated body fails its url on the hash and falls through"
+    (with-server (hash "/x" `(truncate ,toy-artifact 30) "/good" `(ok ,toy-artifact))
+                 (lambda (u) (list (fetch-entry (list (u "/x") (u "/good")))))
+      (lambda (srv root registry)
+        (check-equal? (fetch-dataset 'toy-remote) (build-path root final-rel))
+        (check-equal? (http-fixture-requests srv) '("/x" "/good"))
+        (check-equal? (cache-files root) (list final-rel))))
     (with-server (hash "/x" `(truncate ,toy-artifact 30)) (toy-at "/x")
       (lambda (srv root registry)
-        (check-exn (fetch-error? (http-fixture-url srv "/x") #rx"size mismatch|connection")
+        (check-exn (fetch-error? (http-fixture-url srv "/x") "sha256 mismatch")
                    (lambda () (fetch-dataset 'toy-remote)))
-        (check-equal? (cache-files root) '())))
-    (with-server (hash "/x" `(stall ,(bytes-append toy-artifact (make-bytes 100 0)) 160))
-                 (toy-at "/x")
-      (lambda (srv root registry)
-        (define failed (call-within 10 (lambda () (fetch-dataset 'toy-remote))))
-        (check-not-false failed)
-        (check-exn (fetch-error? (http-fixture-url srv "/x")
-                                 "size mismatch: expected 60 bytes, received more than 60")
-                   failed)
         (check-equal? (cache-files root) '()))))
 
   (test-case
@@ -218,31 +183,14 @@
             (clear-dataset-cache)
             (check-equal? (cache-files root) '()))))))
 
-  (test-case "C14 C15 concurrent fetchers in places and threads; a reader never sees a partial file"
-    (with-server (hash "/toy" `(barrier ,toy-artifact 4)) (toy-at "/toy")
+  (test-case "C14 two fetches into one root both succeed and leave one file"
+    (with-server (hash "/toy" `(ok ,toy-artifact)) (toy-at "/toy")
       (lambda (srv root registry)
-        (define job (list (path->string registry) (path->string root)))
-        (define fetchers (for/list ([_ (in-range 4)]) (dynamic-place fetch-place 'main)))
-        (define reader (dynamic-place fetch-place 'main))
-        (place-channel-put reader (cons 'read job))
-        (for ([p (in-list fetchers)])
-          (place-channel-put p (cons 'fetch job)))
-        (define paths (for/list ([p (in-list fetchers)]) (sync/timeout 60 p)))
-        (check-equal? (remove-duplicates paths) (list (path->string (build-path root final-rel))))
-        (define outcomes (sync/timeout 60 reader))
-        (check-equal? (last outcomes) toy-table-digest)
-        (check-equal? (remove* (list "not-cached" toy-table-digest) outcomes) '())
+        (define p (fetch-dataset 'toy-remote))
+        (check-equal? (fetch-dataset 'toy-remote) p)
+        (check-equal? (table-digest (load-dataset-table 'toy-remote)) toy-table-digest)
         (check-equal? (cache-files root) (list final-rel))
-        (check-equal? (length (http-fixture-requests srv)) 4)))
-    (with-server (hash "/toy" `(barrier ,toy-artifact 8)) (toy-at "/toy")
-      (lambda (srv root registry)
-        (define results (for/list ([_ (in-range 8)])
-                          (define ch (make-channel))
-                          (thread (lambda () (channel-put ch (fetch-dataset 'toy-remote))))
-                          ch))
-        (check-equal? (remove-duplicates (for/list ([ch (in-list results)]) (sync/timeout 60 ch)))
-                      (list (build-path root final-rel)))
-        (check-equal? (cache-files root) (list final-rel)))))
+        (check-equal? (http-fixture-requests srv) '("/toy")))))
 
   (test-case "C16 DATASETS_HOME"
     (call-with-environment (hash "DATASETS_HOME" "/srv/racket-datasets")
@@ -328,25 +276,25 @@
   (test-case "C19 bundled datasets are unaffected"
     (call-with-fetch-fixture '()
       (lambda (root registry)
-        (call-with-environment (hash "DATASETS_OFFLINE" "1")
-          (lambda ()
-            (check-true (dataset-cached? 'iris))
-            (check-true (file-exists? (fetch-dataset 'iris)))
-            (check-equal? (load-dataset-table 'iris #:download? #f) (load-dataset-table 'iris))))
+        (check-true (dataset-cached? 'iris))
+        (check-true (file-exists? (fetch-dataset 'iris)))
+        (check-equal? (load-dataset-table 'iris #:download? #f) (load-dataset-table 'iris))
         (check-equal? (cache-files root) '()))))
 
-  (test-case "C20 corrupt cache file raises with remedy, never re-downloads"
+  (test-case "C20 a cache file that fails to decode raises with remedy, never re-downloads"
     (with-server (hash "/toy" `(ok ,toy-artifact)) (toy-at "/toy")
       (lambda (srv root registry)
-        (define p (fetch-dataset 'toy-remote))
-        (call-with-output-file p #:exists 'truncate (lambda (o) (write-bytes bad o)))
-        (check-exn (fetch-error? "data sha256 mismatch" (path->string p)
-                                 "(clear-dataset-cache 'toy-remote)")
-                   (lambda () (load-dataset-table 'toy-remote)))
-        (check-true (dataset-cached? 'toy-remote))
-        (check-equal? (http-fixture-requests srv) '("/toy"))
-        (clear-dataset-cache 'toy-remote)
-        (check-equal? (table-digest (load-dataset-table 'toy-remote)) toy-table-digest))))
+        (for ([corrupt (in-list (list (subbytes toy-artifact 0 30) #"not gzip"))]
+              [downloads (in-naturals 1)])
+          (define p (fetch-dataset 'toy-remote))
+          (call-with-output-file p #:exists 'truncate (lambda (o) (write-bytes corrupt o)))
+          (check-exn (fetch-error? #rx"^load-dataset-table: cannot read dataset data"
+                                   (path->string p) "(clear-dataset-cache 'toy-remote)")
+                     (lambda () (load-dataset-table 'toy-remote)))
+          (check-true (dataset-cached? 'toy-remote))
+          (check-equal? (http-fixture-requests srv) (build-list downloads (lambda (_) "/toy")))
+          (clear-dataset-cache 'toy-remote)
+          (check-equal? (table-digest (load-dataset-table 'toy-remote)) toy-table-digest)))))
 
   (test-case "C21 unsupported format refused before network"
     (with-server (hash "/toy" `(ok ,toy-artifact))
@@ -374,8 +322,7 @@
         (call-with-artifact-url other
           (lambda (url)
             (call-with-fetch-fixture
-             (list (fetch-entry (list url) #:sha256 other-sha #:size (bytes-length other)
-                                #:content-sha256 (hex (sha256-bytes (gunzip-bytes other)))))
+             (list (fetch-entry (list url) #:sha256 other-sha))
              (lambda (_r _g)
                (with-home
                 (lambda ()

@@ -57,11 +57,10 @@ Bundled data is stored gzip-compressed and decompressed on each call; a
 fetch-tier dataset is read from @racket[(dataset-cache-directory)] in the same
 form, after downloading it as by @racket[fetch-dataset] if it is not cached.
 Column arguments are checked before any download. If the dataset is not cached
-and @racket[download?] is @racket[#f] or downloads are disabled (see
-@secref["datasets-core-offline-reference"]), raises @racket[exn:fail] naming the
-dataset and how to fetch it. Every load checks the data's SHA-256 against the
-@tt{sha256} metadata before parsing; a mismatch or an unreadable file raises
-@racket[exn:fail] naming the file.}
+and @racket[download?] is @racket[#f], raises @racket[exn:fail] naming the dataset
+and how to fetch it (see @secref["datasets-core-offline-reference"]). Loading
+bundled data checks its SHA-256 against the @tt{sha256} metadata before parsing; a
+mismatch or an unreadable file raises @racket[exn:fail] naming the file.}
 
 @examples[#:eval ev
  (dataset-table-names
@@ -120,8 +119,7 @@ this procedure.}
 Returns @racket[#t] if loading @racket[name] needs no download: always for a
 bundled dataset, and for a fetch-tier dataset when its file is in
 @racket[(dataset-cache-directory)]. Never contacts a server and does not read the
-file; @racket[load-dataset-table] checks its contents on every load. An unknown
-dataset raises @racket[exn:fail:contract].}
+file. An unknown dataset raises @racket[exn:fail:contract].}
 @examples[#:eval ev (dataset-cached? 'iris)]
 
 @defproc[(fetch-dataset [name symbol?]
@@ -132,14 +130,14 @@ gzip-compressed @tt{.rktd} file @racket[load-dataset-table] reads: the file in i
 package for a bundled dataset, the cached file for a fetch-tier one. A fetch-tier
 dataset that is not cached is downloaded from the @tt{urls} in its @tt{fetch}
 metadata, in order, until one succeeds. Each download goes to a temporary file
-beside its destination and is renamed into place only after its size and SHA-256
-match the metadata, so an interrupted, failed or concurrent download never leaves
-a partial file under the cached name. A URL that delivers no data for
-@racket[idle-timeout] seconds fails. If every URL fails, raises @racket[exn:fail]
-listing each URL and its failure, with the expected and actual SHA-256 for a
-mismatch. Raises @racket[exn:fail] without contacting a server when downloads are
-disabled (@secref["datasets-core-offline-reference"]) or the @tt{format} is not
-supported; an unknown dataset raises @racket[exn:fail:contract].}
+beside its destination and is renamed into place only after its SHA-256 matches
+the metadata, so an interrupted or failed download never leaves a partial file
+under the cached name. A URL that delivers no data for @racket[idle-timeout]
+seconds fails; connecting has no timeout of its own. If every URL fails, raises
+@racket[exn:fail] listing each URL and its failure, with the expected and actual
+SHA-256 for a mismatch. Raises @racket[exn:fail] without contacting a server when
+the @tt{format} is not supported; an unknown dataset raises
+@racket[exn:fail:contract].}
 @examples[#:eval ev (file-exists? (fetch-dataset 'iris))]
 
 @defproc[(clear-dataset-cache [name (or/c #f symbol?) #f]) void?]{
@@ -153,14 +151,12 @@ dataset while another program downloads it makes that download fail.}
 
 @subsection[#:tag "datasets-core-offline-reference"]{Disabling downloads}
 
-A download happens only when a fetch-tier dataset is not cached and downloads are
-enabled. @racket[#:download? #f] disables them for one call to
-@racket[load-dataset-table]. Setting @envvar{DATASETS_OFFLINE} to any nonempty
-value other than @tt{0}, @tt{false}, @tt{no} or @tt{off} (in any letter case)
-disables them for the process, including in @racket[fetch-dataset], and takes
-precedence over @racket[#:download? #t]. A refused download raises
-@racket[exn:fail] naming the dataset, the reason, the expected cache file and how
-to fetch it. Bundled and cached datasets load as usual.
+A download happens only when a fetch-tier dataset is not cached.
+@racket[#:download? #f] disables it for one call to @racket[load-dataset-table]; a
+refused download raises @racket[exn:fail] naming the dataset, the expected cache
+file and how to fetch it. Bundled and cached datasets load as usual. A cached file
+is trusted by its name: one that fails to decode raises @racket[exn:fail] naming
+@racket[clear-dataset-cache] as the remedy.
 
 Downloads are logged at level @racket['info] with topic @racket['datasets]; set
 @envvar{PLTSTDERR} to @tt{info@"@"datasets} to see them.
@@ -224,8 +220,8 @@ string keys:
        (list @tt{tier} @elem{@tt{bundled} (shipped with its package) or @tt{fetch} (downloaded on first use).})
        (list @tt{package} "Name of the package whose registry declares the dataset.")
        (list @tt{fetch} @elem{@racket[#f] for bundled data. For fetch-tier data, a
-             hash with @tt{urls} (mirrors, tried in order), @tt{sha256} and @tt{size}
-             of the download, and its @tt{format}. The only format is @tt{rktd.gz}: the
+             hash with @tt{urls} (mirrors, tried in order), the @tt{sha256} of the
+             download, and its @tt{format}. The only format is @tt{rktd.gz}: the
              download is the dataset's gzip-compressed @tt{.rktd} file, the form
              bundled data is stored in. Other keys are ignored.}))]
 
