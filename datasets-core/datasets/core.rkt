@@ -212,7 +212,12 @@
   (when (unbox discovery-in-progress)
     (reset-relevant-directories-state!))
   (set-box! discovery-in-progress #t)
-  (define records (find-relevant-directory-records '(datasets-registries) 'all-available))
+  (define records
+    (with-handlers ([(lambda (_) #t)
+                     (lambda (e)
+                       (reset-relevant-directories-state!)
+                       (raise e))])
+      (find-relevant-directory-records '(datasets-registries) 'all-available)))
   (set-box! discovery-in-progress #f)
   records)
 
