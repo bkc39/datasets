@@ -59,6 +59,7 @@
               runHook postBuild
             '';
             doCheck = true;
+            __darwinAllowLocalNetworking = true;
             checkPhase = ''
               runHook preCheck
               bash scripts/check.sh ${if full then "full" else "core"}

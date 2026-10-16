@@ -1,16 +1,36 @@
 #lang racket/base
-(require datasets/core datasets/polars datasets/matrix datasets/data-frame)
-(provide (all-from-out datasets/core) load-dataset
-         load-air-passengers load-airquality load-anscombe load-breast-cancer load-diabetes load-faithful load-iris load-mtcars load-plant-growth load-titanic load-tooth-growth load-us-arrests load-wine)
-(define (load-dataset name #:format [format 'polars] #:columns [columns #f])
-  (unless (memq format '(polars table matrix data-frame))
-    (raise-argument-error 'load-dataset "(or/c 'polars 'table 'matrix 'data-frame)" format))
-  (define table (load-dataset-table name #:columns columns))
+(require datasets/core datasets/polars datasets/matrix datasets/data-frame
+         (only-in racket/contract/base ->* any/c contract-out non-empty-listof or/c))
+(define format/c (or/c 'polars 'table 'matrix 'data-frame))
+(define columns/c (or/c #f (non-empty-listof string?)))
+(define loader/c (->* () (#:format format/c #:columns columns/c) any/c))
+(provide (contract-out
+          [load-dataset (->* (symbol?)
+                             (#:format format/c #:columns columns/c #:download? boolean?)
+                             any/c)]
+          [load-air-passengers loader/c]
+          [load-airquality loader/c]
+          [load-anscombe loader/c]
+          [load-breast-cancer loader/c]
+          [load-diabetes loader/c]
+          [load-faithful loader/c]
+          [load-iris loader/c]
+          [load-mtcars loader/c]
+          [load-plant-growth loader/c]
+          [load-titanic loader/c]
+          [load-tooth-growth loader/c]
+          [load-us-arrests loader/c]
+          [load-wine loader/c])
+         (all-from-out datasets/core))
+(define (load-dataset name #:format [format 'polars] #:columns [columns #f]
+                      #:download? [download? #t])
+  (define table (load-dataset-table name #:columns columns #:download? download?))
   (case format
     [(table) table]
     [(polars) (table->polars table)]
     [(matrix) (table->matrix table)]
-    [(data-frame) (table->data-frame table)]))
+    [(data-frame) (table->data-frame table)]
+    [else (raise-argument-error 'load-dataset "(or/c 'polars 'table 'matrix 'data-frame)" format)]))
 (define (load-air-passengers #:format [format 'polars] #:columns [columns #f])
   (load-dataset 'air-passengers #:format format #:columns columns))
 (define (load-airquality #:format [format 'polars] #:columns [columns #f])

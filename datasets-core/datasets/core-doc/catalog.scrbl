@@ -1,5 +1,5 @@
 #lang scribble/manual
-@(require datasets/core racket/list racket/string
+@(require datasets/core racket/list racket/match racket/string
           (for-label racket/base datasets/core))
 @title[#:tag "datasets-catalog"]{Dataset Catalog and Provenance}
 
@@ -20,6 +20,13 @@ The maintainer importer pins source archives by SHA-256. Normalized checksums co
 the exact UTF-8 bytes of each dataset's uncompressed @tt{.rktd} content. Historical observations are not
 silently corrected except for choosing the documented corrected UCI Iris variant.
 
+@(define (fetch-line info)
+   (match (hash-ref info "fetch")
+     [#f '()]
+     [fetch (para "Fetch tier: a " (number->string (hash-ref fetch "size"))
+                  "-byte download, SHA-256 " (tt (hash-ref fetch "sha256"))
+                  ", fetched on first use; see " (secref "datasets-core-fetch-guide") ".")]))
+
 @(define (dataset-entry name)
    (define info (dataset-info name))
    (list (subsection #:tag (format "dataset-~a" name) (symbol->string name))
@@ -30,6 +37,7 @@ silently corrected except for choosing the documented corrected UCI Iris variant
          (para (hash-ref info "citation"))
          (para (hyperlink (hash-ref info "source-url") (hash-ref info "source-version"))
                "; " (hash-ref info "license"))
+         (fetch-line info)
          (tabular #:sep (hspace 2)
                   (cons (list "Column" "Original" "Type" "Description / unit / levels")
                         (for/list ([c (in-list (hash-ref info "columns"))])
