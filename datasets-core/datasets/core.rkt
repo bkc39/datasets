@@ -159,7 +159,7 @@
     (with-handlers ([exn:fail? (lambda (e)
                                  (raise-registry-error 'datasets "cannot read registry"
                                                        "registry" file "error" (exn-message e)))])
-      (call-with-input-file file read)))
+      (call-with-default-reading-parameterization (lambda () (call-with-input-file file read)))))
   (unless (and (hash? registry) (immutable? registry) (andmap string? (hash-keys registry)))
     (raise-registry-error 'datasets "malformed registry" "registry" file
                           "expected" "an immutable hash from dataset names to metadata hashes"
@@ -218,7 +218,8 @@
                      (lambda (e)
                        (reset-relevant-directories-state!)
                        (raise e))])
-      (find-relevant-directory-records '(datasets-registries) 'all-available)))
+      (call-with-default-reading-parameterization
+       (lambda () (find-relevant-directory-records '(datasets-registries) 'all-available)))))
   (set-box! discovery-in-progress #f)
   records)
 
@@ -309,7 +310,7 @@
                                   (raise-registry-error 'load-dataset-table "cannot parse dataset data"
                                                         "dataset" name "package" (hash-ref info "package")
                                                         "file" file "error" (exn-message e)))])
-       (read (open-input-bytes text)))]
+       (call-with-default-reading-parameterization (lambda () (read (open-input-bytes text)))))]
     [(pinned?)
      (raise-registry-error 'load-dataset-table "registry sha256 does not match the pinned download"
                            "dataset" name "package" (hash-ref info "package") "file" file
