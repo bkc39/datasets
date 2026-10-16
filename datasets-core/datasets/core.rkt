@@ -304,7 +304,12 @@
   (define text (with-handlers ([exn:fail? unreadable]) (gunzip-file file)))
   (define actual (hex (sha256-bytes text)))
   (cond
-    [(equal? actual expected) (with-handlers ([exn:fail? unreadable]) (read (open-input-bytes text)))]
+    [(equal? actual expected)
+     (with-handlers ([exn:fail? (lambda (e)
+                                  (raise-registry-error 'load-dataset-table "cannot parse dataset data"
+                                                        "dataset" name "package" (hash-ref info "package")
+                                                        "file" file "error" (exn-message e)))])
+       (read (open-input-bytes text)))]
     [(pinned?)
      (raise-registry-error 'load-dataset-table "registry sha256 does not match the pinned download"
                            "dataset" name "package" (hash-ref info "package") "file" file

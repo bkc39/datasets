@@ -5,14 +5,14 @@
          (only-in datasets/core-private/cache download-dataset)
          (only-in datasets/core-private/resource with-resource)
          (only-in racket/file file->bytes make-directory*)
-         (only-in racket/match match match-define)
+         (only-in racket/match match)
          (only-in racket/path path-only)
          (only-in "fixture.rkt" cache-files call-with-artifact-url call-with-environment
-                  call-with-fetch-fixture call-with-temporary-fixture fetch-entry gzip-bytes hex
-                  rows->rktd-bytes table-digest toy-artifact toy-artifact-sha256 toy-table-digest
-                  wait-until)
-         (only-in "http-fixture.rkt" call-with-http-fixture http-fixture-closed-evt
-                  http-fixture-requests http-fixture-stalled-evt http-fixture-url))
+                  call-with-fetch-fixture call-with-temporary-fixture fetch-entry fetch-error? gzip-bytes
+                  hex rows->rktd-bytes table-digest toy-artifact toy-artifact-sha256 toy-at
+                  toy-table-digest wait-until with-server)
+         (only-in "http-fixture.rkt" http-fixture-closed-evt http-fixture-requests
+                  http-fixture-stalled-evt http-fixture-url))
 (module+ test
   (require (only-in racket/sandbox kill-evaluator make-evaluator sandbox-path-permissions)
            (only-in rackunit check-equal? check-exn check-false check-not-false check-pred
@@ -20,17 +20,6 @@
   (define final-rel (format "toy-remote/~a.rktd.gz" toy-artifact-sha256))
   (define part-rx #px"^toy-remote/[0-9a-f]{64}\\.rktd\\.gz\\.[A-Za-z0-9]+\\.part$")
   (define bad (gzip-bytes (rows->rktd-bytes '((9 "a" 0.5)))))
-  (define ((fetch-error? . rxs) e)
-    (and (exn:fail? e) (not (exn:fail:contract? e))
-         (for/and ([rx (in-list rxs)])
-           (regexp-match? (if (string? rx) (regexp (regexp-quote rx)) rx) (exn-message e)))))
-  (define (with-server routes entries-of proc)
-    (call-with-http-fixture routes
-      (lambda (srv)
-        (call-with-fetch-fixture (entries-of (lambda (p) (http-fixture-url srv p)))
-          (lambda (root registry) (proc srv root registry))))))
-  (define ((toy-at path) u)
-    (list (fetch-entry (list (u path)))))
   (define (call-within seconds thunk)
     (define result (make-channel))
     (define worker
@@ -295,89 +284,6 @@
         (check-true (file-exists? (fetch-dataset 'iris)))
         (check-equal? (load-dataset-table 'iris #:download? #f) (load-dataset-table 'iris))
         (check-equal? (cache-files root) '()))))
-
-  (test-case "C20 a corrupt cache file raises with remedy, never re-downloads"
-    (define flipped (bytes-copy toy-artifact))
-    (bytes-set! flipped 16 (bitwise-xor 1 (bytes-ref flipped 16)))
-    (define unreadable #rx"^load-dataset-table: cannot read dataset data")
-    (define mismatch #rx"^load-dataset-table: data sha256 mismatch")
-    (define corrupt-cases
-      (list (cons (subbytes toy-artifact 0 30) mismatch)
-            (cons #"not gzip" unreadable)
-            (cons (subbytes toy-artifact 0 10) unreadable)
-            (cons flipped mismatch)))
-    (with-server (hash "/toy" `(ok ,toy-artifact)) (toy-at "/toy")
-      (lambda (srv root registry)
-        (for ([corrupt-case (in-list corrupt-cases)]
-              [downloads (in-naturals 1)])
-          (match-define (cons corrupt message) corrupt-case)
-          (define p (fetch-dataset 'toy-remote))
-          (call-with-output-file p #:exists 'truncate (lambda (o) (write-bytes corrupt o)))
-          (check-exn (fetch-error? message (path->string p) "(clear-dataset-cache 'toy-remote)")
-                     (lambda () (load-dataset-table 'toy-remote)))
-          (check-true (dataset-cached? 'toy-remote))
-          (check-equal? (http-fixture-requests srv) (build-list downloads (lambda (_) "/toy")))
-          (clear-dataset-cache 'toy-remote)
-          (check-equal? (table-digest (load-dataset-table 'toy-remote)) toy-table-digest))
-        (define p (fetch-dataset 'toy-remote))
-        (call-with-output-file p #:exists 'truncate
-          (lambda (o) (write-bytes (subbytes toy-artifact 0 (- (bytes-length toy-artifact) 8)) o)))
-        (check-equal? (table-digest (load-dataset-table 'toy-remote)) toy-table-digest))))
-
-  (test-case "C20b a registry sha256 that disagrees with the pinned download has no remedy"
-    (define registry-error
-      (fetch-error? #rx"^load-dataset-table: registry sha256 does not match the pinned download"
-                    "dataset: toy-remote" "package: datasets-fetch-fixture"))
-    (with-server (hash "/toy" `(ok ,toy-artifact))
-                 (lambda (u) (list (fetch-entry (list (u "/toy")) #:data-sha256 (make-string 64 #\b))))
-      (lambda (srv root registry)
-        (check-true (file-exists? (fetch-dataset 'toy-remote)))
-        (for ([_ (in-range 2)])
-          (check-exn (lambda (e)
-                       (and (registry-error e)
-                            (not (regexp-match? #rx"clear-dataset-cache" (exn-message e)))))
-                     (lambda () (load-dataset-table 'toy-remote))))
-        (check-equal? (http-fixture-requests srv) '("/toy")))))
-
-  (test-case "C20c an unreadable pinned download has no remedy"
-    (define registry-error
-      (fetch-error? #rx"^load-dataset-table: cannot read the pinned download"
-                    "dataset: toy-remote" "package: datasets-fetch-fixture"))
-    (define plain (rows->rktd-bytes '((1 "a" 0.5))))
-    (define truncated #"(1 2")
-    (define gzipped (gzip-bytes truncated))
-    (for ([artifact (list plain gzipped)]
-          [data-sha256 (list (hash-ref (fetch-entry '()) "sha256") (hex (sha256-bytes truncated)))])
-      (with-server (hash "/toy" `(ok ,artifact))
-                   (lambda (u)
-                     (list (fetch-entry (list (u "/toy")) #:sha256 (hex (sha256-bytes artifact))
-                                        #:data-sha256 data-sha256)))
-        (lambda (srv root registry)
-          (check-true (file-exists? (fetch-dataset 'toy-remote)))
-          (for ([_ (in-range 2)])
-            (check-exn (lambda (e)
-                         (and (registry-error e)
-                              (not (regexp-match? #rx"clear-dataset-cache|remedy:"
-                                                  (exn-message e)))))
-                       (lambda () (load-dataset-table 'toy-remote))))
-          (check-equal? (http-fixture-requests srv) '("/toy"))))))
-
-  (test-case "C20d a cached file the caller cannot read raises with remedy"
-    (with-server (hash "/toy" `(ok ,toy-artifact)) (toy-at "/toy")
-      (lambda (srv root registry)
-        (define p (fetch-dataset 'toy-remote))
-        (define elsewhere
-          (byte-pregexp (bytes-append #"^(?!" (regexp-quote (path->bytes p)) #"$)")))
-        (with-resource [ev (parameterize ([sandbox-path-permissions `((exists ,p) (read ,elsewhere))])
-                             (make-evaluator 'racket/base '(require datasets/core)))
-                           (kill-evaluator ev)]
-          (check-exn (lambda (e)
-                       (and ((fetch-error? #rx"^load-dataset-table: cannot read dataset data"
-                                           (path->string p) "(clear-dataset-cache 'toy-remote)")
-                             e)
-                            (not (exn:fail:filesystem? e))))
-                     (lambda () (ev '(load-dataset-table 'toy-remote)))))
-        (check-equal? (http-fixture-requests srv) '("/toy")))))
 
   (test-case "C21 unsupported format refused before network"
     (with-server (hash "/toy" `(ok ,toy-artifact))

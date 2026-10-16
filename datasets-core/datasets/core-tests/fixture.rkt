@@ -11,7 +11,8 @@
          (only-in racket/path find-relative-path)
          (only-in racket/port call-with-output-bytes)
          (only-in racket/runtime-path define-runtime-path)
-         (only-in racket/string string-join))
+         (only-in racket/string string-join)
+         (only-in "http-fixture.rkt" call-with-http-fixture http-fixture-url))
 (provide (contract-out
           [registry-fixture (-> string? complete-path?)]
           [call-with-registry-fixtures (->* ((listof complete-path?) (-> any)) (#:specs (listof any/c)) any)]
@@ -30,7 +31,11 @@
           [call-with-environment (-> (hash/c string? (or/c #f string?)) (-> any) any)]
           [call-with-artifact-url (-> bytes? (-> string? any) any)]
           [cache-files (-> path? (listof string?))]
-          [wait-until (-> (and/c real? positive?) (-> any/c) boolean?)])
+          [wait-until (-> (and/c real? positive?) (-> any/c) boolean?)]
+          [fetch-error? (-> (or/c string? regexp?) ... (-> any/c boolean?))]
+          [with-server (-> hash? (-> (-> string? string?) (listof hash?))
+                           (-> any/c complete-path? complete-path? any) any)]
+          [toy-at (-> string? (-> (-> string? string?) (listof hash?)))])
          rows->rktd-bytes gzip-bytes gunzip-file hex gen-entry fetch-ok)
 
 (define-runtime-path fixtures "fixtures")
@@ -83,9 +88,9 @@
   (string->bytes/utf-8
    (string-append "(\n" (apply string-append (map (lambda (row) (format "  ~s\n" row)) rows)) ")\n")))
 
-(define (gzip-bytes bs)
+(define (gzip-bytes bs [timestamp 0])
   (call-with-output-bytes
-   (lambda (out) (gzip-through-ports (open-input-bytes bs) out #f 0))))
+   (lambda (out) (gzip-through-ports (open-input-bytes bs) out #f timestamp))))
 
 (define (table-digest table)
   (hex (sha256-bytes
@@ -168,3 +173,17 @@
     (cond [(ready?) #t]
           [(> (current-inexact-milliseconds) deadline) #f]
           [else (sleep 0.01) (loop)])))
+
+(define ((fetch-error? . rxs) e)
+  (and (exn:fail? e) (not (exn:fail:contract? e))
+       (for/and ([rx (in-list rxs)])
+         (regexp-match? (if (string? rx) (regexp (regexp-quote rx)) rx) (exn-message e)))))
+
+(define (with-server routes entries-of proc)
+  (call-with-http-fixture routes
+    (lambda (srv)
+      (call-with-fetch-fixture (entries-of (lambda (p) (http-fixture-url srv p)))
+        (lambda (root registry) (proc srv root registry))))))
+
+(define ((toy-at path) u)
+  (list (fetch-entry (list (u path)))))
