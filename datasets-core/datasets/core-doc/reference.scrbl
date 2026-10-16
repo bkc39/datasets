@@ -75,10 +75,11 @@ directory. Each dataset's data is @tt{data/@italic{name}.rktd.gz} beside its
 registry. The registries of all installed packages are merged when first used.
 Each later call checks the registry files and declaring @tt{info.rkt} files of
 the packages already found, and merges again when one changes. The installed
-package index is read again only when the collection search path changes, as
-with @racket[current-library-collection-paths], or after a call whose discovery
-failed or was interrupted, so a package installed after the first call is seen
-only after a restart.
+package index is read again when the collection search path changes, as
+with @racket[current-library-collection-paths], when @exec{raco setup} runs in
+the same process, or after a call whose discovery failed or was interrupted, so
+a package installed after the first call is usually not seen until the process
+restarts.
 Package @tt{datasets-core} is reserved for the registries that
 @tt{datasets/core-data/info.rkt} lists. Another installation's
 @tt{datasets/core-data} collection is skipped unread; any other registry
