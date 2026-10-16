@@ -8,6 +8,9 @@
          (only-in datasets/core-private/codec gunzip-file hex)
          (only-in datasets/core-private/error raise-registry-error)
          (only-in datasets/core-private/log log-datasets-warning)
+         (only-in datasets/core-private/table
+                  dataset-missing dataset-missing? dataset-table dataset-table-columns
+                  dataset-table-info dataset-table-names dataset-table-row-count dataset-table?)
          (only-in racket/contract/base -> ->* and/c contract-out listof non-empty-listof or/c)
          (only-in racket/format ~e ~s)
          (only-in racket/list append-map check-duplicates index-of remove-duplicates take)
@@ -31,11 +34,6 @@
          dataset-table? dataset-table-names dataset-table-columns
          dataset-table-row-count dataset-table-info dataset-table-column)
 
-;; Opaque, singleton sentinel: cannot be confused with any ordinary observation.
-(struct missing-value ())
-(define dataset-missing (missing-value))
-(define (dataset-missing? v) (eq? v dataset-missing))
-(struct dataset-table (names columns row-count info) #:transparent)
 (struct catalog (entries data-dirs discovery-failure))
 (struct source (file core? signature) #:transparent)
 (define-runtime-path core-data "core-data")

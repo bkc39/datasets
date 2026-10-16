@@ -23,5 +23,6 @@ For general Racket programming, see
 @table-of-contents[]
 @include-section["guide.scrbl"]
 @include-section["reference.scrbl"]
+@include-section["synthetic.scrbl"]
 @include-section["catalog.scrbl"]
 @index-section[]
