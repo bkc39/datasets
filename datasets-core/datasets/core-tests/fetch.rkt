@@ -362,6 +362,23 @@
                        (lambda () (load-dataset-table 'toy-remote))))
           (check-equal? (http-fixture-requests srv) '("/toy"))))))
 
+  (test-case "C20d a cached file the caller cannot read raises with remedy"
+    (with-server (hash "/toy" `(ok ,toy-artifact)) (toy-at "/toy")
+      (lambda (srv root registry)
+        (define p (fetch-dataset 'toy-remote))
+        (define elsewhere
+          (byte-pregexp (bytes-append #"^(?!" (regexp-quote (path->bytes p)) #"$)")))
+        (with-resource [ev (parameterize ([sandbox-path-permissions `((exists ,p) (read ,elsewhere))])
+                             (make-evaluator 'racket/base '(require datasets/core)))
+                           (kill-evaluator ev)]
+          (check-exn (lambda (e)
+                       (and ((fetch-error? #rx"^load-dataset-table: cannot read dataset data"
+                                           (path->string p) "(clear-dataset-cache 'toy-remote)")
+                             e)
+                            (not (exn:fail:filesystem? e))))
+                     (lambda () (ev '(load-dataset-table 'toy-remote)))))
+        (check-equal? (http-fixture-requests srv) '("/toy")))))
+
   (test-case "C21 unsupported format refused before network"
     (with-server (hash "/toy" `(ok ,toy-artifact))
                  (lambda (u) (list (fetch-entry (list (u "/toy")) #:format "zip")))

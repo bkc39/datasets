@@ -290,7 +290,9 @@
   (define fetch (hash-ref info "fetch"))
   (define remedy-fields (if fetch (list "remedy" (format "(clear-dataset-cache '~a)" name)) '()))
   (define (pinned?)
-    (and fetch (equal? (file-sha256 file) (hash-ref fetch "sha256"))))
+    (and fetch
+         (with-handlers ([exn:fail? (lambda (_) #f)])
+           (equal? (file-sha256 file) (hash-ref fetch "sha256")))))
   (define (unreadable e)
     (cond
       [(pinned?)
