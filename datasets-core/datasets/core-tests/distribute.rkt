@@ -8,10 +8,12 @@
          (only-in "fixture.rkt" call-with-temporary-fixture))
 (define-runtime-path collection "..")
 (module+ test
-  (require (only-in rackunit check-equal? check-pred test-case)
+  (require (only-in compiler/find-exe find-exe)
+           (only-in rackunit check-equal? check-pred test-case)
            (only-in setup/cross-system cross-system-type))
   (define distribute-runs?
-    (not (and (eq? (system-type 'os) 'macosx) (eq? (cross-system-type) 'unix))))
+    (or (not (eq? (cross-system-type) 'unix))
+        (equal? (call-with-input-file (find-exe) (lambda (in) (read-bytes 4 in))) #"\177ELF")))
   (define (run-isolated exe home)
     (define env (environment-variables-copy (current-environment-variables)))
     (environment-variables-set! env #"PLTUSERHOME" (path->bytes home))
@@ -69,4 +71,4 @@
           (check-equal? (run-isolated (build-path dist "bin" "main") home) '(0 "150")))))]
     [else
      (displayln
-      "distribute.rkt: skipped; raco distribute treats a Unix-style macOS build's executable as ELF")]))
+      "distribute.rkt: skipped; raco distribute patches this non-ELF executable as ELF")]))
