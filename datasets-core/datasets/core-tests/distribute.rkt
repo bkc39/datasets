@@ -11,7 +11,7 @@
   (require (only-in rackunit check-equal? check-pred test-case)
            (only-in setup/cross-system cross-system-type))
   (define distribute-runs?
-    (not (and (eq? (system-type 'os) 'macosx) (eq? (cross-system-type) 'unix))))
+    (not (and (eq? (system-type 'os*) 'macosx) (eq? (cross-system-type) 'unix))))
   (define (run-isolated exe home)
     (define env (environment-variables-copy (current-environment-variables)))
     (environment-variables-set! env #"PLTUSERHOME" (path->bytes home))
