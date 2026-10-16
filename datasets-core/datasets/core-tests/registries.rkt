@@ -8,13 +8,14 @@
          (only-in racket/runtime-path define-runtime-path)
          (only-in "fixture.rkt" call-with-environment call-with-registry-fixtures
                   call-with-temporary-fixture fetch-ok gen-entry registry-fixture
-                  write-registry-fixture!))
+                  write-fixture-index! write-registry-fixture!))
 (define-runtime-path core-module "../core.rkt")
 (define-runtime-path core-registry "../core-data/registry.rktd")
 (module+ test
   (require (only-in rackunit check-equal? check-exn check-false check-not-exn check-not-false
                     check-regexp-match check-true test-case)
-           (only-in racket/sandbox kill-evaluator make-evaluator))
+           (only-in racket/sandbox kill-evaluator make-evaluator)
+           (only-in setup/getinfo find-relevant-directories reset-relevant-directories-state!))
   (define core-13 '(air-passengers airquality anscombe breast-cancer diabetes faithful
                     iris mtcars plant-growth titanic tooth-growth us-arrests wine))
   (define ((registry-error? . rxs) e)
@@ -282,6 +283,57 @@
      (lambda ()
        (call-with-unreadable (fixture-index) (lambda () (check-exn #rx"denied" dataset-names)))
        (check-true (listed? 'gen)))))
+
+  (test-case "a caller's custodian shut down mid-discovery is not cached"
+    (call-with-temporary-fixture
+     (lambda (dir)
+       (rewrite-gen! dir "gen")
+       (check-true
+        (for/and ([round (in-range 5)])
+          (call-with-registry-fixtures (list dir)
+            (lambda ()
+              (define caller (make-custodian))
+              (define index (fixture-index))
+              (define guard
+                (make-security-guard (current-security-guard)
+                                     (lambda (who path modes)
+                                       (when (and path (equal? (simplify-path path) index))
+                                         (custodian-shutdown-all caller)))
+                                     void))
+              (define finished (box #f))
+              (define victim
+                (parameterize ([current-custodian caller] [current-security-guard guard])
+                  (thread (lambda () (dataset-names) (set-box! finished #t)))))
+              (define seen (box #f))
+              (and (sync/timeout 5 (thread-dead-evt victim))
+                   (not (unbox finished))
+                   (sync/timeout 5 (thread (lambda () (set-box! seen (listed? 'gen)))))
+                   (unbox seen)))))))))
+
+  (test-case "a package indexed after the first call in a process is not seen"
+    (call-with-temporary-fixture
+     (lambda (dir)
+       (rewrite-gen! dir "gen")
+       (call-with-registry-fixtures '()
+         (lambda ()
+           (check-false (listed? 'gen))
+           (write-fixture-index! (car (current-library-collection-paths)) (list dir)
+                                 '((lib "datasets-fixture-0")))
+           (check-false (listed? 'gen))
+           (reset-relevant-directories-state!)
+           (check-true (listed? 'gen)))))))
+
+  (test-case "a denied discovery leaves the shared index readable by other callers"
+    (call-with-temporary-fixture
+     (lambda (dir)
+       (rewrite-gen! dir "gen")
+       (call-with-registry-fixtures (list dir)
+         (lambda ()
+           (call-with-unreadable (fixture-index) #:raise (errno-denial "Permission denied; errno=13" '(13 . posix))
+             (lambda () (check-equal? (dataset-names) installed-core)))
+           (check-not-false (member (simplify-path dir)
+                                    (map simplify-path
+                                         (find-relevant-directories '(datasets-registries) 'all-available)))))))))
 
   (test-case "access denied to the index falls back to datasets-core, warns, and is retried"
     (call-with-gen

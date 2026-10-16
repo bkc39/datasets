@@ -207,17 +207,30 @@
            (member (exn:fail:filesystem:errno-errno e) '((13 . posix) (1 . posix) (5 . windows))))
       (and (exn:fail? e) (regexp-match? #rx"^[^:\n]*: `[a-z+-]+' access denied for " (exn-message e)))))
 
+(define discovery-in-progress (box #f))
+
+(define (relevant-directory-records)
+  (when (unbox discovery-in-progress)
+    (reset-relevant-directories-state!))
+  (set-box! discovery-in-progress #t)
+  (define records
+    (with-handlers ([(lambda (_) #t)
+                     (lambda (e)
+                       (reset-relevant-directories-state!)
+                       (raise e))])
+      (find-relevant-directory-records '(datasets-registries) 'all-available)))
+  (set-box! discovery-in-progress #f)
+  records)
+
 (define (discovered-directories)
   (with-handlers ([access-denied?
                    (lambda (e)
                      (log-datasets-warning "sibling-package discovery failed; using datasets-core only: ~a"
                                            (exn-message e))
                      (values '() (exn-message e)))])
-    (values (with-handlers ([(lambda (_) #t)
-                             (lambda (e) (reset-relevant-directories-state!) (raise e))])
-              (for/list ([record (in-list (find-relevant-directory-records '(datasets-registries) 'all-available))]
-                         #:unless (equal? (directory-record-spec record) '(lib "datasets" "core-data")))
-                (directory-record-path record)))
+    (values (for/list ([record (in-list (relevant-directory-records))]
+                       #:unless (equal? (directory-record-spec record) '(lib "datasets" "core-data")))
+              (directory-record-path record))
             #f)))
 
 (define (current-catalog)
