@@ -1,0 +1,11 @@
+((shell "nix develop --command")
+ (base-ref "origin/master")
+ (gates
+  (compile  "raco setup --no-docs --pkgs datasets-core datasets")
+  (core     "bash scripts/check.sh core")
+  (test     "bash scripts/check.sh full")
+  (resyntax "scripts/resyntax-gate.sh ${RESYNTAX_BASE:-origin/master}")
+  (no-define-syntax-rule "bash -c '! git grep -n define-syntax-rule -- \"*.rkt\" \"*.scrbl\"'")
+  (docs     "bash scripts/build-docs.sh")
+  (check    "nix flake check --max-jobs 1 --cores 4 --print-build-logs"))
+ (push-gates (compile resyntax core)))

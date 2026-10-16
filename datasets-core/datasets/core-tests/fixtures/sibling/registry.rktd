@@ -1,0 +1,45 @@
+#hash(("toy"
+       .
+       #hash(("citation" . "Fixture.")
+             ("column-count" . 3)
+             ("columns"
+              .
+              (#hash(("description" . "id")
+                     ("levels" . ())
+                     ("missing-count" . 0)
+                     ("name" . "id")
+                     ("original-name" . "id")
+                     ("type" . "integer")
+                     ("unit" . #f))
+               #hash(("description" . "group")
+                     ("levels" . ("a" "c"))
+                     ("missing-count" . 1)
+                     ("name" . "group")
+                     ("original-name" . "group")
+                     ("type" . "categorical")
+                     ("unit" . #f))
+               #hash(("description" . "score")
+                     ("levels" . ())
+                     ("missing-count" . 1)
+                     ("name" . "score")
+                     ("original-name" . "score")
+                     ("type" . "real")
+                     ("unit" . #f))))
+             ("fetch" . #f)
+             ("identifiers" . ())
+             ("license" . "CC0-1.0")
+             ("name" . "toy")
+             ("notes" . "Fixture.")
+             ("package" . "datasets-fixture")
+             ("rows" . 3)
+             ("sha256"
+              .
+              "80b5018dc4754eafe4a8105356287019f87c4b5c8a081bb590ef131d0e815a5c")
+             ("source-sha256"
+              .
+              "0000000000000000000000000000000000000000000000000000000000000000")
+             ("source-url" . "file:///fixture")
+             ("source-version" . "fixture")
+             ("suggested-targets" . ())
+             ("tier" . "bundled")
+             ("time-series" . #f))))

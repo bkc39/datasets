@@ -23,5 +23,5 @@ lars x and y retained; UCI bezdekIris.data selected; Wine class moved last;
 breast cancer ID and diagnosis moved after measurements. Source row order and
 numeric precision retained. Source versions, archive and normalized SHA-256
 hashes, variable descriptions, and dataset-specific notes are in the immutable
-registry (datasets/private/registry.rktd). Upstream documentation is retained in
+registry (datasets/core-data/registry.rktd). Upstream documentation is retained in
 datasets/provenance; full data license texts are in datasets/licenses.

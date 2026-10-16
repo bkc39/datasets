@@ -1,14 +1,24 @@
 #!/usr/bin/env python3
 """Regenerate committed data from hash-verified archives; needs Python 3.12+ and R; source definitions are pinned to R 4.3.3.
-Pass an archive directory (offline), or --fetch DIRECTORY to download sources first.
+Pass an archive directory (offline), or --fetch to download sources into it first.
+Writes TARGET/registry.rktd and TARGET/data/<id>.rktd.gz for one package.
 """
-import csv, hashlib, io, json, re, subprocess, sys, tarfile, tempfile, urllib.request, zipfile
+import argparse, csv, gzip, hashlib, io, json, re, subprocess, sys, tarfile, tempfile, urllib.request, zipfile
 from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT/'datasets-core/datasets/private'
+cli = argparse.ArgumentParser(description=__doc__)
+cli.add_argument('--fetch', action='store_true')
+cli.add_argument('--package', default='datasets-core')
+cli.add_argument('--target', type=Path, default=ROOT/'datasets-core/datasets/core-data')
+cli.add_argument('--provenance', type=Path, default=ROOT/'datasets-core/datasets/provenance')
+cli.add_argument('archive_dir', type=Path)
+args = cli.parse_args()
+if args.package != 'datasets-core': sys.exit(f'No import recipes for package {args.package}')
+OUT, PROVENANCE, PACKAGE = args.target, args.provenance, args.package
+(OUT/'data').mkdir(parents=True,exist_ok=True); PROVENANCE.mkdir(parents=True,exist_ok=True)
 SOURCES = json.loads((ROOT/'scripts/sources.json').read_text())
-fetch = '--fetch' in sys.argv
-cache = Path(sys.argv[-1]); cache.mkdir(parents=True,exist_ok=True)
+fetch = args.fetch
+cache = args.archive_dir; cache.mkdir(parents=True,exist_ok=True)
 for s in SOURCES.values():
     p=cache/s['file']
     if fetch and not p.exists(): urllib.request.urlretrieve(s['url'],p)
@@ -38,16 +48,16 @@ def add(id,original,rows,source,levels={},units={},descriptions={},identifiers=[
         kind='identifier' if name in identifiers else 'categorical' if name in levels else 'integer' if all(isinstance(v,int) for v in values) else 'real' if all(isinstance(v,(int,float)) for v in values) else 'string'
         columns.append({'name':name,'original-name':orig,'type':kind,'levels':levels.get(name,[]),'unit':units.get(name,False),'description':descriptions.get(name,orig),'missing-count':sum(r[j] is None for r in rows)})
     text='(\n'+'\n'.join('  '+sexp(r) for r in rows)+'\n)\n'
-    (OUT/'data'/f'{id}.rktd').write_text(text)
+    (OUT/'data'/f'{id}.rktd.gz').write_bytes(gzip.compress(text.encode(),9,mtime=0))
     s=SOURCES[source]
-    registry[id]={'name':id,'rows':len(rows),'column-count':len(names),'columns':columns,'identifiers':identifiers,'suggested-targets':targets,'source-url':s['url'],'source-version':'R 4.3.3' if source=='R' else 'lars 1.3' if source=='lars' else 'UCI snapshot 2026-09-26 (hash pinned)','source-sha256':s['sha256'],'sha256':hashlib.sha256(text.encode()).hexdigest(),'license':'GPL-2.0-only OR GPL-3.0-only' if source=='R' else 'GPL-2.0-only' if source=='lars' else 'CC-BY-4.0','citation':citations.get(id,'R Core Team (2024). R: A Language and Environment for Statistical Computing. See bundled upstream documentation for original references.'),'notes':notes or 'Source row order and values retained; names normalized to kebab-case.','time-series':series or False}
+    registry[id]={'name':id,'rows':len(rows),'column-count':len(names),'columns':columns,'identifiers':identifiers,'suggested-targets':targets,'source-url':s['url'],'source-version':'R 4.3.3' if source=='R' else 'lars 1.3' if source=='lars' else 'UCI snapshot 2026-09-26 (hash pinned)','source-sha256':s['sha256'],'sha256':hashlib.sha256(text.encode()).hexdigest(),'license':'GPL-2.0-only OR GPL-3.0-only' if source=='R' else 'GPL-2.0-only' if source=='lars' else 'CC-BY-4.0','citation':citations.get(id,'R Core Team (2024). R: A Language and Environment for Statistical Computing. See bundled upstream documentation for original references.'),'notes':notes or 'Source row order and values retained; names normalized to kebab-case.','time-series':series or False,'tier':'bundled','package':PACKAGE,'fetch':False}
 citations={'iris':'Fisher, R. (1936). Iris. UCI. doi:10.24432/C56C76','wine':'Aeberhard, S. and Forina, M. (1991). Wine. UCI. doi:10.24432/C5PC7J','breast-cancer':'Wolberg, W., Mangasarian, O., Street, N., and Street, W. (1993). Breast Cancer Wisconsin (Diagnostic). UCI. doi:10.24432/C5DW2B','diabetes':'Efron, Hastie, Johnstone and Tibshirani (2004). Least Angle Regression. Annals of Statistics 32(2), 407-499. doi:10.1214/009053604000000067'}
 with tempfile.TemporaryDirectory() as tmp:
     tmp=Path(tmp)
     for src in ['R','lars']:
         with tarfile.open(cache/SOURCES[src]['file']) as a: a.extractall(tmp,filter='data')
     subprocess.run(['Rscript',str(ROOT/'scripts/export-r.R'),str(tmp),str(tmp)],check=True)
-    docs=OUT.parent/'provenance'; docs.mkdir(exist_ok=True)
+    docs=PROVENANCE
     rnames={'mtcars':'mtcars','faithful':'faithful','anscombe':'anscombe','airquality':'airquality','us-arrests':'USArrests','plant-growth':'PlantGrowth','tooth-growth':'ToothGrowth','titanic':'Titanic','air-passengers':'AirPassengers'}
     for id,orig in rnames.items(): (docs/f'{id}.Rd').write_bytes((tmp/f'R-4.3.3/src/library/datasets/man/{orig}.Rd').read_bytes())
     (docs/'diabetes.Rd').write_bytes((tmp/'lars/man/diabetes.Rd').read_bytes())
@@ -68,7 +78,7 @@ for id,file in [('iris','bezdekIris.data'),('wine','wine.data'),('breast-cancer'
     with zipfile.ZipFile(cache/SOURCES[id]['file']) as a:
         rows=[[number(v) for v in r] for r in csv.reader(io.StringIO(a.read(file).decode())) if r]
         for name in a.namelist():
-            if name.endswith('.names'): (OUT.parent/'provenance'/name).write_bytes(a.read(name))
+            if name.endswith('.names'): (PROVENANCE/name).write_bytes(a.read(name))
     if id=='iris':
         add(id,['sepal length','sepal width','petal length','petal width','species'],rows,id,levels={'species':['Iris-setosa','Iris-versicolor','Iris-virginica']},units={n:'cm' for n in ['sepal-length','sepal-width','petal-length','petal-width']},targets=['species'],notes='Corrected UCI bezdekIris.data variant, including corrected observations 35 and 38. Original class label spelling retained. Source class column is named species here.')
         registry[id]['columns'][-1]['original-name']='class'
@@ -81,4 +91,6 @@ for id,file in [('iris','bezdekIris.data'),('wine','wine.data'),('breast-cancer'
         names=[m+' '+s for s in ['mean','standard error','worst'] for m in measures]+['diagnosis','id']
         add(id,names,[r[2:]+[r[1],str(r[0])] for r in rows],id,levels={'diagnosis':['M','B']},identifiers=['id'],targets=['diagnosis'],notes='UCI diagnostic dataset. Source ID and M/B diagnosis moved after 30 measurements. Worst means mean of the three largest values; source IDs retained as strings.')
 (OUT/'registry.rktd').write_text(sexp(dict(sorted(registry.items())))+'\n')
+for stale in (OUT/'data').iterdir():
+    if stale.name not in {f'{id}.rktd.gz' for id in registry}: stale.unlink()
 print('Imported',len(registry),'datasets')
