@@ -10,7 +10,9 @@
          (prefix-in s: datasets/synthetic))
 (provide (all-from-out datasets/core)
          (contract-out
-          [load-dataset (->* (symbol?) (#:format dataset-format/c #:columns columns/c) any)]
+          [load-dataset (->* (symbol?)
+                             (#:format dataset-format/c #:columns columns/c #:download? boolean?)
+                             any)]
           [load-air-passengers loader/c] [load-airquality loader/c] [load-anscombe loader/c]
           [load-breast-cancer loader/c] [load-diabetes loader/c] [load-faithful loader/c]
           [load-iris loader/c] [load-mtcars loader/c] [load-plant-growth loader/c]
@@ -27,8 +29,9 @@
     [(matrix) (table->matrix table)]
     [(data-frame) (table->data-frame table)]))
 
-(define (load-dataset name #:format [format 'polars] #:columns [columns #f])
-  (convert-table (load-dataset-table name #:columns columns) format))
+(define (load-dataset name #:format [format 'polars] #:columns [columns #f]
+                      #:download? [download? #t])
+  (convert-table (load-dataset-table name #:columns columns #:download? download?) format))
 
 (define-syntax-parse-rule (define-synthetic-wrappers g:generator ...)
   #:with (core ...) (for/list ([name (in-list (attribute g))]) (format-id name "s:~a" name))

@@ -6,8 +6,9 @@
          (only-in racket/list append* make-list)
          (only-in racket/match match-define)
          (only-in racket/runtime-path define-runtime-path)
-         (only-in "fixture.rkt" call-with-registry-fixtures call-with-temporary-fixture fetch-ok
-                  gen-entry registry-fixture write-registry-fixture!))
+         (only-in "fixture.rkt" call-with-environment call-with-registry-fixtures
+                  call-with-temporary-fixture fetch-ok gen-entry registry-fixture
+                  write-registry-fixture!))
 (define-runtime-path core-module "../core.rkt")
 (define-runtime-path core-registry "../core-data/registry.rktd")
 (module+ test
@@ -25,6 +26,7 @@
   (define (snapshot) (for/list ([n (in-list (dataset-names))]) (cons n (dataset-info n))))
   (define installed (dataset-names))
   (define installed-packages (dataset-packages))
+  (define installed-core (dataset-names #:package "datasets-core"))
   (define both (list (registry-fixture "sibling") (registry-fixture "other")))
   (define (check-malformed info registries rxs)
     (call-with-temporary-fixture
@@ -74,7 +76,7 @@
                    (member p '("datasets-duplicate" "datasets-fixture" "datasets-other"))))
     (check-equal? (dataset-names #:package "datasets-core") core-13))
 
-  (test-case "R1 R8 R12 sibling registry discovered and loads; fetch tier refused"
+  (test-case "R1 R8 R12 sibling registry discovered and loads; uncached fetch tier refused offline"
     (call-with-registry-fixtures (list (registry-fixture "sibling"))
       (lambda ()
         (check-equal? (dataset-names) (sort (list* 'toy 'toy-remote installed) symbol<?))
@@ -88,8 +90,12 @@
         (check-equal? (hash-ref (dataset-info 'toy) "package") "datasets-fixture")
         (check-equal? (hash-ref (dataset-info 'toy-remote) "tier") "fetch")
         (check-true (immutable? (hash-ref (dataset-info 'toy-remote) "fetch")))
-        (check-exn (registry-error? #rx"fetch tier" #rx"toy-remote")
-                   (lambda () (load-dataset-table 'toy-remote))))))
+        (call-with-temporary-fixture
+         (lambda (root)
+           (call-with-environment (hash "DATASETS_HOME" (path->string root) "DATASETS_OFFLINE" "1")
+             (lambda ()
+               (check-exn (registry-error? #rx"not cached" #rx"toy-remote")
+                          (lambda () (load-dataset-table 'toy-remote))))))))))
 
   (test-case "R13 registry cache follows discovery"
     (check-equal? (dataset-names) installed))
@@ -332,7 +338,7 @@
        (define receiver (make-log-receiver (current-logger) 'warning 'datasets))
        (call-with-unreadable (fixture-index) #:raise (denial "`read' access denied for ")
          (lambda ()
-           (check-equal? (dataset-names) installed)
+           (check-equal? (dataset-names) installed-core)
            (check-exn #rx"unknown dataset.*sibling-package discovery failed.*access denied"
                       (lambda () (dataset-info 'gen)))))
        (check-true (listed? 'gen))
@@ -382,7 +388,7 @@
          #:raise (errno-denial "Too many open files; errno=24" '(24 . posix))
          (lambda () (check-exn #rx"Too many open files" dataset-names)))
        (call-with-unreadable (fixture-index) #:raise (errno-denial "Permission denied; errno=13" '(13 . posix))
-         (lambda () (check-equal? (dataset-names) installed)))
+         (lambda () (check-equal? (dataset-names) installed-core)))
        (check-true (listed? 'gen)))))
 
   (test-case "a malformed index raises, even one mentioning access denied, and is retried once restored"

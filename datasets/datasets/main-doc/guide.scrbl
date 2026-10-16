@@ -1,7 +1,7 @@
 #lang scribble/manual
 @(require scribble/eval
           (for-label racket/base datasets datasets/data-frame
-                     math/matrix (prefix-in pl: (except-in polars series-ref ~>)) (prefix-in df: data-frame)))
+                     math/matrix (prefix-in pl: (except-in polars head series-ref ~>)) (prefix-in df: data-frame)))
 @(define ev (make-base-eval))
 
 @title[#:tag "datasets-guide"]{Guide}
@@ -16,17 +16,19 @@ Use Racket 9.3 or later. Install from the Racket catalog:
 
 @commandline{raco pkg install --auto datasets}
 
-This also installs @tt{datasets-core} and the adapter dependencies.
-From a checkout of the repository, install both packages from its root:
+This also installs @tt{datasets-core}, the data package @tt{datasets-r}, and the
+adapter dependencies. From a checkout of the repository, install the packages
+from its root:
 
-@verbatim{raco pkg install ./datasets-core
+@verbatim{raco pkg install ./datasets-core ./datasets-r
 raco pkg install --auto ./datasets}
 
-The two top-level directories are independently installable multi-collection
+The top-level directories are independently installable multi-collection
 packages. @tt{datasets-core} provides @racketmodname[datasets/core];
+@tt{datasets-r} adds datasets from CRAN packages to its catalog;
 @tt{datasets} adds the convenient loaders and adapters to the same collection.
 The Polars package supplies its native library. With Nix, @tt{nix develop}
-prepares an isolated environment containing both packages and that library.
+prepares an isolated environment containing the three packages and that library.
 
 @examples[#:eval ev
  (require datasets (prefix-in pl: polars))
@@ -55,6 +57,29 @@ Column names are strings. A selection preserves the order you give and retains
 all source rows. Identifiers such as @racket["model"] are real columns, so they
 can be kept for display or left out of a numeric matrix. Duplicate names, empty
 selections, and unknown columns are reported as errors.
+
+@section[#:tag "datasets-penguins-guide"]{A first look at the Palmer penguins}
+
+Datasets from @tt{datasets-r} have no named loader; load them by name. The
+@racket['penguins] set records 344 penguins of three species near Palmer
+Station, Antarctica:
+
+@examples[#:eval ev
+ (define penguins (load-dataset 'penguins))
+ (pl:head penguins 4)
+ (hash-ref (dataset-info 'penguins) "suggested-targets")]
+
+Missing measurements are @tt{null}, and each species' mean body mass skips them:
+
+@examples[#:eval ev
+ (define by-species
+   (pl:~> penguins
+          (pl:group-by "species")
+          (pl:agg (pl:mean (pl:col "body-mass-g")))
+          (pl:sort '("species"))))
+ (for/list ([row 3])
+   (list (pl:series-ref (pl:dataframe-column by-species "species") row)
+         (pl:series-ref (pl:dataframe-column by-species "body-mass-g") row)))]
 
 @section[#:tag "datasets-categories-guide"]{Grouping categorical data}
 

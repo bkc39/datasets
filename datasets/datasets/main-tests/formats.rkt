@@ -1,11 +1,16 @@
 #lang racket/base
 (require (prefix-in df: (only-in data-frame df-is-na? df-na-value df-ref df-set!))
-         (only-in datasets dataset-missing dataset-missing? dataset-names dataset-table-column
-                  dataset-table-names dataset-table-row-count load-airquality load-dataset
-                  load-dataset-table load-iris)
+         (only-in datasets dataset-missing dataset-missing? dataset-names
+                  dataset-table-column dataset-table-names dataset-table-row-count
+                  load-air-passengers load-airquality load-anscombe load-breast-cancer load-dataset
+                  load-dataset-table load-diabetes load-faithful load-iris load-mtcars
+                  load-plant-growth load-titanic load-tooth-growth load-us-arrests load-wine)
          (only-in datasets/core-private/table dataset-table)
-         (only-in datasets/core-tests/fixture call-with-registry-fixtures call-with-temporary-fixture
-                  gen-entry gzip-bytes hex registry-fixture rows->rktd-bytes write-registry-fixture!)
+         (only-in datasets/core-tests/fixture cache-files call-with-artifact-url
+                  call-with-environment call-with-fetch-fixture call-with-registry-fixtures
+                  call-with-temporary-fixture fetch-entry gen-entry gzip-bytes hex registry-fixture
+                  rows->rktd-bytes table-digest toy-artifact toy-table-digest
+                  write-registry-fixture!)
          (only-in datasets/data-frame data-frame-column-names)
          (only-in datasets/polars table->polars)
          (only-in math/matrix matrix-ref)
@@ -40,10 +45,17 @@
         (define m (load-dataset id #:format 'matrix #:columns numeric))
         (for* ([i (in-range (dataset-table-row-count t))] [j (in-range (length numeric))])
           (check-equal? (matrix-ref m i j) (vector-ref (dataset-table-column t (list-ref numeric j)) i))))))
+  (define loaders
+    (hash 'air-passengers load-air-passengers 'airquality load-airquality 'anscombe load-anscombe
+          'breast-cancer load-breast-cancer 'diabetes load-diabetes 'faithful load-faithful
+          'iris load-iris 'mtcars load-mtcars 'plant-growth load-plant-growth
+          'titanic load-titanic 'tooth-growth load-tooth-growth 'us-arrests load-us-arrests
+          'wine load-wine))
   (define (check-loaders)
-    (for ([name (in-list (dataset-names #:package "datasets-core"))])
-      (define loader (dynamic-require 'datasets (string->symbol (format "load-~a" name))))
-      (check-equal? (loader #:format 'table) (load-dataset name #:format 'table))))
+    (check-equal? (sort (hash-keys loaders) symbol<?) (dataset-names #:package "datasets-core"))
+    (for ([(name loader) (in-hash loaders)])
+      (check-equal? (loader #:format 'table) (load-dataset name #:format 'table))
+      (check-exn #rx"blaming: [^\n]*formats\\.rkt" (lambda () (loader #:format 'bad)))))
   (check-formats)
   (check-loaders)
   (define air (load-airquality #:format 'data-frame))
@@ -105,4 +117,20 @@
                       (hash "columns" (list (hash "name" "r" "type" "real")
                                             (hash "name" "i" "type" "integer")
                                             (hash "name" "l" "type" "logical"))))))
-    (check-equal? (dtypes typed-empty) '(float64 int64 string))))
+    (check-equal? (dtypes typed-empty) '(float64 int64 string)))
+  (test-case "M1 load-dataset passes #:download? through; blame names the caller"
+    (call-with-artifact-url toy-artifact
+      (lambda (url)
+        (call-with-fetch-fixture (list (fetch-entry (list url)))
+          (lambda (root registry)
+            (check-exn #rx"reason: #:download\\? #f"
+                       (lambda () (load-dataset 'toy-remote #:format 'table #:download? #f)))
+            (check-equal? (cache-files root) '())
+            (call-with-environment (hash "DATASETS_OFFLINE" "1")
+              (lambda ()
+                (check-exn #rx"not cached"
+                           (lambda () (load-dataset 'toy-remote #:format 'table #:download? #f)))))
+            (check-equal? (table-digest (load-dataset 'toy-remote #:format 'table))
+                          toy-table-digest)
+            (check-equal? (pl:dataframe-height (load-dataset 'toy-remote)) 3)))))
+    (check-exn #rx"blaming: [^\n]*formats\\.rkt" (lambda () (load-dataset 'iris #:download? 1)))))
