@@ -97,4 +97,12 @@
   (test-case "zero rows and no \"columns\" give empty string columns"
     (define no-columns-empty (table->polars (dataset-table '("a" "b") #(#() #()) 0 (hash))))
     (check-equal? (pl:dataframe-height no-columns-empty) 0)
-    (check-equal? (dtypes no-columns-empty) '(string string))))
+    (check-equal? (dtypes no-columns-empty) '(string string)))
+  (test-case "zero rows take each column's dtype from its \"type\""
+    (define typed-empty
+      (table->polars
+       (dataset-table '("r" "i" "l") #(#() #() #()) 0
+                      (hash "columns" (list (hash "name" "r" "type" "real")
+                                            (hash "name" "i" "type" "integer")
+                                            (hash "name" "l" "type" "logical"))))))
+    (check-equal? (dtypes typed-empty) '(float64 int64 string))))

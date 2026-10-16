@@ -1,6 +1,10 @@
 #lang scribble/manual
 @(require (for-label racket/base racket/contract/base datasets datasets/polars
-                     datasets/matrix datasets/data-frame (prefix-in s: datasets/synthetic)))
+                     datasets/matrix datasets/data-frame (prefix-in s: datasets/synthetic))
+          (only-in scribble/example close-eval examples make-base-eval))
+
+@(define ev (make-base-eval))
+@examples[#:eval ev #:hidden (require datasets datasets/polars)]
 
 @title[#:tag "datasets-reference"]{Reference}
 
@@ -242,9 +246,14 @@ Constructs a Polars dataframe from the selected columns of @racket[table]. Each
 column is newly allocated. String columns, including labels and identifiers,
 remain strings. A column of exact integers uses Int64; other numeric columns use
 Float64, with exact values converted to inexact values for that constructor.
-@racket[dataset-missing] becomes @tt{polars-null}. Column and row order are
-preserved. Source metadata is not attached to the dataframe; use
-@racket[dataset-info] or @racket[dataset-table-info] to retain it.}
+@racket[dataset-missing] becomes @tt{polars-null}. A zero-row column takes its
+dtype from the column's @racket["type"] in @racket[dataset-table-info]: Float64
+for @racket["real"], Int64 for @racket["integer"], String otherwise. Column and
+row order are preserved. Source metadata is not attached to the dataframe; use
+@racket[dataset-info] or @racket[dataset-table-info] to retain it.
+
+@examples[#:eval ev
+(table->polars (make-circles #:format 'table #:n-samples 0))]}
 
 @section[#:tag "datasets-matrix-reference"]{Matrix conversion}
 @defmodule[datasets/matrix]
@@ -275,3 +284,5 @@ object created by @racket[table->data-frame] or a loader using
 This is a snapshot of the selection at construction time. Callers that add,
 remove, or rename columns must update the property themselves if they continue
 to use it. The underlying @tt{df-series-names} procedure has unspecified order.}
+
+@(close-eval ev)
