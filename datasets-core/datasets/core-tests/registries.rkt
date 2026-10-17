@@ -420,11 +420,12 @@
                   5.1))
 
   (test-case "a caller's reading parameters do not change registry discovery"
-    (define expected (call-with-registry-fixtures (list (registry-fixture "sibling")) snapshot))
-    (check-equal? (call-with-registry-fixtures (list (registry-fixture "sibling"))
-                    (lambda () (call-with-foreign-reading snapshot)))
-                  expected)
-    (check-not-false (assq 'toy expected)))
+    (call-with-gen
+     (lambda ()
+       (define foreign (call-with-foreign-reading snapshot))
+       (define expected (snapshot))
+       (check-equal? foreign expected)
+       (check-not-false (assq 'gen expected)))))
 
   (test-case "an unknown package in the fallback gives the discovery failure"
     (call-with-gen
