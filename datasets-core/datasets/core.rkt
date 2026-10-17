@@ -5,7 +5,7 @@
                      (only-in syntax/parse syntax-parse))
          (only-in datasets/core-private/cache cache-file cache-root clear-cache-directory
                   clear-cache-root download-dataset)
-         (only-in datasets/core-private/codec gunzip-file hex)
+         (only-in datasets/core-private/codec file-sha256 gunzip-file hex)
          (only-in datasets/core-private/error raise-registry-error)
          (only-in datasets/core-private/log log-datasets-warning)
          (only-in datasets/core-private/table
@@ -14,7 +14,7 @@
          (only-in racket/contract/base -> ->* and/c contract-out listof non-empty-listof or/c)
          (only-in racket/format ~e ~s)
          (only-in racket/list append-map check-duplicates index-of remove-duplicates take)
-         (only-in racket/match == match match-define)
+         (only-in racket/match == match)
          (only-in racket/runtime-path define-runtime-path)
          (only-in setup/getinfo directory-record-path directory-record-spec find-relevant-directory-records
                   get-info/full reset-relevant-directories-state!))
@@ -149,7 +149,6 @@
     [(equal? tier "bundled") #f]
     [(not ((nonempty-list-of string?) (fetch-ref "urls"))) (list "urls" "a nonempty list of strings")]
     [(not (sha256-string? (fetch-ref "sha256"))) (list "sha256" "64 lowercase hexadecimal digits")]
-    [(not (exact-positive-integer? (fetch-ref "size"))) (list "size" "a positive byte count")]
     [(not (string? (fetch-ref "format"))) (list "format" "a string")]
     [else #f]))
 
@@ -158,7 +157,7 @@
     (with-handlers ([exn:fail? (lambda (e)
                                  (raise-registry-error 'datasets "cannot read registry"
                                                        "registry" file "error" (exn-message e)))])
-      (call-with-input-file file read)))
+      (call-with-default-reading-parameterization (lambda () (call-with-input-file file read)))))
   (unless (and (hash? registry) (immutable? registry) (andmap string? (hash-keys registry)))
     (raise-registry-error 'datasets "malformed registry" "registry" file
                           "expected" "an immutable hash from dataset names to metadata hashes"
@@ -201,32 +200,26 @@
 
 (define cache (box #f))
 
-(define catalog-requests (make-channel))
-
-(define catalog-manager
-  (thread/suspend-to-kill
-   (lambda ()
-     (let loop ()
-       (match-define (list parameterization reply done) (channel-get catalog-requests))
-       (set-box! reply
-                 (with-handlers ([(lambda (_) #t) (lambda (e) (lambda () (raise e)))])
-                   (define catalog (call-with-parameterization parameterization unlocked-catalog))
-                   (lambda () catalog)))
-       (semaphore-post done)
-       (loop)))))
-
-(define (current-catalog)
-  (define reply (box #f))
-  (define done (make-semaphore 0))
-  (thread-resume catalog-manager (current-thread))
-  (channel-put catalog-requests (list (current-parameterization) reply done))
-  (semaphore-wait done)
-  ((unbox reply)))
-
 (define (access-denied? e)
   (or (and (exn:fail:filesystem:errno? e)
            (member (exn:fail:filesystem:errno-errno e) '((13 . posix) (1 . posix) (5 . windows))))
       (and (exn:fail? e) (regexp-match? #rx"^[^:\n]*: `[a-z+-]+' access denied for " (exn-message e)))))
+
+(define discovery-in-progress (box #f))
+
+(define (relevant-directory-records)
+  (when (unbox discovery-in-progress)
+    (reset-relevant-directories-state!))
+  (set-box! discovery-in-progress #t)
+  (define records
+    (with-handlers ([(lambda (_) #t)
+                     (lambda (e)
+                       (reset-relevant-directories-state!)
+                       (raise e))])
+      (call-with-default-reading-parameterization
+       (lambda () (find-relevant-directory-records '(datasets-registries) 'all-available)))))
+  (set-box! discovery-in-progress #f)
+  records)
 
 (define (discovered-directories)
   (with-handlers ([access-denied?
@@ -234,14 +227,12 @@
                      (log-datasets-warning "sibling-package discovery failed; using datasets-core only: ~a"
                                            (exn-message e))
                      (values '() (exn-message e)))])
-    (values (with-handlers ([(lambda (_) #t)
-                             (lambda (e) (reset-relevant-directories-state!) (raise e))])
-              (for/list ([record (in-list (find-relevant-directory-records '(datasets-registries) 'all-available))]
-                         #:unless (equal? (directory-record-spec record) '(lib "datasets" "core-data")))
-                (directory-record-path record)))
+    (values (for/list ([record (in-list (relevant-directory-records))]
+                       #:unless (equal? (directory-record-spec record) '(lib "datasets" "core-data")))
+              (directory-record-path record))
             #f)))
 
-(define (unlocked-catalog)
+(define (current-catalog)
   (define-values (dirs failure) (discovered-directories))
   (define sources (registry-sources dirs))
   (define built
@@ -293,21 +284,37 @@
                                    "available" (dataset-table-names table)))
   (vector-ref (dataset-table-columns table) i))
 
-(define (read-rows name info file remedy)
-  (define remedy-fields (if remedy (list "remedy" remedy) '()))
-  (define text
-    (with-handlers ([exn:fail? (lambda (e)
-                                 (apply raise-registry-error 'load-dataset-table
-                                        "cannot read dataset data" "dataset" name "file" file
-                                        "error" (exn-message e) remedy-fields))])
-      (gunzip-file file)))
+(define (read-rows name file info)
   (define expected (hash-ref info "sha256"))
+  (define fetch (hash-ref info "fetch"))
+  (define remedy-fields (if fetch (list "remedy" (format "(clear-dataset-cache '~a)" name)) '()))
+  (define (pinned?)
+    (and fetch
+         (with-handlers ([exn:fail? (lambda (_) #f)])
+           (equal? (file-sha256 file) (hash-ref fetch "sha256")))))
+  (define (unreadable e)
+    (cond
+      [(pinned?)
+       (raise-registry-error 'load-dataset-table "cannot read the pinned download"
+                             "dataset" name "package" (hash-ref info "package") "file" file
+                             "error" (exn-message e))]
+      [else (apply raise-registry-error 'load-dataset-table "cannot read dataset data"
+                   "dataset" name "file" file "error" (exn-message e) remedy-fields)]))
+  (define text (with-handlers ([exn:fail? unreadable]) (gunzip-file file)))
   (define actual (hex (sha256-bytes text)))
-  (unless (equal? actual expected)
-    (apply raise-registry-error 'load-dataset-table "data sha256 mismatch"
-           "dataset" name "file" file
-           "expected" expected "actual" actual remedy-fields))
-  (read (open-input-bytes text)))
+  (cond
+    [(equal? actual expected)
+     (with-handlers ([exn:fail? (lambda (e)
+                                  (raise-registry-error 'load-dataset-table "cannot parse dataset data"
+                                                        "dataset" name "package" (hash-ref info "package")
+                                                        "file" file "error" (exn-message e)))])
+       (call-with-default-reading-parameterization (lambda () (read (open-input-bytes text)))))]
+    [(pinned?)
+     (raise-registry-error 'load-dataset-table "registry sha256 does not match the pinned download"
+                           "dataset" name "package" (hash-ref info "package") "file" file
+                           "expected" expected "actual" actual)]
+    [else (apply raise-registry-error 'load-dataset-table "data sha256 mismatch" "dataset" name
+                 "file" file "expected" expected "actual" actual remedy-fields)]))
 
 (define (fetch-tier? info)
   (equal? (hash-ref info "tier") "fetch"))
@@ -333,9 +340,7 @@
           [(file-exists? final) final]
           [else (download-dataset 'load-dataset-table (symbol->string name) info final
                                   #:download? download? #:idle-timeout 60)]))
-  (define rows
-    (map list->vector
-         (read-rows name info file (and final (format "(clear-dataset-cache '~a)" name)))))
+  (define rows (map list->vector (read-rows name file info)))
   (define columns
     (vector->immutable-vector
      (for/vector ([i (in-list indices)])

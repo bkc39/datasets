@@ -157,12 +157,12 @@ Some datasets are too large to ship in a package. Their metadata is installed
 like any other, so @racket[dataset-names], @racket[dataset-info] and the catalog
 describe them without a network connection, but their data is downloaded the
 first time it is loaded. Such a dataset has @tt{tier} @tt{fetch}; its @tt{fetch}
-metadata pins the size and SHA-256 of the file to download.
+metadata pins the SHA-256 of the file to download.
 
 The first @racket[load-dataset-table] of a fetch-tier dataset downloads the file,
-checks it, and stores it in the cache; later loads read the cache and contact no
-server. A failed or mismatched download leaves nothing behind, and programs
-loading the same dataset at the same time never see a partial file.
+checks its SHA-256, and stores it in the cache; later loads read the cache and
+contact no server. Every load checks the data's SHA-256. A failed or mismatched
+download leaves nothing behind.
 
 The cache is @racket[(dataset-cache-directory)]: @filepath{racket-datasets} in
 Racket's cache directory, or the directory named by @envvar{DATASETS_HOME}.
@@ -175,10 +175,9 @@ Racket's cache directory, or the directory named by @envvar{DATASETS_HOME}.
 @racket[fetch-dataset] downloads without loading, and @racket[dataset-cached?]
 says whether a load would need the network. To use datasets on a machine without
 network access, fetch them elsewhere, copy the cache directory, and point
-@envvar{DATASETS_HOME} at the copy. To make sure a program never downloads, pass
-@racket[#:download? #f] or set @envvar{DATASETS_OFFLINE} to @tt{1}; a dataset that
-is not cached is then an error that says how to fetch it. Test suites and
-documentation builds should set @envvar{DATASETS_OFFLINE}.
+@envvar{DATASETS_HOME} at the copy. To make sure a load never downloads, pass
+@racket[#:download? #f]; a dataset that is not cached is then an error that says
+how to fetch it.
 @racket[clear-dataset-cache] deletes downloaded files, for one dataset or all,
 and nothing else.
 

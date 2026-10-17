@@ -23,8 +23,7 @@ silently corrected except for choosing the documented corrected UCI Iris variant
 @(define (fetch-line info)
    (match (hash-ref info "fetch")
      [#f '()]
-     [fetch (para "Fetch tier: a " (number->string (hash-ref fetch "size"))
-                  "-byte download, SHA-256 " (tt (hash-ref fetch "sha256"))
+     [fetch (para "Fetch tier: download SHA-256 " (tt (hash-ref fetch "sha256"))
                   ", fetched on first use; see " (secref "datasets-core-fetch-guide") ".")]))
 
 @(define (dataset-entry name)

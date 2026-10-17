@@ -31,7 +31,6 @@
                     ("sha256"
                      .
                      "2a8b8c1a037d8c33432ee050c106b1840433f5f7138b0f326c6117719491ba85")
-                    ("size" . 60)
                     ("urls" . ("file:///nonexistent/toy-remote.rktd.gz"))))
              ("identifiers" . ())
              ("license" . "CC0-1.0")

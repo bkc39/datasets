@@ -1,6 +1,6 @@
 #lang racket/base
 (require (for-syntax racket/base (only-in syntax/parse ...+ expr id))
-         (only-in datasets/core-private/codec file-sha256 gunzip-sha256)
+         (only-in datasets/core-private/codec file-sha256)
          (only-in datasets/core-private/error raise-registry-error)
          (only-in datasets/core-private/log log-datasets-info)
          (only-in datasets/core-private/resource with-custodian with-resource)
@@ -24,30 +24,21 @@
 (define (cache-file root name info)
   (build-path root name (format "~a.rktd.gz" (hash-ref (hash-ref info "fetch") "sha256"))))
 
-(define (offline-value)
-  (match (getenv "DATASETS_OFFLINE")
-    [(or #f "") #f]
-    [value (and (not (member (string-downcase value) '("0" "false" "no" "off"))) value)]))
-
 (define (download-dataset who name info final #:download? download? #:idle-timeout idle)
   (define fetch (hash-ref info "fetch"))
-  (define offline (offline-value))
   (define fetch-format (hash-ref fetch "format"))
   (cond
-    [(or offline (not download?))
-     (raise-registry-error
-      who "dataset is not cached and downloads are disabled" "dataset" name
-      "reason" (if offline (string-append "DATASETS_OFFLINE=" offline) "#:download? #f")
-      "cache file" final
-      "to download" (string-append "(fetch-dataset '" name ")"
-                                   (if offline " with DATASETS_OFFLINE unset" "")))]
+    [(not download?)
+     (raise-registry-error who "dataset is not cached and downloads are disabled" "dataset" name
+                           "reason" "#:download? #f" "cache file" final
+                           "to download" (format "(fetch-dataset '~a)" name))]
     [(not (member fetch-format supported-formats))
      (raise-registry-error who "unsupported fetch format" "dataset" name "format" fetch-format
                            "supported" (format "~s" supported-formats)
                            "hint" "a newer datasets-core may support this format")]
     [else
      (with-part-file [part who name final]
-       (try-urls who name info part final idle))]))
+       (try-urls who name fetch part final idle))]))
 
 (define-syntax-parse-rule (with-cache-failure [who:expr message:expr field:expr ...] body:expr ...+)
   (with-handlers ([exn:fail? (lambda (e)
@@ -64,55 +55,35 @@
     (make-directory* dir)
     (make-temporary-file (string-append (path->string file) ".~a.part") #:base-dir dir)))
 
-(define (try-urls who name info part final idle)
-  (define fetch (hash-ref info "fetch"))
+(define (try-urls who name fetch part final idle)
   (let loop ([urls (hash-ref fetch "urls")] [failures '()])
     (match urls
       ['() (apply raise-registry-error who "cannot download dataset" "dataset" name
                   (append* (reverse failures)))]
       [(cons url more)
-       (log-datasets-info "downloading ~a from ~a (~a bytes)" name url (hash-ref fetch "size"))
-       (match (or (download-url url part (hash-ref fetch "size") idle)
-                  (with-handlers ([exn:fail? exn-message])
-                    (verification-problem part fetch (hash-ref info "sha256"))))
-         [#f (install! part final)]
+       (log-datasets-info "downloading ~a from ~a" name url)
+       (match (with-handlers ([exn:fail? exn-message])
+                (download-url url part idle)
+                (hash-problem part (hash-ref fetch "sha256")))
+         [#f
+          (with-cache-failure [who "cannot write the dataset cache" "dataset" name "file" final]
+            (rename-file-or-directory part final #t))
+          final]
          [problem (loop more (cons (list "url" url "error" problem) failures))])])))
 
-(define (download-url url part size idle)
-  (define progress (make-semaphore 0))
-  (define outcome (box #f))
+(define (download-url url part idle)
   (with-custodian
-    (define worker
-      (thread (lambda ()
-                (set-box! outcome (with-handlers ([exn:fail? exn-message])
-                                    (copy-url url part size progress)
-                                    'done)))))
-    (let loop ()
-      (match (sync/timeout idle (wrap-evt progress (lambda (_) 'progress)) (thread-dead-evt worker))
-        ['progress (loop)]
-        [#f (format "no data for ~a seconds" idle)]
-        [_ (match (unbox outcome)
-             ['done #f]
-             [#f "download stopped"]
-             [problem problem])]))))
+    (define in (open-url (string->url url)))
+    (call-with-output-file part #:exists 'truncate
+      (lambda (out) (copy-until-idle in out idle)))))
 
-(define (copy-url url part size progress)
-  (define in (open-url (string->url url)))
+(define (copy-until-idle in out idle)
   (define buffer (make-bytes 65536))
-  (call-with-output-file part #:exists 'truncate
-    (lambda (out)
-      (let loop ([received 0])
-        (define n (read-bytes-avail! buffer in))
-        (cond
-          [(and (eof-object? n) (= received size)) (void)]
-          [(eof-object? n)
-           (fail (format "size mismatch: expected ~a bytes, received ~a" size received))]
-          [(> (+ received n) size)
-           (fail (format "size mismatch: expected ~a bytes, received more than ~a" size size))]
-          [else
-           (write-bytes buffer out 0 n)
-           (semaphore-post progress)
-           (loop (+ received n))])))))
+  (let loop ()
+    (match (and (sync/timeout idle in) (read-bytes-avail! buffer in))
+      [#f (fail (format "no data for ~a seconds" idle))]
+      [(? eof-object?) (void)]
+      [n (write-bytes buffer out 0 n) (loop)])))
 
 (define (open-url u)
   (match (url-scheme u)
@@ -131,25 +102,11 @@
 (define (fail message)
   (raise (exn:fail message (current-continuation-marks))))
 
-(define (verification-problem part fetch content-sha256)
-  (define expected (hash-ref fetch "sha256"))
+(define (hash-problem part expected)
   (define actual (file-sha256 part))
   (cond
-    [(equal? actual expected) (content-problem part content-sha256)]
-    [else (format "sha256 mismatch: expected ~a, actual ~a" expected actual)]))
-
-(define (content-problem part expected)
-  (define actual (gunzip-sha256 part))
-  (cond
     [(equal? actual expected) #f]
-    [else (format "content sha256 mismatch: expected ~a, actual ~a" expected actual)]))
-
-(define (install! part final)
-  (with-handlers ([exn:fail:filesystem? (lambda (e)
-                                          (cond [(file-exists? final) (delete-if-present part)]
-                                                [else (raise e)]))])
-    (rename-file-or-directory part final #t))
-  final)
+    [else (format "sha256 mismatch: expected ~a, actual ~a" expected actual)]))
 
 (define (delete-if-present file)
   (with-handlers ([exn:fail:filesystem? (lambda (e) (when (file-exists? file) (raise e)))])
