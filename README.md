@@ -169,8 +169,17 @@ text. `--package datasets-r` imports the CRAN teaching sets into
 `datasets-r/datasets/r-data`; `--target DIR` writes elsewhere.
 Reimport, inspect the diff, then run checks.
 Source selection is in `scripts/sources.json`; original documentation is copied
-alongside data. No synthetic generators, caching, or X/y helpers are included
-in v0.1.
+alongside data. No X/y helpers are included in v0.1.
+
+### Synthetic generator fixtures
+
+The stream-1 golden values change only when the random stream version is bumped;
+the scikit-learn parity fixture only when the reference version changes:
+
+```sh
+racket scripts/synthetic-golden.rkt  # core-tests/fixtures/synthetic-golden.rktd
+nix shell nixpkgs#python3Packages.scikit-learn -c python3 scripts/sklearn-synthetic-fixtures.py
+```
 
 ## Downstream integration without a dependency cycle
 

@@ -201,6 +201,30 @@ The same metadata interface records source citations, licenses, units, identifie
 and file checksums for every dataset. The catalog is generated from that registry
 rather than maintained as a second independent list.
 
+@section[#:tag "datasets-synthetic-guide"]{Generating synthetic data}
+
+The scikit-learn generators are available under the same names with a
+@racket[#:format] keyword. A fixed @racket[#:seed] makes the result
+reproducible. Two interleaving moons, plotted by label:
+
+@examples[#:eval ev
+ (require plot/pict)
+ (define moons (make-moons #:n-samples 200 #:noise 0.1 #:seed 0 #:format 'table))
+ (define (moon label)
+   (for/list ([x (in-vector (dataset-table-column moons "x0"))]
+              [y (in-vector (dataset-table-column moons "x1"))]
+              [l (in-vector (dataset-table-column moons "y"))]
+              #:when (= l label))
+     (vector x y)))
+ (plot (list (points (moon 0) #:color 1 #:label "y = 0")
+             (points (moon 1) #:color 2 #:label "y = 1"))
+       #:x-label "x0" #:y-label "x1")
+ (pl:dataframe-column-names (make-moons #:seed 0))]
+
+Each table's metadata records the arguments and seed that produced it. See
+@secref["datasets-synthetic-reference" #:doc '(lib "datasets/core-doc/datasets-core.scrbl")]
+for the generators and their seeds.
+
 @section[#:tag "datasets-downstream-guide"]{Using core data in another package}
 
 A package that constructs its own dataframes can depend on @tt{datasets-core}

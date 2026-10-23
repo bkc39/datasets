@@ -5,14 +5,17 @@
                   load-air-passengers load-airquality load-anscombe load-breast-cancer load-dataset
                   load-dataset-table load-diabetes load-faithful load-iris load-mtcars
                   load-plant-growth load-titanic load-tooth-growth load-us-arrests load-wine)
+         (only-in datasets/core-private/table dataset-table)
          (only-in datasets/core-tests/fixture cache-files call-with-artifact-url
-                  call-with-fetch-fixture call-with-registry-fixtures fetch-entry registry-fixture
-                  table-digest toy-artifact toy-table-digest)
+                  call-with-fetch-fixture call-with-registry-fixtures call-with-temporary-fixture
+                  fetch-entry gen-entry gzip-bytes hex registry-fixture rows->rktd-bytes
+                  table-digest toy-artifact toy-table-digest write-registry-fixture!)
          (only-in datasets/data-frame data-frame-column-names)
+         (only-in datasets/polars table->polars)
          (only-in math/matrix matrix-ref)
          (prefix-in pl: (only-in polars column-names dataframe-column dataframe-column-names
-                                 dataframe-height dataframe-rename dataframe? polars-null? series-ref
-                                 shape))
+                                 dataframe-height dataframe-rename dataframe? polars-null? series-dtype
+                                 series-ref shape))
          (only-in racket/list last))
 (module+ test
   (require (only-in rackunit check-= check-eq? check-equal? check-exn check-true test-case))
@@ -73,6 +76,47 @@
       (check-equal? (pl:dataframe-height (load-dataset 'toy)) 3)
       (check-formats)
       (check-loaders)))
+  (define (dtypes p)
+    (map (lambda (c) (pl:series-dtype (pl:dataframe-column p c))) (pl:dataframe-column-names p)))
+  (define untyped-rows (hash "nt" '((1 2.5) (2 3.5)) "nz" '()))
+  (define untyped-text
+    (for/hash ([(name rows) (in-hash untyped-rows)]) (values name (rows->rktd-bytes rows))))
+  (test-case "registry columns without \"type\" convert to polars"
+    (call-with-temporary-fixture
+     (lambda (dir)
+       (write-registry-fixture!
+        dir #:info '("registry.rktd")
+        #:registries (hash "registry.rktd"
+                           (for/hash ([(name rows) (in-hash untyped-rows)])
+                             (values name
+                                     (hash-set* (gen-entry name
+                                                           #:sha256 (hex (sha256-bytes
+                                                                          (hash-ref untyped-text name))))
+                                                "rows" (length rows) "column-count" 2
+                                                "columns" (list (hash "name" "a") (hash "name" "b"))))))
+        #:data (for/hash ([(name text) (in-hash untyped-text)]) (values name (gzip-bytes text))))
+       (call-with-registry-fixtures (list dir)
+         (lambda ()
+           (check-equal? (pl:dataframe-height (load-dataset 'nt)) 2)
+           (define empty (load-dataset 'nz))
+           (check-equal? (pl:dataframe-height empty) 0)
+           (check-equal? (dtypes empty) '(string string)))))))
+  (test-case "info without \"columns\" converts to polars"
+    (define no-columns (table->polars (dataset-table '("a" "b") #(#(1 2) #(2.5 3.5)) 2 (hash))))
+    (check-equal? (pl:dataframe-height no-columns) 2)
+    (check-equal? (dtypes no-columns) '(int64 float64)))
+  (test-case "zero rows and no \"columns\" give empty string columns"
+    (define no-columns-empty (table->polars (dataset-table '("a" "b") #(#() #()) 0 (hash))))
+    (check-equal? (pl:dataframe-height no-columns-empty) 0)
+    (check-equal? (dtypes no-columns-empty) '(string string)))
+  (test-case "zero rows take each column's dtype from its \"type\""
+    (define typed-empty
+      (table->polars
+       (dataset-table '("r" "i" "l") #(#() #() #()) 0
+                      (hash "columns" (list (hash "name" "r" "type" "real")
+                                            (hash "name" "i" "type" "integer")
+                                            (hash "name" "l" "type" "logical"))))))
+    (check-equal? (dtypes typed-empty) '(float64 int64 string)))
   (test-case "M1 load-dataset passes #:download? through; blame names the caller"
     (call-with-artifact-url toy-artifact
       (lambda (url)
