@@ -55,8 +55,10 @@ ts.index <- function(x) {
            else if (f <= 1) list(year=as.integer(year))
            else setNames(list(as.integer(year), cycle),
                          c('year', c('4'='quarter', '12'='month', '260'='business-day')[[as.character(f)]]))
-  description <- c(time='Time point', year='Calendar year', quarter='Quarter, 1-4',
-                   month='Calendar month, January=1', 'business-day'='Business day of the year')
+  description <- if (f == 260)
+    c(year='Year of R\'s nominal business-time grid, not a calendar year',
+      'business-day'='Day 1-260 of R\'s nominal 260-day business year, not a calendar date')
+  else c(time='Time point', year='Calendar year', quarter='Quarter, 1-4', month='Calendar month, January=1')
   n <- length(index)
   list(frame=data.frame(index, check.names=FALSE), original=names(index),
        description=unname(description[names(index)]),
@@ -85,7 +87,7 @@ shape <- function(n, x) {
     s <- list(frame=d, original=if (is.null(colnames(x))) n else colnames(x),
               description=if (is.null(colnames(x))) n else colnames(x), identifiers=character(),
               notes=sprintf('Time series of frequency %s; index columns from the ts time.',
-                            format(frequency(x))))
+                            format(frequency(x), digits=15)))
     with.index(s, ts.index(x))
   } else if (inherits(x, 'dist')) {
     lab <- attr(x, 'Labels'); ij <- which(lower.tri(matrix(0, attr(x, 'Size'), attr(x, 'Size'))), arr.ind=TRUE)
@@ -94,11 +96,15 @@ shape <- function(n, x) {
          identifiers=character(),
          notes='Distance matrix as one row per pair (lower triangle) in R dist order.')
   } else if (is.table(x)) {
-    names(dimnames(x)) <- if (is.null(dim.names[[n]])) names(dimnames(x)) else dim.names[[n]]
+    named <- !is.null(dim.names[[n]])
+    if (named) names(dimnames(x)) <- dim.names[[n]]
     d <- as.data.frame(x, responseName='count', stringsAsFactors=TRUE)
     list(frame=setNames(d, kebab(names(d))), original=names(d), description=names(d),
          identifiers=character(),
-         notes='Contingency table in long form: one row per cell in R array order, zero cells kept.')
+         notes=paste(c('Contingency table in long form: one row per cell in R array order, zero cells kept.',
+                       if (named) sprintf('R leaves the dimensions unnamed; %s are names given here.',
+                                          paste(dim.names[[n]], collapse=' and '))),
+                     collapse=' '))
   } else if (n == 'volcano') {
     list(frame=data.frame(row=as.vector(row(x)), column=as.vector(col(x)), value=as.vector(x)),
          original=c('row', 'column', n), description=c('Grid row', 'Grid column', 'Height'),
@@ -115,8 +121,12 @@ shape <- function(n, x) {
     prepend(s, setNames(data.frame(if (numeric.labels(ids)) as.integer(ids) else ids), row.ids[[n]]),
             'row names', !numeric.labels(ids))
   } else if (is.numeric(x) && !is.null(names(x))) {
+    unique.names <- !anyDuplicated(names(x))
     list(frame=data.frame(name=names(x), value=unname(x)), original=c('names', n),
-         description=c('Name', n), identifiers='name', notes='Named vector as name and value columns.')
+         description=c('Name', n), identifiers=if (unique.names) 'name' else character(),
+         notes=paste(c('Named vector as name and value columns.',
+                       if (!unique.names) 'Names repeat, so name is not an identifier.'),
+                     collapse=' '))
   } else {
     list(frame=data.frame(value=x), original=n, description=n, identifiers=character(),
          notes='Vector as a value column.')
@@ -180,7 +190,7 @@ write.dataset <- function(id, objects, s) {
   series <- s$series
   manifest[[id]] <<- data.frame(
     id=id, objects=paste(objects, collapse='|'), identifiers=paste(s$identifiers, collapse='|'),
-    notes=s$notes, frequency=if (is.null(series)) '' else format(series$frequency),
+    notes=s$notes, frequency=if (is.null(series)) '' else format(series$frequency, digits=15),
     start=paste(series$start, collapse='|'), end=paste(series$end, collapse='|'),
     index=paste(series$index, collapse='|'))
 }

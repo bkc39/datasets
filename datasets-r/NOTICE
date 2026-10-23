@@ -27,9 +27,11 @@ rendered as the dedicated missing sentinel; penguins-raw Date Egg rendered as
 an ISO 8601 string and its delta columns renamed delta-15-n and delta-13-c;
 datasaurus-dozen kept in long form; titanic-passengers empty cabin and
 embarked strings rendered as missing, test set omitted; R datasets objects
-reshaped as described in the catalog (time series with calendar index
-columns, tables and distance matrices in long form, matrices and vectors with
-row-name columns, the state.* objects joined into one table). Source row order and
+reshaped as described in the catalog (time series with index columns from
+R's time, calendar year and period except eu-stock-markets, whose year and
+business-day follow R's nominal 260-day business year; tables and distance
+matrices in long form; matrices with row-name columns; named vectors with a
+name column; the state.* objects joined into one table). Source row order and
 numeric precision retained. Source versions, archive and normalized SHA-256
 hashes, variable descriptions, and dataset-specific notes are in the registry
 (datasets/r-data/registry.rktd). Upstream documentation is retained in

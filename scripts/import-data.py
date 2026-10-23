@@ -204,7 +204,10 @@ def import_r():
                 notes=f"{title}. R object{'s'[:len(objects)-1]} {', '.join(objects)}. {m['notes']}")
         objects=sorted(table('r-objects.csv'),key=lambda r:(r['object'].lower(),r['object']))
         if {r['target'] for r in objects if r['disposition']=='dataset'}!={m['id'] for m in manifest}: raise ValueError('R objects and exported datasets disagree')
-        (OUT/'r-objects.rktd').write_text('(\n'+'\n'.join('  '+sexp([r['object'],r['class'],r['disposition'],r['target']]) for r in objects)+'\n)\n')
+        def object_row(r):
+            cell=sexp('Skipped. '+r['target']) if r['disposition']=='skipped' else f"(dataset {r['target']})"
+            return f"((tt {sexp(r['object'])}) {sexp(r['class'])} {cell})"
+        (OUT/'r-objects.rktd').write_text('(\n'+'\n'.join('  '+object_row(r) for r in objects)+'\n)\n')
 {'datasets-core':import_core,'datasets-r':import_r}[PACKAGE]()
 (OUT/'registry.rktd').write_text(sexp(dict(sorted(registry.items())))+'\n')
 for stale in (OUT/'data').iterdir():

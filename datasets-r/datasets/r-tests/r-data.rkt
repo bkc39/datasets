@@ -4,19 +4,17 @@
                   dataset-packages dataset-table-columns dataset-table-names
                   dataset-table-row-count load-dataset-table)
          (only-in datasets/core-tests/fixture gunzip-file hex)
-         (only-in racket/file file->lines file->value)
-         (only-in racket/format ~s)
-         (only-in racket/list append-map make-list remove-duplicates)
+         (only-in racket/file file->lines)
+         (only-in racket/list append-map check-duplicates make-list remove-duplicates take)
          (only-in racket/match match match-define)
          (only-in racket/runtime-path define-runtime-path)
          (only-in racket/vector vector-count)
-         (only-in setup/getinfo get-info/full)
-         (only-in "spot.rkt" spot-results))
+         (only-in setup/getinfo get-info/full))
 (define-runtime-path r-data "../r-data")
 (define-runtime-path package-root "../..")
 (module+ test
-  (require (only-in rackunit check-= check-equal? check-false check-not-false check-regexp-match
-                    check-true))
+  (require (only-in rackunit check-equal? check-false check-not-false check-true)
+           (only-in (submod "spot.rkt" test) check-spot r-dataset-ids))
   (define penguins-names
     '("species" "island" "bill-length-mm" "bill-depth-mm" "flipper-length-mm" "body-mass-g" "sex"
       "year"))
@@ -37,12 +35,7 @@
   (define licenses
     (hash 'datasaurus-dozen "MIT" 'gapminder "CC0-1.0" 'penguins "CC0-1.0"
           'penguins-raw "CC0-1.0" 'titanic-passengers "CC0-1.0"))
-  (define r-ids
-    (remove-duplicates
-     (for/list ([object (in-list (file->value (build-path r-data "r-objects.rktd")))]
-                #:when (equal? (caddr object) "dataset"))
-       (string->symbol (cadddr object)))))
-  (define ids (sort (append (map car shapes) r-ids) symbol<?))
+  (define ids (sort (append (map car shapes) r-dataset-ids) symbol<?))
   (define (data-file id) (build-path r-data "data" (format "~a.rktd.gz" id)))
   (define (column-type name levels identifiers present)
     (cond
@@ -57,18 +50,21 @@
                 #:when pair)
       (match-define (list _ key value) pair)
       (values key value)))
-  (define (license-ids expression)
-    (match expression
-      [(list left (or 'AND 'OR) right) (append (license-ids left) (license-ids right))]
-      [(? symbol?) (list expression)]))
+  (define (license-ids license)
+    (regexp-split #px" (?:AND|OR) " (regexp-replace* #rx"[()]" license "")))
   (define (conjuncts expression)
     (match expression
       [(list left 'AND right) (append (conjuncts left) (conjuncts right))]
-      [_ (list expression)]))
-  (define (registry-expression license)
-    (match (read (open-input-string (string-append "(" license ")")))
-      [(list single) single]
-      [expression expression]))
+      [_ (list (expression->string expression))]))
+  (define (expression->string expression)
+    (match expression
+      [(list left operator right)
+       (format "~a ~a ~a" (operand->string left) operator (operand->string right))]
+      [(? symbol?) (symbol->string expression)]))
+  (define (operand->string expression)
+    (match expression
+      [(? pair?) (format "(~a)" (expression->string expression))]
+      [_ (expression->string expression)]))
   (define spot-checks
     `((categorical datasaurus-dozen ("dataset"))
       (categorical gapminder ("country" "continent"))
@@ -156,7 +152,16 @@
                                  (hash-ref info "identifiers") present)
                     (hash-ref meta "name"))
       (check-true (or (andmap string? present) (not (member type '("categorical" "string"))))
-                  (hash-ref meta "name")))
+                  (hash-ref meta "name"))
+      (check-false (and (equal? type "identifier") (check-duplicates present))
+                   (format "~a ~a" id (hash-ref meta "name"))))
+    (match (hash-ref info "time-series")
+      [#f (void)]
+      [(hash-table ("start" start) ("end" end) ("index" index))
+       (define message (symbol->string id))
+       (check-equal? (length start) (length index) message)
+       (check-equal? (length end) (length index) message)
+       (check-equal? (take (dataset-table-names t) (length index)) index message)])
     (for ([c (in-vector (dataset-table-columns t))] [meta (in-list (hash-ref info "columns"))]
           #:when (pair? (hash-ref meta "levels")))
       (check-equal? (sort (remove-duplicates
@@ -169,16 +174,13 @@
   (define license-files (directory-list (build-path r-data "licenses")))
   (match-define (list _ 'AND data-license) ((get-info/full package-root) 'license))
   (define registry-licenses
-    (remove-duplicates
-     (for/list ([id (in-list ids)]) (registry-expression (hash-ref (dataset-info id) "license")))))
-  (check-equal? (registry-expression "GPL-2.0-only OR GPL-3.0-only") '(GPL-2.0-only OR GPL-3.0-only))
-  (check-equal? (registry-expression "MIT") 'MIT)
-  (check-equal? (license-ids '(CC0-1.0 AND (MIT OR GPL-2.0-only))) '(CC0-1.0 MIT GPL-2.0-only))
-  (check-equal? (conjuncts '(CC0-1.0 AND (MIT AND (A OR B)))) '(CC0-1.0 MIT (A OR B)))
-  (check-equal? (sort (map ~s registry-licenses) string<?)
-                (sort (map ~s (conjuncts data-license)) string<?))
-  (for ([license (in-list (remove-duplicates
-                            (map symbol->string (append-map license-ids registry-licenses))))])
+    (remove-duplicates (for/list ([id (in-list ids)]) (hash-ref (dataset-info id) "license"))))
+  (check-equal? (license-ids "CC0-1.0 AND (MIT OR GPL-2.0-only)") '("CC0-1.0" "MIT" "GPL-2.0-only"))
+  (check-equal? (license-ids "MIT") '("MIT"))
+  (check-equal? (conjuncts '(CC0-1.0 AND (MIT AND (A OR (B AND C)))))
+                '("CC0-1.0" "MIT" "A OR (B AND C)"))
+  (check-equal? (sort registry-licenses string<?) (sort (conjuncts data-license) string<?))
+  (for ([license (in-list (remove-duplicates (append-map license-ids registry-licenses)))])
     (define file-name (pregexp (string-append "^" (regexp-quote license) "[-.]")))
     (check-not-false (for/or ([file (in-list license-files)])
                        (regexp-match? file-name (path->string file)))
@@ -191,8 +193,4 @@
                                    (hash-ref datasaurus-copyright "COPYRIGHT HOLDER"))
                            (file->lines (build-path r-data "licenses" "MIT-datasauRus.txt"))))
 
-  (for* ([spot (in-list spot-checks)] [result (in-list (spot-results spot))])
-    (match result
-      [(list 'equal actual expected) (check-equal? actual expected (~s spot))]
-      [(list 'close actual expected epsilon) (check-= actual expected epsilon (~s spot))]
-      [(list 'match actual pattern) (check-regexp-match pattern actual)])))
+  (for-each check-spot spot-checks))
