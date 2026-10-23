@@ -1,0 +1,54 @@
+New code: Copyright (c) 2026 datasets contributors, Apache-2.0 OR MIT.
+Bundled observations are distributed separately under the upstream terms:
+all sets come from the UCI Machine Learning Repository under CC BY 4.0
+(https://creativecommons.org/licenses/by/4.0/). Creators and dataset DOIs:
+- digits, optdigits: E. Alpaydin and C. Kaynak (1998), Optical Recognition
+  of Handwritten Digits, doi:10.24432/C50P49.
+- adult: B. Becker and R. Kohavi (1996), Adult, doi:10.24432/C5XW20.
+- auto-mpg: R. Quinlan (1993), Auto MPG, doi:10.24432/C5859H.
+- abalone: W. Nash, T. Sellers, S. Talbot, A. Cawthorn and W. Ford (1994),
+  Abalone, doi:10.24432/C55C7W.
+- wine-quality: P. Cortez, A. Cerdeira, F. Almeida, T. Matos and J. Reis
+  (2009), Wine Quality, doi:10.24432/C56S3T.
+- bank-marketing: S. Moro, P. Rita and P. Cortez (2014), Bank Marketing,
+  doi:10.24432/C5K306.
+- heart-disease: A. Janosi, W. Steinbrunn, M. Pfisterer and R. Detrano
+  (1989), Heart Disease, doi:10.24432/C52P4X.
+- mushroom: J. Schlimmer (donor, 1987), Mushroom, doi:10.24432/C5959T; records
+  from The Audubon Society Field Guide to North American Mushrooms (1981).
+- car-evaluation: M. Bohanec (1988), Car Evaluation, doi:10.24432/C5JP48.
+- spambase: M. Hopkins, E. Reeber, G. Forman and J. Suermondt (1999),
+  Spambase, doi:10.24432/C53G6X.
+- banknote-authentication: V. Lohweg (2012), Banknote Authentication,
+  doi:10.24432/C55P57.
+- seeds: M. Charytanowicz, J. Niewczas, P. Kulczycki, P. Kowalski and
+  S. Lukasik (2010), Seeds, doi:10.24432/C5H30K.
+- concrete-strength: I-C. Yeh (1998), Concrete Compressive Strength,
+  doi:10.24432/C5PK67. Copyright Prof. I-Cheng Yeh; I-Cheng Yeh, "Modeling of
+  strength of high performance concrete using artificial neural networks,"
+  Cement and Concrete Research 28(12), 1797-1808 (1998).
+- energy-efficiency: A. Tsanas and A. Xifara (2012), Energy Efficiency,
+  doi:10.24432/C51307.
+- student-performance: P. Cortez (2008), Student Performance,
+  doi:10.24432/C5TG7T.
+- bike-sharing-daily, bike-sharing-hourly: H. Fanaee-T (2013), Bike Sharing,
+  doi:10.24432/C5W894.
+
+This records the accepted upstream redistribution basis, and does not assert
+independent original-owner permission. These authors do not endorse this work.
+
+Transformations: names normalized to kebab-case, with the original names in
+the registry; source missing markers (? and, for bank-marketing, unknown)
+rendered as the dedicated missing sentinel; text-valued attributes declared
+categorical with levels in metadata; integral values written with a decimal
+point stored as integers; adult and optdigits train and test files stacked
+with a split column, wine-quality red and white files with a colour column,
+student-performance mathematics and Portuguese files with a subject column;
+adult test labels lose their trailing period; mushroom bruises? renamed
+bruises; spambase character columns named after the character; concrete and
+energy-efficiency columns named from their documentation. Source row order
+and numeric precision retained. Source versions, archive and normalized
+SHA-256 hashes, variable descriptions, citations, and dataset-specific notes
+are in the registry (datasets/uci-data/registry.rktd). Upstream documentation
+is retained in datasets/uci-data/provenance; the CC BY 4.0 text is in
+datasets/uci-data/licenses.

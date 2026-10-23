@@ -3,4 +3,6 @@ datasets-core/datasets/provenance/* -whitespace
 datasets-core/datasets/licenses/* -whitespace
 datasets-r/datasets/r-data/provenance/* -whitespace
 datasets-r/datasets/r-data/licenses/* -whitespace
+datasets-uci/datasets/uci-data/provenance/* -whitespace
+datasets-uci/datasets/uci-data/licenses/* -whitespace
 *.rktd.gz binary
