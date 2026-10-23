@@ -129,4 +129,24 @@ The @secref["datasets-catalog"] records these conventions alongside source
 citations and transformation notes. Consult it before interpreting a variable
 or comparing a dataset with another library's version.
 
+@section[#:tag "datasets-core-other-packages"]{Datasets from other packages}
+
+Other packages add datasets to the same catalog. Such a package contributes a
+directory to the @tt{datasets} collection, conventionally
+@tt{datasets/@italic{suffix}-data} for a package named
+@tt{datasets-@italic{suffix}}, containing an @tt{info.rkt}, a registry file, and
+a @tt{data} directory with one gzip-compressed @tt{.rktd} file per dataset:
+
+@codeblock{#lang info
+(define datasets-registries '("registry.rktd"))}
+
+Once @exec{raco setup} has indexed the package, @racket[dataset-names],
+@racket[dataset-info] and @racket[load-dataset-table] include its datasets, and
+@racket[dataset-packages] lists it. Each entry carries the fields in
+@secref["datasets-metadata-reference"], with @tt{package} naming the package and
+@tt{tier} set to @tt{bundled}. Names are shared across all installed packages, so
+two packages declaring the same name is an error naming both. The maintainer
+importer writes this layout with
+@tt{scripts/import-data.py --package @italic{name} --target @italic{dir}}.
+
 @(close-eval ev)
