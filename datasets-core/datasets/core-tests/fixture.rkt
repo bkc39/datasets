@@ -4,10 +4,15 @@
                   dataset-table-row-count dataset-table?)
          (only-in datasets/core-private/codec gunzip-file hex)
          (only-in file/gzip gzip-through-ports)
-         (only-in racket/contract/base -> ->* any any/c contract-out hash/c listof)
-         (only-in racket/file delete-directory/files make-directory* make-temporary-directory)
+         (only-in net/url path->url url->string)
+         (only-in racket/contract/base -> ->* and/c any any/c contract-out hash/c listof or/c)
+         (only-in racket/file delete-directory/files file->bytes make-directory*
+                  make-temporary-directory)
+         (only-in racket/path find-relative-path)
          (only-in racket/port call-with-output-bytes)
-         (only-in racket/runtime-path define-runtime-path))
+         (only-in racket/runtime-path define-runtime-path)
+         (only-in racket/string string-join)
+         (only-in "http-fixture.rkt" call-with-http-fixture http-fixture-url))
 (provide (contract-out
           [registry-fixture (-> string? complete-path?)]
           [call-with-registry-fixtures (->* ((listof complete-path?) (-> any)) (#:specs (listof any/c)) any)]
@@ -15,7 +20,22 @@
           [write-fixture-index! (-> complete-path? (listof complete-path?) (listof any/c) void?)]
           [write-registry-fixture! (-> path? #:info any/c #:registries (hash/c string? any/c)
                                        #:data (hash/c string? bytes?) void?)]
-          [table-digest (-> dataset-table? string?)])
+          [table-digest (-> dataset-table? string?)]
+          [toy-artifact bytes?]
+          [toy-artifact-sha256 string?]
+          [toy-table-digest string?]
+          [fetch-entry (->* ((listof string?))
+                            (#:data-sha256 string? #:format string? #:sha256 string?)
+                            (and/c hash? immutable?))]
+          [call-with-fetch-fixture (-> (listof hash?) (-> complete-path? complete-path? any) any)]
+          [call-with-environment (-> (hash/c string? (or/c #f string?)) (-> any) any)]
+          [call-with-artifact-url (-> bytes? (-> string? any) any)]
+          [cache-files (-> path? (listof string?))]
+          [wait-until (-> (and/c real? positive?) (-> any/c) boolean?)]
+          [fetch-error? (-> (or/c string? regexp?) ... (-> any/c boolean?))]
+          [with-server (-> hash? (-> (-> string? string?) (listof hash?))
+                           (-> any/c complete-path? complete-path? any) any)]
+          [toy-at (-> string? (-> (-> string? string?) (listof hash?)))])
          rows->rktd-bytes gzip-bytes gunzip-file hex gen-entry fetch-ok)
 
 (define-runtime-path fixtures "fixtures")
@@ -68,9 +88,9 @@
   (string->bytes/utf-8
    (string-append "(\n" (apply string-append (map (lambda (row) (format "  ~s\n" row)) rows)) ")\n")))
 
-(define (gzip-bytes bs)
+(define (gzip-bytes bs [timestamp 0])
   (call-with-output-bytes
-   (lambda (out) (gzip-through-ports (open-input-bytes bs) out #f 0))))
+   (lambda (out) (gzip-through-ports (open-input-bytes bs) out #f timestamp))))
 
 (define (table-digest table)
   (hex (sha256-bytes
@@ -93,5 +113,77 @@
         "tier" tier "package" package "fetch" fetch))
 
 (define fetch-ok
-  (hash "urls" '("file:///fixture/gen.rktd.gz") "sha256" (make-string 64 #\a) "size" 10
-        "format" "rktd.gz"))
+  (hash "urls" '("file:///fixture/gen.rktd.gz") "sha256" (make-string 64 #\a) "format" "rktd.gz"))
+
+(define toy-artifact (file->bytes (build-path fixtures "sibling" "data" "toy.rktd.gz")))
+(define toy-artifact-sha256 "2a8b8c1a037d8c33432ee050c106b1840433f5f7138b0f326c6117719491ba85")
+(define toy-table-digest "8351c6815d3e312013fd46602ec0d0b7eebed45c7187bbf24eb04c22566ff3ed")
+(define toy-remote
+  (hash-ref (call-with-input-file (build-path fixtures "sibling" "remote.rktd") read) "toy-remote"))
+
+(define (fetch-entry urls #:sha256 [sha256 toy-artifact-sha256] #:format [format "rktd.gz"]
+                     #:data-sha256 [data-sha256 (hash-ref toy-remote "sha256")])
+  (hash-set* toy-remote
+             "package" "datasets-fetch-fixture"
+             "sha256" data-sha256
+             "fetch" (hash "urls" urls "sha256" sha256 "format" format)))
+
+(define (call-with-fetch-fixture entries proc)
+  (call-with-temporary-fixture
+   (lambda (registry)
+     (write-registry-fixture!
+      registry #:info '("registry.rktd") #:data (hash)
+      #:registries (hash "registry.rktd"
+                         (for/hash ([entry (in-list entries)])
+                           (values (hash-ref entry "name") entry))))
+     (call-with-temporary-fixture
+      (lambda (root)
+        (call-with-registry-fixtures (list registry)
+          (lambda ()
+            (call-with-environment (hash "DATASETS_HOME" (path->string root))
+              (lambda () (proc root registry))))))))))
+
+(define (call-with-environment changes thunk)
+  (define env (environment-variables-copy (current-environment-variables)))
+  (for ([(name value) (in-hash changes)])
+    (environment-variables-set! env
+                                (string->bytes/utf-8 name)
+                                (and value (string->bytes/utf-8 value))))
+  (parameterize ([current-environment-variables env])
+    (thunk)))
+
+(define (call-with-artifact-url bytes proc)
+  (call-with-temporary-fixture
+   (lambda (dir)
+     (define file (build-path dir "artifact.rktd.gz"))
+     (call-with-output-file file (lambda (out) (write-bytes bytes out)))
+     (proc (url->string (path->url file))))))
+
+(define (cache-files root)
+  (cond
+    [(directory-exists? root)
+     (sort (for/list ([path (in-directory root)] #:when (file-exists? path))
+             (string-join (map path->string (explode-path (find-relative-path root path))) "/"))
+           string<?)]
+    [else '()]))
+
+(define (wait-until bound ready?)
+  (define deadline (+ (current-inexact-milliseconds) (* 1000 bound)))
+  (let loop ()
+    (cond [(ready?) #t]
+          [(> (current-inexact-milliseconds) deadline) #f]
+          [else (sleep 0.01) (loop)])))
+
+(define ((fetch-error? . rxs) e)
+  (and (exn:fail? e) (not (exn:fail:contract? e))
+       (for/and ([rx (in-list rxs)])
+         (regexp-match? (if (string? rx) (regexp (regexp-quote rx)) rx) (exn-message e)))))
+
+(define (with-server routes entries-of proc)
+  (call-with-http-fixture routes
+    (lambda (srv)
+      (call-with-fetch-fixture (entries-of (lambda (p) (http-fixture-url srv p)))
+        (lambda (root registry) (proc srv root registry))))))
+
+(define ((toy-at path) u)
+  (list (fetch-entry (list (u path)))))

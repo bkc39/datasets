@@ -1,9 +1,13 @@
 #lang racket/base
 (require (prefix-in df: (only-in data-frame df-is-na? df-na-value df-ref df-set!))
-         (only-in datasets dataset-missing dataset-missing? dataset-names dataset-table-column
-                  dataset-table-names dataset-table-row-count load-airquality load-dataset
-                  load-dataset-table load-iris)
-         (only-in datasets/core-tests/fixture call-with-registry-fixtures registry-fixture)
+         (only-in datasets dataset-missing dataset-missing? dataset-names
+                  dataset-table-column dataset-table-names dataset-table-row-count
+                  load-air-passengers load-airquality load-anscombe load-breast-cancer load-dataset
+                  load-dataset-table load-diabetes load-faithful load-iris load-mtcars
+                  load-plant-growth load-titanic load-tooth-growth load-us-arrests load-wine)
+         (only-in datasets/core-tests/fixture cache-files call-with-artifact-url
+                  call-with-fetch-fixture call-with-registry-fixtures fetch-entry registry-fixture
+                  table-digest toy-artifact toy-table-digest)
          (only-in datasets/data-frame data-frame-column-names)
          (only-in math/matrix matrix-ref)
          (prefix-in pl: (only-in polars column-names dataframe-column dataframe-column-names
@@ -11,7 +15,7 @@
                                  shape))
          (only-in racket/list last))
 (module+ test
-  (require (only-in rackunit check-= check-eq? check-equal? check-exn check-true))
+  (require (only-in rackunit check-= check-eq? check-equal? check-exn check-true test-case))
   (define (check-formats)
     (for ([id (in-list (dataset-names #:package "datasets-core"))])
       (define t (load-dataset id #:format 'table))
@@ -37,10 +41,17 @@
         (define m (load-dataset id #:format 'matrix #:columns numeric))
         (for* ([i (in-range (dataset-table-row-count t))] [j (in-range (length numeric))])
           (check-equal? (matrix-ref m i j) (vector-ref (dataset-table-column t (list-ref numeric j)) i))))))
+  (define loaders
+    (hash 'air-passengers load-air-passengers 'airquality load-airquality 'anscombe load-anscombe
+          'breast-cancer load-breast-cancer 'diabetes load-diabetes 'faithful load-faithful
+          'iris load-iris 'mtcars load-mtcars 'plant-growth load-plant-growth
+          'titanic load-titanic 'tooth-growth load-tooth-growth 'us-arrests load-us-arrests
+          'wine load-wine))
   (define (check-loaders)
-    (for ([name (in-list (dataset-names #:package "datasets-core"))])
-      (define loader (dynamic-require 'datasets (string->symbol (format "load-~a" name))))
-      (check-equal? (loader #:format 'table) (load-dataset name #:format 'table))))
+    (check-equal? (sort (hash-keys loaders) symbol<?) (dataset-names #:package "datasets-core"))
+    (for ([(name loader) (in-hash loaders)])
+      (check-equal? (loader #:format 'table) (load-dataset name #:format 'table))
+      (check-exn #rx"blaming: [^\n]*formats\\.rkt" (lambda () (loader #:format 'bad)))))
   (check-formats)
   (check-loaders)
   (define air (load-airquality #:format 'data-frame))
@@ -61,4 +72,16 @@
       (check-equal? (load-dataset 'toy #:format 'table) (load-dataset-table 'toy))
       (check-equal? (pl:dataframe-height (load-dataset 'toy)) 3)
       (check-formats)
-      (check-loaders))))
+      (check-loaders)))
+  (test-case "M1 load-dataset passes #:download? through; blame names the caller"
+    (call-with-artifact-url toy-artifact
+      (lambda (url)
+        (call-with-fetch-fixture (list (fetch-entry (list url)))
+          (lambda (root registry)
+            (check-exn #rx"reason: #:download\\? #f"
+                       (lambda () (load-dataset 'toy-remote #:format 'table #:download? #f)))
+            (check-equal? (cache-files root) '())
+            (check-equal? (table-digest (load-dataset 'toy-remote #:format 'table))
+                          toy-table-digest)
+            (check-equal? (pl:dataframe-height (load-dataset 'toy-remote)) 3)))))
+    (check-exn #rx"blaming: [^\n]*formats\\.rkt" (lambda () (load-dataset 'iris #:download? 1)))))

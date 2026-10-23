@@ -33,8 +33,10 @@ The core package provides @racketmodname[datasets/core].
  (dataset-table-names iris)]
 
 Dataset identifiers are symbols, such as @racket['iris]; column names are
-strings, such as @racket["sepal-length"]. Loading uses bundled files and does
-not contact a server. There is no need to install R or run an import script.
+strings, such as @racket["sepal-length"]. Bundled datasets load from installed
+files and never contact a server; see @secref["datasets-core-fetch-guide"] for
+datasets that are downloaded. There is no need to install R or run an import
+script.
 
 @section[#:tag "datasets-core-columns"]{Working with columns}
 
@@ -148,5 +150,43 @@ Once @exec{raco setup} has indexed the package, @racket[dataset-names],
 two packages declaring the same name is an error naming both. The maintainer
 importer writes this layout with
 @tt{scripts/import-data.py --package @italic{name} --target @italic{dir}}.
+
+@section[#:tag "datasets-core-fetch-guide"]{Downloaded datasets}
+
+Some datasets are too large to ship in a package. Their metadata is installed
+like any other, so @racket[dataset-names], @racket[dataset-info] and the catalog
+describe them without a network connection, but their data is downloaded the
+first time it is loaded. Such a dataset has @tt{tier} @tt{fetch}; its @tt{fetch}
+metadata pins the SHA-256 of the file to download.
+
+The first @racket[load-dataset-table] of a fetch-tier dataset downloads the file,
+checks its SHA-256, and stores it in the cache; later loads read the cache and
+contact no server. Every load checks the data's SHA-256. A failed or mismatched
+download leaves nothing behind.
+
+The cache is @racket[(dataset-cache-directory)]: @filepath{racket-datasets} in
+Racket's cache directory, or the directory named by @envvar{DATASETS_HOME}.
+
+@examples[#:eval ev
+ (parameterize ([current-environment-variables
+                 (make-environment-variables #"DATASETS_HOME" #"/srv/racket-datasets")])
+   (dataset-cache-directory))]
+
+@racket[fetch-dataset] downloads without loading, and @racket[dataset-cached?]
+says whether a load would need the network. To use datasets on a machine without
+network access, fetch them elsewhere, copy the cache directory, and point
+@envvar{DATASETS_HOME} at the copy. To make sure a load never downloads, pass
+@racket[#:download? #f]; a dataset that is not cached is then an error that says
+how to fetch it.
+@racket[clear-dataset-cache] deletes downloaded files, for one dataset or all,
+and nothing else.
+
+@subsection[#:tag "datasets-core-fetch-licences"]{Licences of downloaded data}
+
+A package that declares a fetch-tier dataset does not contain its data. The
+@tt{license} and @tt{citation} metadata record the terms under which the source
+distributes the data and how to cite it, and the catalog lists them for each
+dataset. Those terms, not the package licence, govern the cached files and
+anything derived from them; check them before sharing a copy of the cache.
 
 @(close-eval ev)

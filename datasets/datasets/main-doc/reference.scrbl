@@ -16,8 +16,11 @@ are in @other-doc['(lib "datasets/core-doc/datasets-core.scrbl")].
 
 @defproc[(load-dataset [name symbol?]
                        [#:format format (or/c 'polars 'table 'matrix 'data-frame) 'polars]
-                       [#:columns columns (or/c #f (listof string?)) #f]) any/c]{
+                       [#:columns columns (or/c #f (non-empty-listof string?)) #f]
+                       [#:download? download? boolean? #t]) any/c]{
 Loads @racket[name], selects columns, and converts the result to @racket[format].
+@racket[download?] is passed to @racket[load-dataset-table]; see
+@secref["datasets-core-offline-reference" #:doc '(lib "datasets/core-doc/datasets-core.scrbl")].
 The return value is a Polars dataframe, an immutable dataset table, a
 @tt{math/matrix} matrix, or a @tt{data-frame} object as specified by the format.
 
@@ -35,22 +38,23 @@ see @secref["datasets-matrix-reference"].}
 @subsection[#:tag "datasets-named-loaders-reference"]{Named loaders}
 
 Each named loader delegates to @racket[load-dataset] with its corresponding
-dataset identifier. The keywords, defaults, selection rules, errors, and result
-types are the same. Variable descriptions and provenance appear in the
+dataset identifier, passing @racket[#:format] and @racket[#:columns]; named
+loaders take no @racket[#:download?]. The defaults, selection rules, errors, and
+result types are the same. Variable descriptions and provenance appear in the
 @secref["datasets-catalog" #:doc '(lib "datasets/core-doc/datasets-core.scrbl")].
-@defproc[(load-mtcars [#:format format symbol? 'polars] [#:columns columns (or/c #f (listof string?)) #f]) any/c]{Loads mtcars.}
-@defproc[(load-iris [#:format format symbol? 'polars] [#:columns columns (or/c #f (listof string?)) #f]) any/c]{Loads corrected UCI Iris.}
-@defproc[(load-faithful [#:format format symbol? 'polars] [#:columns columns (or/c #f (listof string?)) #f]) any/c]{Loads faithful.}
-@defproc[(load-anscombe [#:format format symbol? 'polars] [#:columns columns (or/c #f (listof string?)) #f]) any/c]{Loads the wide Anscombe quartet.}
-@defproc[(load-airquality [#:format format symbol? 'polars] [#:columns columns (or/c #f (listof string?)) #f]) any/c]{Loads airquality, preserving missing values.}
-@defproc[(load-us-arrests [#:format format symbol? 'polars] [#:columns columns (or/c #f (listof string?)) #f]) any/c]{Loads US arrests with state identifiers.}
-@defproc[(load-plant-growth [#:format format symbol? 'polars] [#:columns columns (or/c #f (listof string?)) #f]) any/c]{Loads plant growth.}
-@defproc[(load-tooth-growth [#:format format symbol? 'polars] [#:columns columns (or/c #f (listof string?)) #f]) any/c]{Loads tooth growth.}
-@defproc[(load-titanic [#:format format symbol? 'polars] [#:columns columns (or/c #f (listof string?)) #f]) any/c]{Loads the contingency cells, including zero counts.}
-@defproc[(load-air-passengers [#:format format symbol? 'polars] [#:columns columns (or/c #f (listof string?)) #f]) any/c]{Loads monthly counts in chronological order.}
-@defproc[(load-diabetes [#:format format symbol? 'polars] [#:columns columns (or/c #f (listof string?)) #f]) any/c]{Loads the standardized lars representation.}
-@defproc[(load-breast-cancer [#:format format symbol? 'polars] [#:columns columns (or/c #f (listof string?)) #f]) any/c]{Loads UCI diagnostic measurements, M/B labels, and identifiers.}
-@defproc[(load-wine [#:format format symbol? 'polars] [#:columns columns (or/c #f (listof string?)) #f]) any/c]{Loads wine measurements and cultivar labels.}
+@defproc[(load-mtcars [#:format format (or/c 'polars 'table 'matrix 'data-frame) 'polars] [#:columns columns (or/c #f (non-empty-listof string?)) #f]) any/c]{Loads mtcars.}
+@defproc[(load-iris [#:format format (or/c 'polars 'table 'matrix 'data-frame) 'polars] [#:columns columns (or/c #f (non-empty-listof string?)) #f]) any/c]{Loads corrected UCI Iris.}
+@defproc[(load-faithful [#:format format (or/c 'polars 'table 'matrix 'data-frame) 'polars] [#:columns columns (or/c #f (non-empty-listof string?)) #f]) any/c]{Loads faithful.}
+@defproc[(load-anscombe [#:format format (or/c 'polars 'table 'matrix 'data-frame) 'polars] [#:columns columns (or/c #f (non-empty-listof string?)) #f]) any/c]{Loads the wide Anscombe quartet.}
+@defproc[(load-airquality [#:format format (or/c 'polars 'table 'matrix 'data-frame) 'polars] [#:columns columns (or/c #f (non-empty-listof string?)) #f]) any/c]{Loads airquality, preserving missing values.}
+@defproc[(load-us-arrests [#:format format (or/c 'polars 'table 'matrix 'data-frame) 'polars] [#:columns columns (or/c #f (non-empty-listof string?)) #f]) any/c]{Loads US arrests with state identifiers.}
+@defproc[(load-plant-growth [#:format format (or/c 'polars 'table 'matrix 'data-frame) 'polars] [#:columns columns (or/c #f (non-empty-listof string?)) #f]) any/c]{Loads plant growth.}
+@defproc[(load-tooth-growth [#:format format (or/c 'polars 'table 'matrix 'data-frame) 'polars] [#:columns columns (or/c #f (non-empty-listof string?)) #f]) any/c]{Loads tooth growth.}
+@defproc[(load-titanic [#:format format (or/c 'polars 'table 'matrix 'data-frame) 'polars] [#:columns columns (or/c #f (non-empty-listof string?)) #f]) any/c]{Loads the contingency cells, including zero counts.}
+@defproc[(load-air-passengers [#:format format (or/c 'polars 'table 'matrix 'data-frame) 'polars] [#:columns columns (or/c #f (non-empty-listof string?)) #f]) any/c]{Loads monthly counts in chronological order.}
+@defproc[(load-diabetes [#:format format (or/c 'polars 'table 'matrix 'data-frame) 'polars] [#:columns columns (or/c #f (non-empty-listof string?)) #f]) any/c]{Loads the standardized lars representation.}
+@defproc[(load-breast-cancer [#:format format (or/c 'polars 'table 'matrix 'data-frame) 'polars] [#:columns columns (or/c #f (non-empty-listof string?)) #f]) any/c]{Loads UCI diagnostic measurements, M/B labels, and identifiers.}
+@defproc[(load-wine [#:format format (or/c 'polars 'table 'matrix 'data-frame) 'polars] [#:columns columns (or/c #f (non-empty-listof string?)) #f]) any/c]{Loads wine measurements and cultivar labels.}
 
 @section[#:tag "datasets-formats-reference"]{Value representations}
 

@@ -3,9 +3,13 @@
                      racket/base
                      (only-in setup/getinfo get-info/full)
                      (only-in syntax/parse syntax-parse))
-         (only-in datasets/core-private/codec gunzip-file hex)
-         (only-in racket/contract/base -> ->* contract-out listof or/c)
-         (only-in racket/format ~a ~e ~s)
+         (only-in datasets/core-private/cache cache-file cache-root clear-cache-directory
+                  clear-cache-root download-dataset)
+         (only-in datasets/core-private/codec file-sha256 gunzip-file hex)
+         (only-in datasets/core-private/error raise-registry-error)
+         (only-in datasets/core-private/log log-datasets-warning)
+         (only-in racket/contract/base -> ->* and/c contract-out listof non-empty-listof or/c)
+         (only-in racket/format ~e ~s)
          (only-in racket/list append-map check-duplicates index-of remove-duplicates take)
          (only-in racket/match == match)
          (only-in racket/runtime-path define-runtime-path)
@@ -13,8 +17,16 @@
                   get-info/full reset-relevant-directories-state!))
 (provide (contract-out
           [dataset-names (->* () (#:package (or/c #f string?)) (listof symbol?))]
-          [dataset-packages (-> (listof string?))])
-         dataset-info load-dataset-table
+          [dataset-packages (-> (listof string?))]
+          [load-dataset-table (->* (symbol?)
+                                   (#:columns (or/c #f (non-empty-listof string?))
+                                    #:download? boolean?)
+                                   dataset-table?)]
+          [fetch-dataset (->* (symbol?) (#:idle-timeout (and/c real? positive?)) complete-path?)]
+          [dataset-cached? (-> symbol? boolean?)]
+          [dataset-cache-directory (-> complete-path?)]
+          [clear-dataset-cache (->* () ((or/c #f symbol?)) void?)])
+         dataset-info
          dataset-missing dataset-missing?
          dataset-table? dataset-table-names dataset-table-columns
          dataset-table-row-count dataset-table-info dataset-table-column)
@@ -27,7 +39,6 @@
 (struct catalog (entries data-dirs discovery-failure))
 (struct source (file core? signature) #:transparent)
 (define-runtime-path core-data "core-data")
-(define-logger datasets)
 
 (define-syntax (declared-core-registries stx)
   (syntax-parse stx
@@ -45,15 +56,6 @@
         [(pair? v) (cons (freeze (car v)) (freeze (cdr v)))]
         [(hash? v) (for/hash ([(k x) (in-hash v)]) (values (freeze k) (freeze x)))]
         [else v]))
-
-(define (raise-registry-error who message . fields)
-  (define details
-    (let loop ([fields fields])
-      (match fields
-        ['() '()]
-        [(list* label value more)
-         (list* "\n  " label ": " (if (path? value) (path->string value) (~a value)) (loop more))])))
-  (raise (exn:fail (apply string-append (~a who) ": " message details) (current-continuation-marks))))
 
 (define (registry-path-string? v)
   (and (string? v) (relative-path? v) (andmap path? (explode-path v))))
@@ -149,7 +151,6 @@
     [(equal? tier "bundled") #f]
     [(not ((nonempty-list-of string?) (fetch-ref "urls"))) (list "urls" "a nonempty list of strings")]
     [(not (sha256-string? (fetch-ref "sha256"))) (list "sha256" "64 lowercase hexadecimal digits")]
-    [(not (exact-positive-integer? (fetch-ref "size"))) (list "size" "a positive byte count")]
     [(not (string? (fetch-ref "format"))) (list "format" "a string")]
     [else #f]))
 
@@ -268,17 +269,16 @@
 (define (dataset-packages)
   (catalog-packages (current-catalog)))
 
-(define (dataset-entry name)
+(define (dataset-entry who name)
   (define known (current-catalog))
   (unless (and (symbol? name) (hash-has-key? (catalog-entries known) (symbol->string name)))
-    (apply raise-arguments-error 'dataset-info "unknown dataset" "name" name "available" (dataset-names)
+    (apply raise-arguments-error who "unknown dataset" "name" name "available" (dataset-names)
            (discovery-failure-fields known)))
   (values (hash-ref (catalog-entries known) (symbol->string name))
           (hash-ref (catalog-data-dirs known) (symbol->string name))))
 
 (define (dataset-info name)
-  (define-values (info _data-dir) (dataset-entry name))
-  info)
+  (dataset-info* 'dataset-info name))
 
 (define (dataset-table-column table name)
   (define i (index-of (dataset-table-names table) name))
@@ -286,37 +286,63 @@
                                    "available" (dataset-table-names table)))
   (vector-ref (dataset-table-columns table) i))
 
-(define (read-rows name info data-dir)
-  (define file (build-path data-dir (format "~a.rktd.gz" name)))
-  (define text
-    (with-handlers ([exn:fail? (lambda (e)
-                                 (raise-registry-error 'load-dataset-table "cannot read dataset data"
-                                                       "dataset" name "file" file
-                                                       "error" (exn-message e)))])
-      (gunzip-file file)))
+(define (read-rows name file info)
   (define expected (hash-ref info "sha256"))
+  (define fetch (hash-ref info "fetch"))
+  (define remedy-fields (if fetch (list "remedy" (format "(clear-dataset-cache '~a)" name)) '()))
+  (define (pinned?)
+    (and fetch
+         (with-handlers ([exn:fail? (lambda (_) #f)])
+           (equal? (file-sha256 file) (hash-ref fetch "sha256")))))
+  (define (unreadable e)
+    (cond
+      [(pinned?)
+       (raise-registry-error 'load-dataset-table "cannot read the pinned download"
+                             "dataset" name "package" (hash-ref info "package") "file" file
+                             "error" (exn-message e))]
+      [else (apply raise-registry-error 'load-dataset-table "cannot read dataset data"
+                   "dataset" name "file" file "error" (exn-message e) remedy-fields)]))
+  (define text (with-handlers ([exn:fail? unreadable]) (gunzip-file file)))
   (define actual (hex (sha256-bytes text)))
-  (unless (equal? actual expected)
-    (raise-registry-error 'load-dataset-table "data sha256 mismatch" "dataset" name "file" file
-                          "expected" expected "actual" actual))
-  (call-with-default-reading-parameterization (lambda () (read (open-input-bytes text)))))
+  (cond
+    [(equal? actual expected)
+     (with-handlers ([exn:fail? (lambda (e)
+                                  (raise-registry-error 'load-dataset-table "cannot parse dataset data"
+                                                        "dataset" name "package" (hash-ref info "package")
+                                                        "file" file "error" (exn-message e)))])
+       (call-with-default-reading-parameterization (lambda () (read (open-input-bytes text)))))]
+    [(pinned?)
+     (raise-registry-error 'load-dataset-table "registry sha256 does not match the pinned download"
+                           "dataset" name "package" (hash-ref info "package") "file" file
+                           "expected" expected "actual" actual)]
+    [else (apply raise-registry-error 'load-dataset-table "data sha256 mismatch" "dataset" name
+                 "file" file "expected" expected "actual" actual remedy-fields)]))
 
-(define (load-dataset-table name #:columns [selected #f])
-  (define-values (info data-dir) (dataset-entry name))
+(define (fetch-tier? info)
+  (equal? (hash-ref info "tier") "fetch"))
+
+(define (bundled-file name data-dir)
+  (build-path data-dir (format "~a.rktd.gz" name)))
+
+(define (load-dataset-table name #:columns [selected #f] #:download? [download? #t])
+  (define-values (info data-dir) (dataset-entry 'load-dataset-table name))
   (define all-names (map (lambda (c) (hash-ref c "name")) (hash-ref info "columns")))
   (define names (or selected all-names))
-  (unless (and (list? names) (pair? names) (andmap string? names))
-    (raise-argument-error 'load-dataset-table "nonempty list of column-name strings or #f" selected))
   (when (check-duplicates names)
     (raise-arguments-error 'load-dataset-table "duplicate column" "columns" names))
   (define indices
     (for/list ([n (in-list names)])
       (or (index-of all-names n)
           (raise-arguments-error 'load-dataset-table "unknown column" "column" n "available" all-names))))
-  (when (equal? (hash-ref info "tier") "fetch")
-    (raise-registry-error 'load-dataset-table "dataset is fetch tier and cannot be downloaded yet"
-                          "dataset" name))
-  (define rows (map list->vector (read-rows name info data-dir)))
+  (define final
+    (and (fetch-tier? info)
+         (cache-file (cache-root 'load-dataset-table) (symbol->string name) info)))
+  (define file
+    (cond [(not final) (bundled-file name data-dir)]
+          [(file-exists? final) final]
+          [else (download-dataset 'load-dataset-table (symbol->string name) info final
+                                  #:download? download? #:idle-timeout 60)]))
+  (define rows (map list->vector (read-rows name file info)))
   (define columns
     (vector->immutable-vector
      (for/vector ([i (in-list indices)])
@@ -325,3 +351,35 @@
           (define v (vector-ref row i))
           (if (eq? v 'missing) dataset-missing (freeze v)))))))
   (dataset-table (map string->immutable-string names) columns (length rows) info))
+
+(define (fetch-dataset name #:idle-timeout [idle 60])
+  (define-values (info data-dir) (dataset-entry 'fetch-dataset name))
+  (define root (cache-root 'fetch-dataset))
+  (define final (and (fetch-tier? info) (cache-file root (symbol->string name) info)))
+  (cond
+    [(not final) (bundled-file name data-dir)]
+    [(file-exists? final) final]
+    [else (download-dataset 'fetch-dataset (symbol->string name) info final
+                            #:download? #t #:idle-timeout idle)]))
+
+(define (dataset-cached? name)
+  (define-values (info _data-dir) (dataset-entry 'dataset-cached? name))
+  (define root (cache-root 'dataset-cached?))
+  (or (not (fetch-tier? info))
+      (file-exists? (cache-file root (symbol->string name) info))))
+
+(define (dataset-cache-directory)
+  (cache-root 'dataset-cache-directory))
+
+(define (clear-dataset-cache [name #f])
+  (define info (and name (dataset-info* 'clear-dataset-cache name)))
+  (define root (cache-root 'clear-dataset-cache))
+  (cond
+    [(not name) (clear-cache-root 'clear-dataset-cache root)]
+    [(fetch-tier? info)
+     (clear-cache-directory 'clear-dataset-cache name (build-path root (symbol->string name)))]
+    [else (void)]))
+
+(define (dataset-info* who name)
+  (define-values (info _data-dir) (dataset-entry who name))
+  info)

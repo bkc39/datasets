@@ -85,19 +85,20 @@
                   (map (match-lambda [(list id _) (format "~a.rktd.gz" id)]) pinned-sha256))
     (check-false (directory-exists? (build-path core-data 'up "private"))))
 
-  (test-case "S7 corrupt or mismatched data raises a non-contract exn:fail naming the dataset"
+  (test-case "S7 corrupt or mismatched data raises a non-contract exn:fail naming the dataset, no remedy"
     (define good (rows->rktd-bytes '((1))))
     (define bad (rows->rktd-bytes '((2))))
-    (define (check-load-fails bytes rxs)
+    (define (check-load-fails bytes rxs #:sha256 [sha256 (hex (sha256-bytes good))])
       (call-with-temporary-fixture
        (lambda (dir)
          (write-registry-fixture! dir #:info '("registry.rktd")
-                                  #:registries (hash "registry.rktd" (hash "gen" (gen-entry "gen" #:sha256 (hex (sha256-bytes good)))))
+                                  #:registries (hash "registry.rktd" (hash "gen" (gen-entry "gen" #:sha256 sha256)))
                                   #:data (hash "gen" bytes))
          (define file-rx (regexp (regexp-quote (path->string (build-path dir "data" "gen.rktd.gz")))))
          (call-with-registry-fixtures (list dir)
            (lambda ()
              (check-exn (lambda (e) (and (exn:fail? e) (not (exn:fail:contract? e))
+                                         (not (regexp-match? #rx"remedy:" (exn-message e)))
                                          (for/and ([rx (in-list (list* #rx"gen" file-rx rxs))])
                                            (regexp-match? rx (exn-message e)))))
                         (lambda () (load-dataset-table 'gen))))))))
@@ -106,4 +107,7 @@
     (check-load-fails (gzip-bytes bad)
                       (list #rx"sha256 mismatch"
                             (regexp (string-append "expected: " (hex (sha256-bytes good))))
-                            (regexp (string-append "actual: " (hex (sha256-bytes bad))))))))
+                            (regexp (string-append "actual: " (hex (sha256-bytes bad))))))
+    (check-load-fails (gzip-bytes #"(1 2")
+                      (list #rx"cannot parse dataset data" #rx"package: datasets-gen")
+                      #:sha256 (hex (sha256-bytes #"(1 2")))))
