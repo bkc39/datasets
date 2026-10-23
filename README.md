@@ -14,11 +14,13 @@ penguins-raw, gapminder, datasaurus-dozen, and titanic-passengers in
 raco pkg install --auto datasets
 ```
 
-For the lightweight table API alone, install `datasets-core` instead.
-From a checkout, install the three packages with:
+The 20 datasets of ISLR2 (auto, boston, hitters, smarket, wage, ...) are in
+`datasets-islr`. For the lightweight table API alone, install `datasets-core`
+instead.
+From a checkout, install the four packages with:
 
 ```sh
-raco pkg install ./datasets-core ./datasets-r
+raco pkg install ./datasets-core ./datasets-r ./datasets-islr
 raco pkg install --auto ./datasets
 ```
 
@@ -39,12 +41,13 @@ source abbreviations such as `mpg` remain. Selection preserves requested order.
 Empty selections and duplicate names are rejected. Matrices require numeric,
 nonmissing values: categories are not encoded, nor missing values imputed.
 
-The repository has three top-level, independently installable package directories:
-`datasets-core/`, `datasets-r/`, and `datasets/`. Each declares `collection 'multi`
+The repository has four top-level, independently installable package directories:
+`datasets-core/`, `datasets-r/`, `datasets-islr/`, and `datasets/`. Each declares `collection 'multi`
 and contributes distinct directories to the shared `datasets` collection.
 `datasets-r` contributes `datasets/r-data`, found through its registry, and its
 tests; it depends on `datasets-core`, and `datasets` depends on it. Its sets have
-no named loader: use `(load-dataset 'penguins)`.
+no named loader: use `(load-dataset 'penguins)`. `datasets-islr` contributes
+`datasets/islr-data` the same way.
 
 `datasets-core` contributes `datasets/core` and depends only on `base` at runtime.
 It provides `load-dataset-table`, `dataset-names`, `dataset-info`, table predicates
@@ -94,10 +97,12 @@ GPL-2 for [lars 1.3](https://CRAN.R-project.org/package=lars), and CC BY 4.0 for
 The `datasets-r` sets are CC0 (palmerpenguins 0.1.1, gapminder 1.0.1,
 titanic 0.1.0) and MIT (datasauRus 0.1.9).
 This is a redistribution basis, not a claim of independent original-owner
-permission. See [NOTICE](datasets-core/NOTICE) and
-[datasets-r/NOTICE](datasets-r/NOTICE), bundled license texts, and upstream
-documentation under `datasets-core/datasets/provenance/` and
-`datasets-r/datasets/r-data/provenance/`.
+permission. The `datasets-islr` sets are GPL-2
+([ISLR2 1.3-2](https://CRAN.R-project.org/package=ISLR2)). See [NOTICE](datasets-core/NOTICE) and
+[datasets-r/NOTICE](datasets-r/NOTICE), [datasets-islr/NOTICE](datasets-islr/NOTICE),
+bundled license texts, and upstream documentation under
+`datasets-core/datasets/provenance/`, `datasets-r/datasets/r-data/provenance/`, and
+`datasets-islr/datasets/islr-data/provenance/`.
 The registry records original spellings, units, descriptions, levels, identifiers,
 suggested targets, citations, transformation notes, and source/normalized SHA-256.
 Diabetes does not promise raw measurements or exact scikit-learn parity.
@@ -168,6 +173,8 @@ consume only the committed gzip-compressed `.rktd.gz` files under
 text. `--package datasets-r` imports the CRAN teaching sets into
 `datasets-r/datasets/r-data`; `--target DIR` writes elsewhere.
 Reimport, inspect the diff, then run checks.
+`--package datasets-islr` imports the ISLR2 sets into
+`datasets-islr/datasets/islr-data`.
 Source selection is in `scripts/sources.json`; original documentation is copied
 alongside data. No X/y helpers are included in v0.1.
 

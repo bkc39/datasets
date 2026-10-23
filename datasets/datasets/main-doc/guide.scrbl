@@ -1,5 +1,5 @@
 #lang scribble/manual
-@(require scribble/eval
+@(require racket/list racket/match scribble/eval
           (for-label racket/base datasets datasets/data-frame
                      math/matrix (prefix-in pl: (except-in polars head series-ref ~>)) (prefix-in df: data-frame)))
 @(define ev (make-base-eval))
@@ -16,11 +16,11 @@ Use Racket 9.3 or later. Install from the Racket catalog:
 
 @commandline{raco pkg install --auto datasets}
 
-This also installs @tt{datasets-core}, the data package @tt{datasets-r}, and the
-adapter dependencies. From a checkout of the repository, install the packages
-from its root:
+This also installs @tt{datasets-core}, the data packages @tt{datasets-r} and
+@tt{datasets-islr}, and the adapter dependencies. From a checkout of the
+repository, install the packages from its root:
 
-@verbatim{raco pkg install ./datasets-core ./datasets-r
+@verbatim{raco pkg install ./datasets-core ./datasets-r ./datasets-islr
 raco pkg install --auto ./datasets}
 
 The top-level directories are independently installable multi-collection
@@ -28,7 +28,8 @@ packages. @tt{datasets-core} provides @racketmodname[datasets/core];
 @tt{datasets-r} adds datasets from CRAN packages to its catalog;
 @tt{datasets} adds the convenient loaders and adapters to the same collection.
 The Polars package supplies its native library. With Nix, @tt{nix develop}
-prepares an isolated environment containing the three packages and that library.
+prepares an isolated environment containing the four packages and that library.
+@tt{datasets-islr} adds the datasets of ISLR2; see @secref["datasets-islr-guide"].
 
 @examples[#:eval ev
  (require datasets (prefix-in pl: polars))
@@ -122,6 +123,49 @@ Airquality has missing measurements. The table format uses
 Missing values are distinct from zero and @racket[#f]. Decide whether to exclude,
 replace, or otherwise account for them in your analysis. The loaders preserve
 them; matrix conversion reports a missing value instead of silently removing it.
+
+@section[#:tag "datasets-islr-guide"]{Datasets from ISLR2}
+
+@tt{datasets-islr} bundles the 20 datasets of the R package ISLR2, the data of
+@hyperlink["https://www.statlearning.com"]{An Introduction to Statistical
+Learning, Second Edition}. They load by name. Player names, R row names in the
+book, are the first column of @racket['hitters]:
+
+@examples[#:eval ev
+ (define hitters (load-dataset 'hitters #:format 'table))
+ (dataset-table-row-count hitters)
+ (vector-ref (dataset-table-column hitters "player") 1)
+ (hash-ref (dataset-info 'hitters) "suggested-targets")
+ (for/sum ([salary (in-vector (dataset-table-column hitters "salary"))])
+   (if (dataset-missing? salary) 1 0))]
+
+The chapters and labs that use each dataset; @racket['us-arrests] comes from
+@tt{datasets-core}.
+
+@(define (catalog-link id)
+   (secref (format "dataset-~a" id) #:doc '(lib "datasets/core-doc/datasets-core.scrbl")))
+@(tabular
+  #:sep (hspace 2)
+  (cons
+   (list "Chapter" "Text and lab" "Exercises")
+   (for/list ([row (in-list
+                    '(("1 Introduction" (wage smarket nci60) ())
+                      ("2 Statistical Learning" (auto) (college boston))
+                      ("3 Linear Regression" (credit auto boston carseats) (carseats boston))
+                      ("4 Classification" (default smarket caravan bikeshare) (weekly auto boston))
+                      ("5 Resampling Methods" (auto portfolio) (default weekly boston))
+                      ("6 Linear Model Selection and Regularization" (credit hitters)
+                                                                     (college boston))
+                      ("7 Moving Beyond Linearity" (wage) (auto boston college))
+                      ("8 Tree-Based Methods" (hitters carseats boston) (carseats oj hitters caravan))
+                      ("9 Support Vector Machines" (khan) (auto oj))
+                      ("10 Deep Learning" (hitters nyse) (default))
+                      ("11 Survival Analysis" (brain-cancer publication) ())
+                      ("12 Unsupervised Learning" (nci60 us-arrests) ())
+                      ("13 Multiple Testing" (fund khan) ())))])
+     (define (links ids) (add-between (map catalog-link ids) ", "))
+     (match-define (list chapter text exercises) row)
+     (list chapter (links text) (links exercises)))))
 
 @section[#:tag "datasets-matrices-guide"]{Preparing a numeric matrix}
 

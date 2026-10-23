@@ -1,0 +1,28 @@
+New code: Copyright (c) 2026 datasets contributors, Apache-2.0 OR MIT.
+Bundled observations are distributed separately under the upstream terms:
+- auto, bikeshare, boston, brain-cancer, caravan, carseats, college, credit,
+  default, fund, hitters, khan, nci60, nyse, oj, portfolio, publication,
+  smarket, wage and weekly from ISLR2 1.3-2: GPL-2.0-only. Gareth James,
+  Daniela Witten, Trevor Hastie and Rob Tibshirani, with Balasubramanian
+  Narasimhan; An Introduction to Statistical Learning with Applications in R,
+  Second Edition (Springer, 2021), https://www.statlearning.com. Original
+  data sources are cited in datasets/islr-data/provenance/*.Rd.
+  https://CRAN.R-project.org/package=ISLR2
+
+This records the accepted upstream redistribution basis, and does not assert
+independent original-owner permission. These authors do not endorse this work.
+
+Transformations: names normalized to kebab-case, with the original names in
+the registry; R factors rendered as labels with levels in metadata; R NA
+rendered as the dedicated missing sentinel; College and Hitters row names
+kept as first identifier columns name and player, other (numeric) row names
+dropped; khan's list joined into one wide table with a split column; nci60's
+list joined into one wide table with a label column; nyse's logical train
+column rendered as 1 and 0; character columns nyse day-of-week and
+publication mech declared categorical. Boston is ISLR2's version, without the
+black column of MASS::Boston. Source row order and numeric precision retained.
+Source version, archive and normalized SHA-256 hashes, variable descriptions,
+and dataset-specific notes are in the registry
+(datasets/islr-data/registry.rktd). Upstream documentation is retained in
+datasets/islr-data/provenance; the full data license text is in
+datasets/islr-data/licenses.
