@@ -33,3 +33,21 @@ jobs:
         run: |
           sudo unshare --net -- env PATH="$PATH" bash "$GITHUB_WORKSPACE/scripts/install-check.sh" /tmp/datasets-dependencies/sources core
           sudo unshare --net -- env PATH="$PATH" bash "$GITHUB_WORKSPACE/scripts/install-check.sh" /tmp/datasets-dependencies/sources full
+  racket-macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ['9.3', stable]
+    runs-on: macos-14
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Bogdanp/setup-racket@v1.14
+        with:
+          version: ${{ matrix.version }}
+          distribution: full
+      - name: Core install and tests on the official macOS build, raco distribute included
+        shell: bash
+        run: |
+          bash scripts/install-check.sh "$RUNNER_TEMP" core 2>&1 | tee "$RUNNER_TEMP/core.log"
+          ! grep -q 'distribute.rkt: skipped' "$RUNNER_TEMP/core.log"
