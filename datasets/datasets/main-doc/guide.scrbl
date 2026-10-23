@@ -25,7 +25,8 @@ raco pkg install --auto ./datasets}
 
 The top-level directories are independently installable multi-collection
 packages. @tt{datasets-core} provides @racketmodname[datasets/core];
-@tt{datasets-r} adds datasets from CRAN packages to its catalog;
+@tt{datasets-r} adds R's @tt{datasets} package and datasets from CRAN packages to its
+catalog;
 @tt{datasets} adds the convenient loaders and adapters to the same collection.
 The Polars package supplies its native library. With Nix, @tt{nix develop}
 prepares an isolated environment containing the three packages and that library.

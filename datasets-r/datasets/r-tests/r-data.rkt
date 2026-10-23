@@ -1,15 +1,17 @@
 #lang racket/base
 (require (for-syntax racket/base)
          (only-in datasets/core dataset-info dataset-missing dataset-missing? dataset-names
-                  dataset-packages dataset-table-column dataset-table-columns dataset-table-names
+                  dataset-packages dataset-table-columns dataset-table-names
                   dataset-table-row-count load-dataset-table)
          (only-in datasets/core-tests/fixture gunzip-file hex)
-         (only-in racket/file file->lines)
-         (only-in racket/list flatten make-list remove-duplicates)
+         (only-in racket/file file->lines file->value)
+         (only-in racket/format ~s)
+         (only-in racket/list append-map make-list remove-duplicates)
          (only-in racket/match match match-define)
          (only-in racket/runtime-path define-runtime-path)
          (only-in racket/vector vector-count)
-         (only-in setup/getinfo get-info/full))
+         (only-in setup/getinfo get-info/full)
+         (only-in "spot.rkt" spot-results))
 (define-runtime-path r-data "../r-data")
 (define-runtime-path package-root "../..")
 (module+ test
@@ -35,17 +37,13 @@
   (define licenses
     (hash 'datasaurus-dozen "MIT" 'gapminder "CC0-1.0" 'penguins "CC0-1.0"
           'penguins-raw "CC0-1.0" 'titanic-passengers "CC0-1.0"))
-  (define ids (map car shapes))
-  (define column-metas
-    (for/hash ([id (in-list ids)])
-      (values id (for/hash ([meta (in-list (hash-ref (dataset-info id) "columns"))])
-                   (values (hash-ref meta "name") meta)))))
+  (define r-ids
+    (remove-duplicates
+     (for/list ([object (in-list (file->value (build-path r-data "r-objects.rktd")))]
+                #:when (equal? (caddr object) "dataset"))
+       (string->symbol (cadddr object)))))
+  (define ids (sort (append (map car shapes) r-ids) symbol<?))
   (define (data-file id) (build-path r-data "data" (format "~a.rktd.gz" id)))
-  (define (column id name) (dataset-table-column (load-dataset-table id) name))
-  (define (column-meta id name key) (hash-ref (hash-ref (hash-ref column-metas id) name) key))
-  (define (column-count id name keep?) (vector-count keep? (column id name)))
-  (define (column-sum id name)
-    (for/sum ([v (in-vector (column id name))] #:unless (dataset-missing? v)) v))
   (define (column-type name levels identifiers present)
     (cond
       [(member name identifiers) "identifier"]
@@ -59,10 +57,18 @@
                 #:when pair)
       (match-define (list _ key value) pair)
       (values key value)))
-  (define (typed-columns id type)
-    (for/list ([meta (in-list (hash-ref (dataset-info id) "columns"))]
-               #:when (equal? (hash-ref meta "type") type))
-      (hash-ref meta "name")))
+  (define (license-ids expression)
+    (match expression
+      [(list left (or 'AND 'OR) right) (append (license-ids left) (license-ids right))]
+      [(? symbol?) (list expression)]))
+  (define (conjuncts expression)
+    (match expression
+      [(list left 'AND right) (append (conjuncts left) (conjuncts right))]
+      [_ (list expression)]))
+  (define (registry-expression license)
+    (match (read (open-input-string (string-append "(" license ")")))
+      [(list single) single]
+      [expression expression]))
   (define spot-checks
     `((categorical datasaurus-dozen ("dataset"))
       (categorical gapminder ("country" "continent"))
@@ -120,15 +126,20 @@
   (for ([shape (in-list shapes)])
     (match-define (list id rows names) shape)
     (define t (load-dataset-table id))
-    (define info (dataset-info id))
     (check-equal? (dataset-table-row-count t) rows)
     (check-equal? (dataset-table-names t) names)
-    (check-equal? (hash-ref info "rows") rows)
-    (check-equal? (hash-ref info "column-count") (length names))
+    (check-equal? (hash-ref (dataset-info id) "license") (hash-ref licenses id)))
+  (for ([id (in-list ids)])
+    (define t (load-dataset-table id))
+    (define info (dataset-info id))
+    (define rows (hash-ref info "rows"))
+    (check-equal? (dataset-table-row-count t) rows)
+    (check-equal? (dataset-table-names t)
+                  (for/list ([meta (in-list (hash-ref info "columns"))]) (hash-ref meta "name")))
+    (check-equal? (hash-ref info "column-count") (vector-length (dataset-table-columns t)))
     (check-equal? (hash-ref info "tier") "bundled")
     (check-equal? (hash-ref info "package") "datasets-r")
     (check-false (hash-ref info "fetch"))
-    (check-equal? (hash-ref info "license") (hash-ref licenses id))
     (check-equal? (hex (sha256-bytes (gunzip-file (data-file id)))) (hash-ref info "sha256"))
     (define header (call-with-input-file (data-file id) (lambda (in) (read-bytes 8 in))))
     (check-equal? (subbytes header 0 4) (bytes #x1f #x8b 8 0))
@@ -159,13 +170,15 @@
   (match-define (list _ 'AND data-license) ((get-info/full package-root) 'license))
   (define registry-licenses
     (remove-duplicates
-     (for/list ([id (in-list ids)]) (hash-ref (dataset-info id) "license"))))
-  (check-equal? (sort registry-licenses string<?)
-                (sort (for/list ([id (in-list (remove-duplicates (flatten data-license)))]
-                                 #:unless (eq? id 'AND))
-                        (symbol->string id))
-                      string<?))
-  (for ([license (in-list registry-licenses)])
+     (for/list ([id (in-list ids)]) (registry-expression (hash-ref (dataset-info id) "license")))))
+  (check-equal? (registry-expression "GPL-2.0-only OR GPL-3.0-only") '(GPL-2.0-only OR GPL-3.0-only))
+  (check-equal? (registry-expression "MIT") 'MIT)
+  (check-equal? (license-ids '(CC0-1.0 AND (MIT OR GPL-2.0-only))) '(CC0-1.0 MIT GPL-2.0-only))
+  (check-equal? (conjuncts '(CC0-1.0 AND (MIT AND (A OR B)))) '(CC0-1.0 MIT (A OR B)))
+  (check-equal? (sort (map ~s registry-licenses) string<?)
+                (sort (map ~s (conjuncts data-license)) string<?))
+  (for ([license (in-list (remove-duplicates
+                            (map symbol->string (append-map license-ids registry-licenses))))])
     (define file-name (pregexp (string-append "^" (regexp-quote license) "[-.]")))
     (check-not-false (for/or ([file (in-list license-files)])
                        (regexp-match? file-name (path->string file)))
@@ -178,24 +191,8 @@
                                    (hash-ref datasaurus-copyright "COPYRIGHT HOLDER"))
                            (file->lines (build-path r-data "licenses" "MIT-datasauRus.txt"))))
 
-  (for ([spot (in-list spot-checks)])
-    (match spot
-      [(list 'row id row names expected)
-       (check-equal? (for/list ([name (in-list names)]) (vector-ref (column id name) row)) expected)]
-      [(list 'missing id names expected)
-       (check-equal? (for/list ([name (in-list names)]) (column-count id name dataset-missing?))
-                     expected)]
-      [(list 'sum id name expected) (check-equal? (column-sum id name) expected)]
-      [(list 'sum id name expected epsilon) (check-= (column-sum id name) expected epsilon)]
-      [(list 'level-counts id name expected)
-       (check-equal? (for/list ([level (in-list (column-meta id name "levels"))])
-                       (column-count id name (lambda (v) (equal? v level))))
-                     expected)]
-      [(list 'categorical id expected) (check-equal? (typed-columns id "categorical") expected)]
-      [(list 'identifiers id expected)
-       (check-equal? (hash-ref (dataset-info id) "identifiers") expected)
-       (check-equal? (typed-columns id "identifier") expected)]
-      [(list 'meta id name key expected) (check-equal? (column-meta id name key) expected)]
-      [(list 'info id key expected) (check-equal? (hash-ref (dataset-info id) key) expected)]
-      [(list 'info-match id key pattern)
-       (check-regexp-match pattern (hash-ref (dataset-info id) key))])))
+  (for* ([spot (in-list spot-checks)] [result (in-list (spot-results spot))])
+    (match result
+      [(list 'equal actual expected) (check-equal? actual expected (~s spot))]
+      [(list 'close actual expected epsilon) (check-= actual expected epsilon (~s spot))]
+      [(list 'match actual pattern) (check-regexp-match pattern actual)])))
