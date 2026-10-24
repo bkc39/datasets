@@ -4,15 +4,20 @@
                   dataset-packages dataset-table-column dataset-table-columns dataset-table-names
                   dataset-table-row-count load-dataset-table)
          (only-in datasets/core-tests/fixture gunzip-file hex)
-         (only-in racket/list drop remove-duplicates take)
+         (only-in racket/file file->string)
+         (only-in racket/list check-duplicates drop filter-map filter-not first remove-duplicates
+                  take)
          (only-in racket/match match match-define)
          (only-in racket/runtime-path define-runtime-path)
-         (only-in racket/vector vector-count)
+         (only-in racket/string string-contains? string-prefix?)
+         (only-in racket/vector vector-count vector-map)
          (only-in setup/getinfo get-info/full))
 (define-runtime-path uci-data "../uci-data")
 (define-runtime-path package-root "../..")
 (module+ test
-  (require (only-in rackunit check-= check-equal? check-false check-not-false check-true))
+  (require (only-in rackunit check-= check-equal? check-false check-not-false check-regexp-match
+                    check-true)
+           (only-in threading ~>))
   (define pixels (for*/list ([i 8] [j 8]) (format "pixel-~a-~a" i j)))
   (define spam-words
     '("make" "address" "all" "3d" "our" "over" "remove" "internet" "order" "mail" "receive" "will"
@@ -57,10 +62,9 @@
       (optdigits 5620 ,(append pixels '("digit" "split")))
       (seeds 210 ("area" "perimeter" "compactness" "length-of-kernel" "width-of-kernel"
                   "asymmetry-coefficient" "length-of-kernel-groove" "class"))
-      (spambase 4601 ,(append (for/list ([w (in-list spam-words)]) (string-append "word-freq-" w))
-                              (for/list ([c '("semicolon" "paren" "bracket" "exclamation" "dollar"
-                                              "hash")])
-                                (string-append "char-freq-" c))
+      (spambase 4601 ,(append (map (lambda (w) (string-append "word-freq-" w)) spam-words)
+                              (map (lambda (c) (string-append "char-freq-" c))
+                                   '("semicolon" "paren" "bracket" "exclamation" "dollar" "hash"))
                               '("capital-run-length-average" "capital-run-length-longest"
                                 "capital-run-length-total" "spam")))
       (student-performance 1044 ("school" "sex" "age" "address" "famsize" "pstatus" "medu" "fedu"
@@ -71,7 +75,13 @@
       (wine-quality 6497 ("fixed-acidity" "volatile-acidity" "citric-acid" "residual-sugar"
                           "chlorides" "free-sulfur-dioxide" "total-sulfur-dioxide" "density" "ph"
                           "sulphates" "alcohol" "quality" "colour"))))
-  (define ids (map car shapes))
+  (define ids (map first shapes))
+  (define bike-note
+    (regexp
+     (string-append "casual \\+ registered = cnt, so leave casual and registered out when "
+                    "predicting cnt\\. Descriptions follow the UCI dataset page, which corrects "
+                    "the bundled Readme\\.txt \\(season 1:springer, temp divided by 41, atemp by "
+                    "50\\); season 1 is winter")))
   (define citation-pattern
     #px"doi:10\\.24432/C5[0-9A-Z]{4}\\. https://archive\\.ics\\.uci\\.edu/dataset/[0-9]+/")
   (define column-metas
@@ -81,7 +91,7 @@
   (define (data-file id) (build-path uci-data "data" (format "~a.rktd.gz" id)))
   (define tables (for/hash ([id (in-list ids)]) (values id (load-dataset-table id))))
   (define (column id name) (dataset-table-column (hash-ref tables id) name))
-  (define (column-meta id name key) (hash-ref (hash-ref (hash-ref column-metas id) name) key))
+  (define (column-meta id name key) (~> column-metas (hash-ref id) (hash-ref name) (hash-ref key)))
   (define (column-count id name keep?) (vector-count keep? (column id name)))
   (define (column-sum id name)
     (for/sum ([v (in-vector (column id name))] #:unless (dataset-missing? v)) v))
@@ -93,9 +103,8 @@
       [(andmap real? present) "real"]
       [else "string"]))
   (define (typed-columns id type)
-    (for/list ([meta (in-list (hash-ref (dataset-info id) "columns"))]
-               #:when (equal? (hash-ref meta "type") type))
-      (hash-ref meta "name")))
+    (filter-map (lambda (meta) (and (equal? (hash-ref meta "type") type) (hash-ref meta "name")))
+                (hash-ref (dataset-info id) "columns")))
   (define spot-checks
     `((categorical abalone ("sex"))
       (categorical adult ("workclass" "education" "marital-status" "occupation" "relationship" "race"
@@ -111,7 +120,8 @@
                                         "activities" "nursery" "higher" "internet" "romantic"
                                         "subject"))
       (categorical wine-quality ("colour"))
-      (identifiers auto-mpg ("car-name"))
+      (identifiers auto-mpg ())
+      (meta auto-mpg "car-name" "type" "string")
       (identifiers bike-sharing-daily ("instant"))
       (identifiers bike-sharing-hourly ("instant"))
       (identifiers digits ())
@@ -175,6 +185,8 @@
       (missing mushroom ("stalk-root") (2480))
       (meta mushroom "bruises" "original-name" "bruises?")
       (meta mushroom "stalk-root" "levels" ("b" "c" "e" "r"))
+      (info-match mushroom "notes"
+                  #rx"Donated by J\\. Schlimmer \\(1987\\); the UCI page names no creator")
       (row car-evaluation 0 ("buying" "doors" "class") ("vhigh" "2" "unacc"))
       (row car-evaluation 1727 ("buying" "doors" "persons" "class") ("low" "5more" "more" "vgood"))
       (level-counts car-evaluation "class" (1210 384 69 65))
@@ -192,21 +204,54 @@
            (540.0 162.0 28 79.98611076))
       (sum concrete-strength "age" 47032)
       (meta concrete-strength "age" "unit" "days")
+      (meta concrete-strength "water" "original-name" "Water  (component 4)(kg in a m^3 mixture)")
+      (meta concrete-strength "concrete-compressive-strength" "original-name"
+            "Concrete compressive strength(MPa, megapascals) ")
       (row energy-efficiency 0 ("relative-compactness" "surface-area" "orientation" "heating-load"
                                 "cooling-load")
            (0.98 514.5 2 15.55 21.33))
       (meta energy-efficiency "heating-load" "original-name" "Y1")
       (info energy-efficiency "suggested-targets" ("heating-load" "cooling-load"))
+      (info-match energy-efficiency "notes"
+                  #rx"no documentation file; names X1-X8, Y1 and Y2 are replaced by the names on")
       (row student-performance 0 ("school" "sex" "age" "g1" "g3" "subject") ("GP" "F" 18 5 6 "math"))
       (row student-performance 1043 ("school" "absences" "g3" "subject") ("MS" 4 11 "portuguese"))
       (level-counts student-performance "subject" (395 649))
       (sum student-performance "g3" 11841)
       (sum student-performance "absences" 4630)
-      (row bike-sharing-daily 0 ("instant" "dteday" "temp" "cnt") (1 "2011-01-01" 0.344167 985))
+      (row bike-sharing-daily 0 ("instant" "dteday" "season" "temp" "cnt")
+           (1 "2011-01-01" 1 0.344167 985))
+      (total bike-sharing-daily ("casual" "registered") "cnt")
+      (total bike-sharing-hourly ("casual" "registered") "cnt")
+      (info-match bike-sharing-daily "notes" ,bike-note)
+      (info-match bike-sharing-hourly "notes" ,bike-note)
       (sum bike-sharing-daily "cnt" 3292679)
       (row bike-sharing-hourly 17378 ("instant" "dteday" "hr" "cnt") (17379 "2012-12-31" 23 49))
       (sum bike-sharing-hourly "cnt" 3292679)
-      (info bike-sharing-hourly "suggested-targets" ("cnt"))))
+      (info bike-sharing-hourly "suggested-targets" ("cnt"))
+      (citation abalone "Nash, W., Sellers, T., Talbot, S., Cawthorn, A. and Ford, W. (1994). "
+                "C55C7W")
+      (citation adult "Becker, B. and Kohavi, R. (1996). " "C5XW20")
+      (citation auto-mpg "Quinlan, R. (1993). " "C5859H")
+      (citation bank-marketing "Moro, S., Rita, P. and Cortez, P. (2014). " "C5K306")
+      (citation banknote-authentication "Lohweg, V. (2012). " "C55P57")
+      (citation bike-sharing-daily "Fanaee-T, H. (2013). " "C5W894")
+      (citation bike-sharing-hourly "Fanaee-T, H. (2013). " "C5W894")
+      (citation car-evaluation "Bohanec, M. (1988). " "C5JP48")
+      (citation concrete-strength "Yeh, I.-C. (1998). " "C5PK67")
+      (citation digits "Alpaydin, E. and Kaynak, C. (1998). " "C50P49")
+      (citation energy-efficiency "Tsanas, A. and Xifara, A. (2012). " "C51307")
+      (citation heart-disease "Janosi, A., Steinbrunn, W., Pfisterer, M. and Detrano, R. (1989). "
+                "C52P4X")
+      (citation mushroom "Mushroom [Dataset]. (1981). " "C5959T")
+      (citation optdigits "Alpaydin, E. and Kaynak, C. (1998). " "C50P49")
+      (citation seeds ,(string-append "Charytanowicz, M., Niewczas, J., Kulczycki, P., Kowalski, P. "
+                                      "and Lukasik, S. (2010). ")
+                "C5H30K")
+      (citation spambase "Hopkins, M., Reeber, E., Forman, G. and Suermondt, J. (1999). " "C53G6X")
+      (citation student-performance "Cortez, P. (2008). " "C5TG7T")
+      (citation wine-quality "Cortez, P., Cerdeira, A., Almeida, F., Matos, T. and Reis, J. (2009). "
+                "C56S3T")))
 
   (check-equal? (dataset-names #:package "datasets-uci") ids)
   (check-not-false (member "datasets-uci" (dataset-packages)))
@@ -223,18 +268,20 @@
     (check-equal? (hash-ref info "package") "datasets-uci")
     (check-false (hash-ref info "fetch"))
     (check-equal? (hash-ref info "license") "CC-BY-4.0")
-    (check-not-false (regexp-match? citation-pattern (hash-ref info "citation")) label)
-    (check-equal? (hex (sha256-bytes (gunzip-file (data-file id)))) (hash-ref info "sha256"))
+    (check-true (regexp-match? citation-pattern (hash-ref info "citation")) label)
+    (check-equal? (~> id data-file gunzip-file sha256-bytes hex) (hash-ref info "sha256"))
     (define header (call-with-input-file (data-file id) (lambda (in) (read-bytes 8 in))))
     (check-equal? (subbytes header 0 4) (bytes #x1f #x8b 8 0))
     (check-equal? (subbytes header 4 8) (bytes 0 0 0 0))
     (check-true (immutable? info))
-    (check-not-false (pair? (hash-ref info "suggested-targets")) label)
+    (check-true (pair? (hash-ref info "suggested-targets")) label)
+    (for ([name (in-list (hash-ref info "identifiers"))])
+      (check-false (~> (column id name) vector->list check-duplicates) (format "~a ~a" label name)))
     (for ([target (in-list (hash-ref info "suggested-targets"))])
       (check-not-false (member target names) label))
     (for ([c (in-vector (dataset-table-columns t))] [meta (in-list (hash-ref info "columns"))])
       (define name (hash-ref meta "name"))
-      (define present (for/list ([v (in-vector c)] #:unless (dataset-missing? v)) v))
+      (define present (filter-not dataset-missing? (vector->list c)))
       (check-true (immutable? c))
       (check-equal? (vector-length c) rows)
       (check-equal? (vector-count dataset-missing? c) (hash-ref meta "missing-count"))
@@ -249,35 +296,45 @@
                   name))
     (for ([c (in-vector (dataset-table-columns t))] [meta (in-list (hash-ref info "columns"))]
           #:when (pair? (hash-ref meta "levels")))
-      (check-equal? (sort (remove-duplicates
-                           (for/list ([v (in-vector c)] #:unless (dataset-missing? v)) v))
-                          string<?)
+      (check-equal? (~> c vector->list (filter-not dataset-missing? _) remove-duplicates
+                        (sort string<?))
                     (sort (hash-ref meta "levels") string<?)
                     (hash-ref meta "name"))))
-  (check-equal? (sort (map path->string (directory-list (build-path uci-data "data"))) string<?)
-                (sort (for/list ([id (in-list ids)]) (format "~a.rktd.gz" id)) string<?))
+  (check-equal? (~> (build-path uci-data "data") directory-list (map path->string _) (sort string<?))
+                (~> ids (map (lambda (id) (format "~a.rktd.gz" id)) _) (sort string<?)))
   (match-define (list _ 'AND data-license) ((get-info/full package-root) 'license))
   (check-equal? data-license 'CC-BY-4.0)
-  (check-equal? (map path->string (directory-list (build-path uci-data "licenses")))
+  (check-equal? (~> (build-path uci-data "licenses") directory-list (map path->string _))
                 '("CC-BY-4.0.txt"))
+  (check-regexp-match #rx"- mushroom: Mushroom \\(1981\\), doi:10\\.24432/C5959T, no creator named"
+                      (file->string (build-path package-root "NOTICE")))
 
   (for ([spot (in-list spot-checks)])
     (match spot
       [(list 'row id row names expected)
-       (check-equal? (for/list ([name (in-list names)]) (vector-ref (column id name) row)) expected
+       (check-equal? (map (lambda (name) (vector-ref (column id name) row)) names) expected
                      (format "~a row ~a" id row))]
       [(list 'missing id names expected)
-       (check-equal? (for/list ([name (in-list names)]) (column-count id name dataset-missing?))
-                     expected)]
+       (check-equal? (map (lambda (name) (column-count id name dataset-missing?)) names) expected)]
+      [(list 'total id parts whole)
+       (check-equal? (apply vector-map + (map (lambda (name) (column id name)) parts))
+                     (column id whole))]
       [(list 'sum id name expected) (check-equal? (column-sum id name) expected)]
       [(list 'sum id name expected epsilon) (check-= (column-sum id name) expected epsilon)]
       [(list 'level-counts id name expected)
-       (check-equal? (for/list ([level (in-list (column-meta id name "levels"))])
-                       (column-count id name (lambda (v) (equal? v level))))
+       (check-equal? (map (lambda (level) (column-count id name (lambda (v) (equal? v level))))
+                          (column-meta id name "levels"))
                      expected)]
       [(list 'categorical id expected) (check-equal? (typed-columns id "categorical") expected)]
       [(list 'identifiers id expected)
        (check-equal? (hash-ref (dataset-info id) "identifiers") expected)
        (check-equal? (typed-columns id "identifier") expected)]
       [(list 'meta id name key expected) (check-equal? (column-meta id name key) expected)]
-      [(list 'info id key expected) (check-equal? (hash-ref (dataset-info id) key) expected)])))
+      [(list 'info id key expected) (check-equal? (hash-ref (dataset-info id) key) expected)]
+      [(list 'info-match id key pattern)
+       (check-regexp-match pattern (hash-ref (dataset-info id) key))]
+      [(list 'citation id authors-year doi-suffix)
+       (define citation (hash-ref (dataset-info id) "citation"))
+       (check-true (string-prefix? citation authors-year) (symbol->string id))
+       (check-true (string-contains? citation (format "doi:10.24432/~a. " doi-suffix))
+                   (symbol->string id))])))

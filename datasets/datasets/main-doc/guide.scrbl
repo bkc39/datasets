@@ -17,19 +17,19 @@ Use Racket 9.3 or later. Install from the Racket catalog:
 @commandline{raco pkg install --auto datasets}
 
 This also installs @tt{datasets-core}, the data packages @tt{datasets-r} and
-@tt{datasets-uci}, and the adapter dependencies. From a checkout of the repository, install the packages
-from its root:
+@tt{datasets-uci}, and the adapter dependencies. From a checkout of the
+repository, install the packages from its root:
 
 @verbatim{raco pkg install ./datasets-core ./datasets-r ./datasets-uci
 raco pkg install --auto ./datasets}
 
 The top-level directories are independently installable multi-collection
 packages. @tt{datasets-core} provides @racketmodname[datasets/core];
-@tt{datasets-r} and @tt{datasets-uci} add datasets from CRAN packages and the UCI
-Machine Learning Repository to its catalog;
-@tt{datasets} adds the convenient loaders and adapters to the same collection.
-The Polars package supplies its native library. With Nix, @tt{nix develop}
-prepares an isolated environment containing the four packages and that library.
+@tt{datasets-r} and @tt{datasets-uci} add datasets from CRAN packages and from
+the UCI Machine Learning Repository to the core catalog; @tt{datasets} adds the
+convenient loaders and adapters to the same collection. The Polars package
+supplies its native library. With Nix, @tt{nix develop} prepares an isolated
+environment containing the four packages and that library.
 
 @examples[#:eval ev
  (require datasets (prefix-in pl: polars))

@@ -198,11 +198,11 @@ def xlsx_records(data):
         sheet=ET.fromstring(a.read('xl/worksheets/sheet1.xml'))
     rows=[{re.match('[A-Z]+',c.get('r')).group():(shared[int(c.find(m+'v').text)] if c.get('t')=='s' else c.find(m+'v').text) for c in row.iter(m+'c') if c.find(m+'v') is not None} for row in sheet.iter(m+'row')]
     columns=sorted(rows[0],key=lambda k:(len(k),k))
-    return [[cells.get(k,'') for k in columns] for cells in rows if cells]
+    return [[cells.get(k) for k in columns] for cells in rows if cells]
 def xls_records(data):
     import xlrd
     sheet=xlrd.open_workbook(file_contents=data).sheet_by_index(0)
-    return [[v if isinstance(v,str) else repr(v) for v in sheet.row_values(i)] for i in range(sheet.nrows)]
+    return [[None if v=='' else v if isinstance(v,str) else repr(v) for v in sheet.row_values(i)] for i in range(sheet.nrows)]
 def uci_typed(records,missing,strings):
     columns=[]
     for j,column in enumerate(zip(*records)):
@@ -235,11 +235,9 @@ def student_performance():
     (header,maths),(_,portuguese)=with_header(delimited(mat,';')),with_header(delimited(por,';'))
     return header+['subject'],[r+['math'] for r in maths]+[r+['portuguese'] for r in portuguese]
 def concrete():
-    header,*rows=xls_records(*members('uci-concrete-strength','Concrete_Data.xls'))
-    return [re.sub(r'\s+',' ',h).strip() for h in header],rows
+    return with_header(xls_records(*members('uci-concrete-strength','Concrete_Data.xls')))
 def energy():
-    header,*rows=xlsx_records(*members('uci-energy-efficiency','ENB2012_data.xlsx'))
-    return header,rows
+    return with_header(xlsx_records(*members('uci-energy-efficiency','ENB2012_data.xlsx')))
 SPAM_CHARS={';':'semicolon','(':'paren','[':'bracket','!':'exclamation','$':'dollar','#':'hash'}
 def spambase():
     data,doc=members('uci-spambase','spambase.data','spambase.names')
@@ -251,10 +249,11 @@ def mushroom():
     return ['class']+[n for n,_ in mushroom_attributes()],delimited(members('uci-mushroom','agaricus-lepiota.data')[0])
 def uci_cite(authors,year,title,source,paper=None):
     s=SOURCES[source]
-    return f"{authors} ({year}). {title}. UCI Machine Learning Repository. doi:{s['doi']}. {s['page']}"+(f' Described in: {paper}' if paper else '')
+    return (f'{authors} ({year}). {title}.' if authors else f'{title} [Dataset]. ({year}).')+f" UCI Machine Learning Repository. doi:{s['doi']}. {s['page']}"+(f' Described in: {paper}' if paper else '')
 YES_NO=['no','yes']
 STUDENT_YES_NO=['schoolsup','famsup','paid','activities','nursery','higher','internet','romantic']
 BIKE_DESCRIPTIONS={'instant':'Record index','dteday':'Date (ISO 8601)','season':'Season: 1 winter, 2 spring, 3 summer, 4 fall','yr':'Year: 0 = 2011, 1 = 2012','mnth':'Month (1 to 12)','hr':'Hour (0 to 23)','holiday':'Whether the day is a holiday','weekday':'Day of the week','workingday':'1 if the day is neither weekend nor holiday, otherwise 0','weathersit':'Weather: 1 clear or partly cloudy; 2 mist; 3 light snow or rain; 4 heavy rain, ice, snow or fog','temp':'Normalized temperature in Celsius: (t - t_min)/(t_max - t_min), t_min = -8, t_max = +39','atemp':'Normalized feeling temperature in Celsius: (t - t_min)/(t_max - t_min), t_min = -16, t_max = +50','hum':'Normalized humidity, divided by 100','windspeed':'Normalized wind speed, divided by 67','casual':'Count of casual users','registered':'Count of registered users','cnt':'Count of total rental bikes, casual and registered'}
+BIKE_NOTE=' casual + registered = cnt, so leave casual and registered out when predicting cnt. Descriptions follow the UCI dataset page, which corrects the bundled Readme.txt (season 1:springer, temp divided by 41, atemp by 50); season 1 is winter, which matches the January rows.'
 BIKE_PAPER='Fanaee-T, H. and Gama, J. (2013). Event labeling combining ensemble detectors and background knowledge. Progress in Artificial Intelligence, 1-15. doi:10.1007/s13748-013-0040-3'
 DIGIT_DESCRIPTIONS={'digit':'Digit class 0-9'}|{f'pixel-{i}-{j}':f'Count of on pixels in 4x4 block row {i}, column {j} of the 32x32 bitmap (0-16)' for i in range(8) for j in range(8)}
 UCI_DOCS={'uci-optdigits':['optdigits.names'],'uci-adult':['adult.names'],'uci-auto-mpg':['auto-mpg.names'],'uci-abalone':['abalone.names'],'uci-wine-quality':['winequality.names'],
@@ -280,7 +279,7 @@ def import_uci():
         'wine-quality':uci_cite('Cortez, P., Cerdeira, A., Almeida, F., Matos, T. and Reis, J.',2009,'Wine Quality','uci-wine-quality','Cortez, P., Cerdeira, A., Almeida, F., Matos, T. and Reis, J. (2009). Modeling wine preferences by data mining from physicochemical properties. Decision Support Systems 47(4), 547-553. doi:10.1016/j.dss.2009.05.016'),
         'bank-marketing':uci_cite('Moro, S., Rita, P. and Cortez, P.',2014,'Bank Marketing','uci-bank-marketing','Moro, S., Cortez, P. and Rita, P. (2014). A data-driven approach to predict the success of bank telemarketing. Decision Support Systems. doi:10.1016/j.dss.2014.03.001'),
         'heart-disease':uci_cite('Janosi, A., Steinbrunn, W., Pfisterer, M. and Detrano, R.',1989,'Heart Disease','uci-heart-disease','Detrano, R. et al. (1989). International application of a new probability algorithm for the diagnosis of coronary artery disease. American Journal of Cardiology 64, 304-310.'),
-        'mushroom':uci_cite('Schlimmer, J. (donor)',1987,'Mushroom','uci-mushroom','The Audubon Society Field Guide to North American Mushrooms (1981). G. H. Lincoff (Pres.), New York: Alfred A. Knopf.'),
+        'mushroom':uci_cite(None,1981,'Mushroom','uci-mushroom','The Audubon Society Field Guide to North American Mushrooms (1981). G. H. Lincoff (Pres.), New York: Alfred A. Knopf.'),
         'car-evaluation':uci_cite('Bohanec, M.',1988,'Car Evaluation','uci-car-evaluation','Bohanec, M. and Rajkovic, V. (1988). Knowledge acquisition and explanation for multi-attribute decision making. 8th International Workshop on Expert Systems and their Applications, Avignon, 59-78.'),
         'spambase':uci_cite('Hopkins, M., Reeber, E., Forman, G. and Suermondt, J.',1999,'Spambase','uci-spambase'),
         'banknote-authentication':uci_cite('Lohweg, V.',2012,'Banknote Authentication','uci-banknote-authentication'),
@@ -302,7 +301,7 @@ def import_uci():
             descriptions={'fnlwgt':'Final sampling weight','education-num':'Education, as a number','income':'Whether income exceeds $50K/yr','split':'Source file: train (adult.data) or test (adult.test)'},
             notes='1994 US Census extract: the 32,561 adult.data rows, then the 16,281 adult.test rows, told apart by split. The trailing period on test income labels is removed. ? is rendered as missing (workclass, occupation, native-country).')),
         ('auto-mpg','uci-auto-mpg',auto_mpg,dict(
-            missing={'?'},identifiers=['car-name'],targets=['mpg'],
+            missing={'?'},targets=['mpg'],
             descriptions={'cylinders':'Number of cylinders','model-year':'Model year (19xx)','origin':'Origin code (1, 2 or 3)','car-name':'Car name; not unique across rows'},
             notes='auto-mpg.data: the StatLib cars with the 8 unknown-mpg rows removed. The 6 ? horsepower values are rendered as missing. Integral values written with a decimal point are stored as integers.')),
         ('abalone','uci-abalone',lambda:(['Sex','Length','Diameter','Height','Whole weight','Shucked weight','Viscera weight','Shell weight','Rings'],delimited(members('uci-abalone','abalone.data')[0])),dict(
@@ -322,7 +321,7 @@ def import_uci():
             notes='processed.cleveland.data: the 303 Cleveland Clinic patients and the 14 attributes used in published experiments. ? is rendered as missing (ca, thal). Coded attributes stay numeric with their codes in the descriptions; integral values written with a decimal point are stored as integers.')),
         ('mushroom','uci-mushroom',mushroom,dict(
             missing={'?'},levels={'class':['e','p']}|mushroom_codes,targets=['class'],descriptions={'class':'edible=e, poisonous=p'}|mushroom_text,
-            notes='Hypothetical samples of 23 gilled mushroom species, keeping the source one-letter codes (decoded in each description) and the source column order with class first. bruises? is renamed bruises. The 2,480 ? stalk-root values are rendered as missing.')),
+            notes='Hypothetical samples of 23 gilled mushroom species, keeping the source one-letter codes (decoded in each description) and the source column order with class first. bruises? is renamed bruises. The 2,480 ? stalk-root values are rendered as missing. Donated by J. Schlimmer (1987); the UCI page names no creator.')),
         ('car-evaluation','uci-car-evaluation',lambda:(['buying','maint','doors','persons','lug_boot','safety','class'],delimited(members('uci-car-evaluation','car.data')[0])),dict(
             levels={'buying':['vhigh','high','med','low'],'maint':['vhigh','high','med','low'],'doors':['2','3','4','5more'],'persons':['2','4','more'],'lug-boot':['small','med','big'],'safety':['low','med','high'],'class':['unacc','acc','good','vgood']},targets=['class'],
             descriptions={'buying':'Buying price','maint':'Price of the maintenance','doors':'Number of doors','persons':'Capacity in terms of persons to carry','lug-boot':'Size of luggage boot','safety':'Estimated safety of the car','class':'Car acceptability'},
@@ -343,15 +342,15 @@ def import_uci():
         ('energy-efficiency','uci-energy-efficiency',energy,dict(
             names=['relative-compactness','surface-area','wall-area','roof-area','overall-height','orientation','glazing-area','glazing-area-distribution','heating-load','cooling-load'],targets=['heating-load','cooling-load'],
             descriptions={'relative-compactness':'Relative compactness','surface-area':'Surface area','wall-area':'Wall area','roof-area':'Roof area','overall-height':'Overall height','orientation':'Orientation','glazing-area':'Glazing area','glazing-area-distribution':'Glazing area distribution','heating-load':'Heating load','cooling-load':'Cooling load'},
-            notes='768 simulated building shapes from ENB2012_data.xlsx with two responses. Columns X1-X8, Y1, Y2 named from the documentation; cell values as stored in the workbook.')),
+            notes='768 simulated building shapes from ENB2012_data.xlsx with two responses. The archive carries no documentation file; names X1-X8, Y1 and Y2 are replaced by the names on the UCI dataset page. Cell values as stored in the workbook.')),
         ('student-performance','uci-student-performance',student_performance,dict(
             levels={'school':['GP','MS'],'sex':['F','M'],'address':['U','R'],'famsize':['LE3','GT3'],'pstatus':['T','A'],'mjob':['teacher','health','services','at_home','other'],'fjob':['teacher','health','services','at_home','other'],'reason':['home','reputation','course','other'],'guardian':['mother','father','other'],'subject':['math','portuguese']}|{n:YES_NO for n in STUDENT_YES_NO},
             targets=['g3'],descriptions={'g1':'First period grade (0-20)','g2':'Second period grade (0-20)','g3':'Final grade (0-20)','subject':'Course: math (student-mat.csv) or portuguese (student-por.csv)'},
             notes='Two Portuguese secondary schools in one table: the 395 mathematics rows, then the 649 Portuguese-language rows, told apart by subject. Some students appear in both courses; the source has no student identifier.')),
         ('bike-sharing-daily','uci-bike-sharing',lambda:with_header(delimited(members('uci-bike-sharing','day.csv')[0])),dict(
-            identifiers=['instant'],targets=['cnt'],descriptions=BIKE_DESCRIPTIONS,notes='Capital Bikeshare (Washington, D.C.) rentals per day, 2011-2012, with weather and calendar attributes (day.csv).')),
+            identifiers=['instant'],targets=['cnt'],descriptions=BIKE_DESCRIPTIONS,notes='Capital Bikeshare (Washington, D.C.) rentals per day, 2011-2012, with weather and calendar attributes (day.csv).'+BIKE_NOTE)),
         ('bike-sharing-hourly','uci-bike-sharing',lambda:with_header(delimited(members('uci-bike-sharing','hour.csv')[0])),dict(
-            identifiers=['instant'],targets=['cnt'],descriptions=BIKE_DESCRIPTIONS,notes='Capital Bikeshare (Washington, D.C.) rentals per hour, 2011-2012, with weather and calendar attributes (hour.csv); hours without rentals are absent.')),
+            identifiers=['instant'],targets=['cnt'],descriptions=BIKE_DESCRIPTIONS,notes='Capital Bikeshare (Washington, D.C.) rentals per hour, 2011-2012, with weather and calendar attributes (hour.csv); hours without rentals are absent.'+BIKE_NOTE)),
     ]
     for id,source,read,kw in recipes:
         original,records=read()

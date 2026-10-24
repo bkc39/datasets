@@ -53,7 +53,7 @@
        (check-equal? (list (matrix-num-rows matrix) (matrix-num-cols matrix))
                      (list rows (length numeric))
                      label)
-       (for ([row (in-list (list 0 (sub1 rows)))])
-         (for ([name (in-list numeric)] [j (in-naturals)])
-           (check-equal? (matrix-ref matrix row j)
-                         (vector-ref (dataset-table-column table name) row))))])))
+       (for* ([row (in-list (list 0 (sub1 rows)))]
+              [(name j) (in-parallel numeric (in-naturals))])
+         (check-equal? (matrix-ref matrix row j)
+                       (vector-ref (dataset-table-column table name) row)))])))

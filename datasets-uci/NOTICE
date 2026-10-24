@@ -14,8 +14,9 @@ all sets come from the UCI Machine Learning Repository under CC BY 4.0
   doi:10.24432/C5K306.
 - heart-disease: A. Janosi, W. Steinbrunn, M. Pfisterer and R. Detrano
   (1989), Heart Disease, doi:10.24432/C52P4X.
-- mushroom: J. Schlimmer (donor, 1987), Mushroom, doi:10.24432/C5959T; records
-  from The Audubon Society Field Guide to North American Mushrooms (1981).
+- mushroom: Mushroom (1981), doi:10.24432/C5959T, no creator named; donated
+  by J. Schlimmer (1987); records from The Audubon Society Field Guide to North
+  American Mushrooms (1981).
 - car-evaluation: M. Bohanec (1988), Car Evaluation, doi:10.24432/C5JP48.
 - spambase: M. Hopkins, E. Reeber, G. Forman and J. Suermondt (1999),
   Spambase, doi:10.24432/C53G6X.
@@ -45,8 +46,9 @@ point stored as integers; adult and optdigits train and test files stacked
 with a split column, wine-quality red and white files with a colour column,
 student-performance mathematics and Portuguese files with a subject column;
 adult test labels lose their trailing period; mushroom bruises? renamed
-bruises; spambase character columns named after the character; concrete and
-energy-efficiency columns named from their documentation. Source row order
+bruises; spambase character columns named after the character; concrete
+columns named from the workbook headers and energy-efficiency columns from the
+UCI dataset page. Source row order
 and numeric precision retained. Source versions, archive and normalized
 SHA-256 hashes, variable descriptions, citations, and dataset-specific notes
 are in the registry (datasets/uci-data/registry.rktd). Upstream documentation
