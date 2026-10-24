@@ -5,7 +5,8 @@
          (only-in racket/file file->bytes)
          (only-in racket/flonum fl/)
          (only-in racket/match match match-define)
-         (only-in racket/sequence sequence-map))
+         (only-in racket/sequence sequence-map)
+         (only-in threading ~>))
 (provide (contract-out
           [covtype-rows converter/c]
           [california-housing-rows converter/c]
@@ -17,21 +18,22 @@
 (define converter/c (-> converter-files/c converter-info/c sequence?))
 
 (define (covtype-rows files info)
-  (csv-rows (open-input-bytes (gunzip-file (hash-ref files "covtype.data.gz")))
-            (info->column-specs info)
-            #:header? #f))
+  (~> (hash-ref files "covtype.data.gz")
+      gunzip-file
+      open-input-bytes
+      (csv-rows (info->column-specs info) #:header? #f)))
 
 (define cal-housing-specs
-  (for/list ([name (in-list '("longitude" "latitude" "housingMedianAge" "totalRooms" "totalBedrooms"
-                              "population" "households" "medianIncome" "medianHouseValue"))])
-    (list name 'real)))
+  (map (lambda (name) (list name 'real))
+       '("longitude" "latitude" "housingMedianAge" "totalRooms" "totalBedrooms" "population" "households"
+         "medianIncome" "medianHouseValue")))
 
 (define (california-housing-rows files info)
-  (sequence-map california-housing-row
-                (csv-rows (open-input-bytes (tar-gz-member (hash-ref files "cal_housing.tgz")
-                                                           "CaliforniaHousing/cal_housing.data"))
-                          cal-housing-specs
-                          #:header? #f)))
+  (~> (hash-ref files "cal_housing.tgz")
+      (tar-gz-member "CaliforniaHousing/cal_housing.data")
+      open-input-bytes
+      (csv-rows cal-housing-specs #:header? #f)
+      (sequence-map california-housing-row _)))
 
 (define (california-housing-row row)
   (match-define (list longitude latitude age rooms bedrooms population households income value) row)
@@ -40,6 +42,5 @@
 
 (define (csv-header-rows files info)
   (match (hash-values files)
-    [(list path) (csv-rows (open-input-bytes (file->bytes path)) (info->column-specs info))]
-    [paths (raise (exn:fail (format "csv-header-rows: expected one file\n  given: ~a" (length paths))
-                            (current-continuation-marks)))]))
+    [(list path) (~> path file->bytes open-input-bytes (csv-rows (info->column-specs info)))]
+    [paths (error 'csv-header-rows "expected one file\n  given: ~a" (length paths))]))

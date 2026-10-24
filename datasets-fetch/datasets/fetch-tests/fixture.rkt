@@ -3,7 +3,7 @@
          (only-in file/tar tar->output)
          (only-in racket/contract/base -> any any/c contract-out hash/c list/c listof or/c)
          (only-in racket/file make-directory*)
-         (only-in racket/match match)
+         (only-in racket/match match match-lambda)
          (only-in racket/path path-only)
          (only-in racket/port call-with-output-bytes))
 (provide (contract-out
@@ -28,7 +28,7 @@
      (parameterize ([current-directory dir])
        (call-with-output-bytes
         (lambda (out)
-          (tar->output (map (lambda (m) (string->path (car m))) members) out
+          (tar->output (map (match-lambda [(list name _) (string->path name)]) members) out
                        #:get-timestamp (lambda (_) 0))))))))
 
 (define (write-member! dir member)

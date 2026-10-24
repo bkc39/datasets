@@ -2,7 +2,8 @@
 (require (only-in file/gunzip gunzip-through-ports)
          (only-in file/untar untar)
          (only-in racket/contract/base -> contract-out)
-         (only-in racket/port call-with-output-bytes))
+         (only-in racket/port call-with-output-bytes)
+         (only-in threading ~>))
 (provide (contract-out
           [gunzip-file (-> path-string? bytes?)]
           [tar-gz-member (-> path-string? string? bytes?)]))
@@ -13,9 +14,10 @@
 
 (define (tar-gz-member archive member)
   (let/ec return
-    (untar (open-input-bytes (gunzip-file archive))
-           #:filter (lambda (name _stripped type _size _link _time _mode)
-                      (and (eq? type 'file) (equal? (path->string name) member)))
-           #:handle-entry (lambda (_kind _path in size _attribs) (return (read-bytes size in))))
-    (raise (exn:fail (format "tar-gz-member: no such member\n  archive: ~a\n  member: ~a" archive member)
-                     (current-continuation-marks)))))
+    (~> archive
+        gunzip-file
+        open-input-bytes
+        (untar #:filter (lambda (name _stripped type _size _link _time _mode)
+                          (and (eq? type 'file) (equal? (path->string name) member)))
+               #:handle-entry (lambda (_kind _path in size _attribs) (return (read-bytes size in)))))
+    (error 'tar-gz-member "no such member\n  archive: ~a\n  member: ~a" archive member)))

@@ -2,8 +2,9 @@
 (require (only-in datasets/core dataset-info dataset-names)
          (only-in datasets/core-tests/fixture call-with-environment call-with-temporary-fixture)
          (only-in file/sha1 bytes->hex-string)
-         (only-in racket/match match-define)
-         (only-in racket/string string-join))
+         (only-in racket/match match-define match-lambda)
+         (only-in racket/string string-join)
+         (only-in threading ~>))
 (module+ test
   (require (only-in rackunit check-equal? check-false check-not-false check-regexp-match check-true
                     test-case))
@@ -24,9 +25,9 @@
          "https://archive.ics.uci.edu/ml/machine-learning-databases/covtype/covtype.data.gz"
          "614360d0257557dd1792834a85a1cdebfadc3c4f30b011d56afee7ffb5b15771"))
        "covtype-rows" "CC-BY-4.0")))
-  (define (sha256-hex s) (bytes->hex-string (sha256-bytes (string->bytes/utf-8 s))))
+  (define (sha256-hex s) (~> s string->bytes/utf-8 sha256-bytes bytes->hex-string))
 
-  (test-case "G the datasets-fetch registry: shapes, pins, converters, terms"
+  (test-case "the datasets-fetch registry: shapes, pins, converters, terms"
     (check-equal? (dataset-names #:package "datasets-fetch") (map car sets))
     (for ([s (in-list sets)])
       (match-define (list name rows columns files binding license) s)
@@ -38,15 +39,18 @@
       (check-equal? (hash-ref fetch "format") "convert")
       (check-equal? (hash-ref fetch "converter")
                     (hash "module" "datasets/fetch-private/convert" "binding" binding))
-      (check-equal? (for/list ([f (in-list (hash-ref fetch "files"))])
-                      (list (hash-ref f "name") (car (hash-ref f "urls")) (hash-ref f "sha256")))
+      (check-equal? (map (match-lambda
+                           [(hash-table ("name" name) ("urls" (list* url _)) ("sha256" sha))
+                            (list name url sha)])
+                         (hash-ref fetch "files"))
                     files)
-      (check-equal? (hash-ref info "source-sha256") (sha256-hex (string-join (map caddr files) "\n")))
+      (check-equal? (hash-ref info "source-sha256")
+                    (~> (map (match-lambda [(list _ _ sha) sha]) files) (string-join "\n") sha256-hex))
       (check-not-false (member license '("CC-BY-4.0" "MIT" "CC0-1.0" "NOASSERTION")))
       (check-equal? (hash-ref info "license") license)
       (check-regexp-match #px"Downloads [0-9.]+ MB" (hash-ref info "notes"))))
 
-  (test-case "G2 queries load no converter"
+  (test-case "queries load no converter"
     (call-with-temporary-fixture
      (lambda (home)
        (call-with-environment (hash "DATASETS_HOME" (path->string home))
