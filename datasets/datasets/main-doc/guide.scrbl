@@ -16,19 +16,20 @@ Use Racket 9.3 or later. Install from the Racket catalog:
 
 @commandline{raco pkg install --auto datasets}
 
-This also installs @tt{datasets-core}, the data package @tt{datasets-r}, and the
-adapter dependencies. From a checkout of the repository, install the packages
-from its root:
+This also installs @tt{datasets-core}, the data packages @tt{datasets-r} and
+@tt{datasets-uci}, and the adapter dependencies. From a checkout of the
+repository, install the packages from its root:
 
-@verbatim{raco pkg install ./datasets-core ./datasets-r
+@verbatim{raco pkg install ./datasets-core ./datasets-r ./datasets-uci
 raco pkg install --auto ./datasets}
 
 The top-level directories are independently installable multi-collection
 packages. @tt{datasets-core} provides @racketmodname[datasets/core];
-@tt{datasets-r} adds datasets from CRAN packages to its catalog;
-@tt{datasets} adds the convenient loaders and adapters to the same collection.
-The Polars package supplies its native library. With Nix, @tt{nix develop}
-prepares an isolated environment containing the three packages and that library.
+@tt{datasets-r} and @tt{datasets-uci} add datasets from CRAN packages and from
+the UCI Machine Learning Repository to the core catalog; @tt{datasets} adds the
+convenient loaders and adapters to the same collection. The Polars package
+supplies its native library. With Nix, @tt{nix develop} prepares an isolated
+environment containing the four packages and that library.
 
 @examples[#:eval ev
  (require datasets (prefix-in pl: polars))
@@ -80,6 +81,13 @@ Missing measurements are @tt{null}, and each species' mean body mass skips them:
  (for/list ([row 3])
    (list (pl:series-ref (pl:dataframe-column by-species "species") row)
          (pl:series-ref (pl:dataframe-column by-species "body-mass-g") row)))]
+
+Datasets from @tt{datasets-uci} also load by name. The @racket['digits] set is
+scikit-learn's handwritten digits: per image, 64 pixel counts and the digit:
+
+@examples[#:eval ev
+ (pl:shape (load-dataset 'digits))
+ (hash-ref (dataset-info 'digits) "suggested-targets")]
 
 @section[#:tag "datasets-categories-guide"]{Grouping categorical data}
 
@@ -238,10 +246,8 @@ The following example uses core data with Polars' constructors:
  (require datasets/core)
  (define table (load-dataset-table 'iris #:columns '("sepal-length")))
  (define own-frame
-   (pl:dataframe-new
-    (list (pl:series-new-f64
-           "sepal-length"
-           (vector->list (dataset-table-column table "sepal-length"))))))
+   (pl:dataframe
+    (list (pl:series (dataset-table-column table "sepal-length") #:name "sepal-length"))))
  (pl:dataframe-height own-frame)]
 
 The repository's @tt{examples/core-with-polars.rkt} demonstrates the same pattern
