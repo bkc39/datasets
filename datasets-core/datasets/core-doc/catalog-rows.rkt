@@ -7,12 +7,17 @@
 
 (define (indexed name)
   (match (regexp-match #px"^(.*?)([0-9]+)([^0-9]*)$" name)
-    [(list _ prefix index suffix) (list prefix (string->number index) suffix)]
+    [(cons _ parts) parts]
     [#f #f]))
+
+(define (padded? digits)
+  (char=? (string-ref digits 0) #\0))
 
 (define (follows? previous name)
   (match* ((indexed previous) (indexed name))
-    [((list prefix i suffix) (list prefix j suffix)) (= j (add1 i))]
+    [((list prefix i suffix) (list prefix j suffix))
+     (and (= (string->number j) (add1 (string->number i)))
+          (or (= (string-length i) (string-length j)) (not (or (padded? i) (padded? j)))))]
     [(_ _) #f]))
 
 (define (own-description column)
