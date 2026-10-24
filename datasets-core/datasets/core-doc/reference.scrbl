@@ -101,14 +101,6 @@ name declared twice is an error naming both packages. A malformed registry is an
 error naming its file. Either error makes every
 registry operation raise until the package at fault is fixed or removed.
 A fetch-tier entry has no data file; see @secref["datasets-core-cache-reference"].
-The same @tt{info.rkt} may name a catalog preface file, relative to its
-directory, with the @tt{datasets-catalog-preface} key. The file holds a hash:
-@tt{package} names the package whose section of @secref["datasets-catalog"] it
-opens, and @tt{content} is a list of blocks, each @racket[(para inline ...)],
-@racket[(itemlist (inline ...) ...)], or @racket[(table (inline ...) file)],
-whose rows are lists of inlines read from @racket[file] beside the preface. An
-inline is a string, @racket[(tt string)], or @racket[(dataset name)], a link to
-that dataset's catalog entry.
 
 When reading the installed package index fails with a permission error, or a
 security guard denies it as in a default @racketmodname[racket/sandbox]

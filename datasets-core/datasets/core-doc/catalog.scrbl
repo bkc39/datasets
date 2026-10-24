@@ -1,5 +1,5 @@
 #lang scribble/manual
-@(require datasets/core racket/file racket/list racket/match racket/string setup/getinfo
+@(require datasets/core racket/list racket/match racket/string
           (for-label racket/base datasets/core))
 @title[#:tag "datasets-catalog"]{Dataset Catalog and Provenance}
 
@@ -45,32 +45,6 @@ silently corrected except for choosing the documented corrected UCI Iris variant
                                 (format "~a; ~a; ~a" (hash-ref c "description")
                                         (hash-ref c "unit") (hash-ref c "levels"))))))))
 
-@(define (preface-inline x)
-   (match x
-     [(? string?) x]
-     [(list 'tt s) (tt s)]
-     [(list 'dataset id) (secref (format "dataset-~a" id))]))
-
-@(define (preface-block dir block)
-   (match block
-     [(list 'para xs ...) (apply para (map preface-inline xs))]
-     [(list 'itemlist items ...)
-      (itemlist (for/list ([xs (in-list items)]) (apply item (map preface-inline xs))))]
-     [(list 'table header file)
-      (tabular #:sep (hspace 2)
-               (for/list ([row (in-list (cons header (file->value (build-path dir file))))])
-                 (map preface-inline row)))]))
-
-@(define prefaces
-   (for/hash ([record (in-list (find-relevant-directory-records '(datasets-catalog-preface)
-                                                                'all-available))])
-     (define dir (directory-record-path record))
-     (define preface
-       (file->value (build-path dir ((get-info/full dir) 'datasets-catalog-preface))))
-     (values (hash-ref preface "package")
-             (for/list ([block (in-list (hash-ref preface "content"))])
-               (preface-block dir block)))))
-
 @(for/list ([package (in-list (dataset-packages))])
    (define names (dataset-names #:package package))
    (define licenses
@@ -80,5 +54,4 @@ silently corrected except for choosing the documented corrected UCI Iris variant
    (list (section #:tag (format "datasets-package-~a" package) package)
          (para (format "~a datasets. Licenses: ~a." (length names)
                        (string-join licenses "; ")))
-         (hash-ref prefaces package '())
          (map dataset-entry names)))

@@ -4,8 +4,7 @@
          (only-in racket/file file->value)
          (only-in racket/list check-duplicates filter-map remove-duplicates)
          (only-in racket/match match match-define)
-         (only-in racket/runtime-path define-runtime-path)
-         (only-in setup/getinfo get-info/full))
+         (only-in racket/runtime-path define-runtime-path))
 (define-runtime-path r-data "../r-data")
 (define-runtime-path spots-file "r-datasets-spots.rktd")
 (module+ test
@@ -28,21 +27,12 @@
       [(hash-ref exceptions name #f)]
       [(regexp-match? #rx"^state[.]" name) "state"]
       [else (r-name->id name)]))
-  (define (inline? x)
-    (match x
-      [(? string?) #t]
-      [(list 'tt (? string?)) #t]
-      [(list 'dataset (? symbol? id)) (and (memq id (dataset-names)) #t)]
-      [_ #f]))
-  (define (preface-block? block)
-    (match block
-      [(list 'para xs ...) (andmap inline? xs)]
-      [(list 'itemlist (list xss ...) ...) (andmap inline? (apply append xss))]
-      [(list 'table (list header ...) (? string? file))
-       (define rows (file->value (build-path r-data file)))
-       (and (andmap inline? header)
-            (for/and ([row (in-list rows)])
-              (and (list? row) (= (length row) (length header)) (andmap inline? row))))]
+  (define (r-object-row? row)
+    (match row
+      [(list (list 'tt (? string?)) (? string?) (list 'dataset (? symbol? id)))
+       (and (memq id (dataset-names)) #t)]
+      [(list (list 'tt (? string?)) (? string?) (? string? reason))
+       (regexp-match? #rx"^Skipped[.] [A-Z].*[.]$" reason)]
       [_ #f]))
 
   (check-equal? (map r-name->id '("UKDriverDeaths" "sunspot.year" "state.x77" "Harman23.cor"
@@ -50,6 +40,7 @@
                 '("uk-driver-deaths" "sunspot-year" "state-x77" "harman23-cor"
                   "us-personal-expenditure" "occupational-status" "solar-r"))
   (check-equal? (length r-objects) 104)
+  (check-equal? (filter (lambda (row) (not (r-object-row? row))) r-objects) '())
   (define object-names
     (for/list ([object (in-list r-objects)])
       (match-define (list (list 'tt name) (? string?) _) object)
@@ -70,15 +61,8 @@
            (hash-ref info "notes"))
           (check-true (file-exists? (build-path r-data "provenance" (string-append target ".Rd"))))]
          [package (check-equal? (list package target) (list "datasets-core" (r-name->id name)))])]
-      [(list _ _ reason) (check-regexp-match #rx"^Skipped[.] [A-Z].*[.]$" reason)]))
+      [_ (void)]))
   (check-equal? (length r-dataset-ids) 79)
-
-  (define preface
-    (file->value (build-path r-data ((get-info/full r-data) 'datasets-catalog-preface))))
-  (check-equal? (hash-ref preface "package") "datasets-r")
-  (check-equal? (for/list ([block (in-list (hash-ref preface "content"))])
-                  (and (preface-block? block) (car block)))
-                '(para itemlist table))
 
   (define spot-checks (file->value spots-file))
 
