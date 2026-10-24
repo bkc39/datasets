@@ -1,12 +1,13 @@
 #lang scribble/manual
-@(require datasets/core racket/list racket/match racket/string
+@(require datasets/core "catalog-rows.rkt" racket/list racket/match racket/string
           (for-label racket/base datasets/core))
 @title[#:tag "datasets-catalog"]{Dataset Catalog and Provenance}
 
 The following catalog is generated from the same registry used by
 @racket[dataset-info]. Column order matches the full table returned by
-@racket[load-dataset-table]. It lists every registry installed when this manual
-was built, one section per package.
+@racket[load-dataset-table]; a run of three or more numbered columns of one type
+and description, such as @tt{gene-1} to @tt{gene-2308}, is one row. It lists
+every registry installed when this manual was built, one section per package.
 
 Redistribution follows upstream distribution terms. Each package section lists
 its data licenses and each entry names its own: in @tt{datasets-core}, R data
@@ -23,6 +24,15 @@ silently corrected except for choosing the documented corrected UCI Iris variant
 @(define (fetch-line info)
    (match (hash-ref info "fetch")
      [#f '()]
+     [(hash-table ("format" "convert") ("files" files)
+                  ("converter" (hash-table ("module" module) ("binding" binding))))
+      (define n (length files))
+      (para (format "Fetch tier: converted on first use from ~a upstream ~a by " n (if (= n 1) "file" "files"))
+            (tt binding) " in " (tt module) ": "
+            (add-between (for/list ([f (in-list files)])
+                           (list (tt (hash-ref f "name")) " (SHA-256 " (tt (hash-ref f "sha256")) ")"))
+                         ", ")
+            "; see " (secref "datasets-core-fetch-guide") ".")]
      [fetch (para "Fetch tier: download SHA-256 " (tt (hash-ref fetch "sha256"))
                   ", fetched on first use; see " (secref "datasets-core-fetch-guide") ".")]))
 
@@ -39,11 +49,7 @@ silently corrected except for choosing the documented corrected UCI Iris variant
          (fetch-line info)
          (tabular #:sep (hspace 2)
                   (cons (list "Column" "Original" "Type" "Description / unit / levels")
-                        (for/list ([c (in-list (hash-ref info "columns"))])
-                          (list (hash-ref c "name") (hash-ref c "original-name")
-                                (hash-ref c "type")
-                                (format "~a; ~a; ~a" (hash-ref c "description")
-                                        (hash-ref c "unit") (hash-ref c "levels"))))))))
+                        (catalog-column-rows (hash-ref info "columns"))))))
 
 @(for/list ([package (in-list (dataset-packages))])
    (define names (dataset-names #:package package))

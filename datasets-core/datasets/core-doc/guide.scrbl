@@ -159,6 +159,10 @@ describe them without a network connection, but their data is downloaded the
 first time it is loaded. Such a dataset has @tt{tier} @tt{fetch}; its @tt{fetch}
 metadata pins the SHA-256 of the file to download.
 
+Some datasets are published upstream in another form, such as CSV or image files.
+Their entries list those files with a SHA-256 for each, and the first load
+downloads them, converts them locally, and caches only the converted table.
+
 The first @racket[load-dataset-table] of a fetch-tier dataset downloads the file,
 checks its SHA-256, and stores it in the cache; later loads read the cache and
 contact no server. Every load checks the data's SHA-256. A failed or mismatched

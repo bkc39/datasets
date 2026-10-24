@@ -7,7 +7,7 @@
          (only-in racket/match match-define)
          (only-in racket/runtime-path define-runtime-path)
          (only-in "fixture.rkt" call-with-environment call-with-registry-fixtures
-                  call-with-temporary-fixture fetch-ok gen-entry registry-fixture
+                  call-with-temporary-fixture convert-ok fetch-ok gen-entry registry-fixture
                   write-fixture-index! write-registry-fixture!))
 (define-runtime-path core-module "../core.rkt")
 (define-runtime-path core-registry "../core-data/registry.rktd")
@@ -163,6 +163,41 @@
     (for ([info (in-list (list '("../registry.rktd") '("/tmp/registry.rktd") "registry.rktd" '(registry) '("absent.rktd")))])
       (check-malformed info (hash) (list #rx"datasets-registries|absent\\.rktd"))))
 
+  (test-case "R3 convert entries: files and converter validated; other keys, size included, ignored"
+    (define (file-hash name) (hash "name" name "urls" '("file:///fixture/x") "sha256" (make-string 64 #\a)))
+    (define (with-files files) (hash-set convert-ok "files" files))
+    (define (with-converter c) (hash-set convert-ok "converter" c))
+    (define (convert fetch) (gen-entry "gen" #:tier "fetch" #:fetch fetch))
+    (for ([c (in-list
+              (list (list (hash-remove convert-ok "files") #rx"\"files\"")
+                    (list (with-files '()) #rx"\"files\"")
+                    (list (with-files '("x")) #rx"\"files\"")
+                    (list (with-files (list (file-hash "x") (file-hash "x"))) #rx"\"files\"" #rx"distinct file names")
+                    (list (with-files (list (hash-remove (file-hash "x") "sha256"))) #rx"\"sha256\"")
+                    (list (with-files (list (hash-set (file-hash "x") "sha256" "ABC"))) #rx"\"sha256\"")
+                    (list (with-files (list (hash-set (file-hash "x") "urls" '()))) #rx"\"urls\"")
+                    (list (with-files (list (file-hash "a/b"))) #rx"\"name\"" #rx"file name")
+                    (list (with-files (list (file-hash ""))) #rx"\"name\"" #rx"file name")
+                    (list (with-files (list (file-hash "../x"))) #rx"\"name\"" #rx"file name")
+                    (list (hash-remove convert-ok "converter") #rx"\"converter\"")
+                    (list (with-converter (hash "module" "../x.rkt" "binding" "f")) #rx"\"converter\"")
+                    (list (with-converter (hash "module" "" "binding" "f")) #rx"\"converter\"")
+                    (list (with-converter (hash "module" "has space/x" "binding" "f")) #rx"\"converter\"")
+                    (list (with-converter (hash "module" 'datasets/x "binding" "f")) #rx"\"converter\"")
+                    (list (with-converter (hash "module" "datasets/x" "binding" 42)) #rx"\"converter\"")
+                    (list (with-converter (hash "module" "datasets/x")) #rx"\"converter\"")))])
+      (match-define (list fetch rxs ...) c)
+      (check-malformed '("registry.rktd") (one (convert fetch)) (cons #rx"gen" rxs)))
+    (for ([fetch (in-list (list convert-ok
+                                (hash-set convert-ok "urls" '())
+                                (hash-set convert-ok "size" 12)
+                                (with-files (list (hash-set (file-hash "x.gz") "size" 12) (file-hash "y_1-2.idx")))))])
+      (call-with-temporary-fixture
+       (lambda (dir)
+         (write-registry-fixture! dir #:info '("registry.rktd") #:registries (one (convert fetch)) #:data (hash))
+         (call-with-registry-fixtures (list dir)
+           (lambda () (check-not-false (memq 'gen (dataset-names)))))))))
+
   (test-case "stale index: a missing directory, one without info.rkt, or one without the key is skipped"
     (call-with-temporary-fixture
      (lambda (dir)
@@ -187,6 +222,15 @@
            (check-false (memq 'gen-two (dataset-names)))
            (write-registry-fixture! dir #:info '("one.rktd" "two.rktd") #:registries (hash) #:data (hash))
            (check-not-false (memq 'gen-two (dataset-names))))))))
+
+  (test-case "a package registry's extra keys pass through dataset-info"
+    (define chapters (hash "text" '(3) "exercises" '()))
+    (define entry (hash-set (gen-entry "gen") "islr2-chapters" chapters))
+    (call-with-temporary-fixture
+     (lambda (dir)
+       (write-registry-fixture! dir #:info '("registry.rktd") #:registries (one entry) #:data (hash))
+       (call-with-registry-fixtures (list dir)
+         (lambda () (check-equal? (hash-ref (dataset-info 'gen) "islr2-chapters") chapters))))))
 
   (test-case "a registry error is not cached: fixing the file in place recovers"
     (call-with-temporary-fixture
