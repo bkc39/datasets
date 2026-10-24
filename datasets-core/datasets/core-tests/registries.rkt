@@ -223,6 +223,15 @@
            (write-registry-fixture! dir #:info '("one.rktd" "two.rktd") #:registries (hash) #:data (hash))
            (check-not-false (memq 'gen-two (dataset-names))))))))
 
+  (test-case "a package registry's extra keys pass through dataset-info"
+    (define chapters (hash "text" '(3) "exercises" '()))
+    (define entry (hash-set (gen-entry "gen") "islr2-chapters" chapters))
+    (call-with-temporary-fixture
+     (lambda (dir)
+       (write-registry-fixture! dir #:info '("registry.rktd") #:registries (one entry) #:data (hash))
+       (call-with-registry-fixtures (list dir)
+         (lambda () (check-equal? (hash-ref (dataset-info 'gen) "islr2-chapters") chapters))))))
+
   (test-case "a registry error is not cached: fixing the file in place recovers"
     (call-with-temporary-fixture
      (lambda (dir)

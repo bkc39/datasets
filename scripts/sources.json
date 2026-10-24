@@ -215,5 +215,13 @@
     "license": "CC-BY-4.0",
     "page": "https://archive.ics.uci.edu/dataset/275/bike+sharing+dataset",
     "doi": "10.24432/C5W894"
+  },
+  "ISLR2": {
+    "file": "datasets-ISLR2_1.3-2.tar.gz",
+    "url": "https://cran.r-project.org/src/contrib/ISLR2_1.3-2.tar.gz",
+    "sha256": "d66f93907dea9417e21bd5252c8d862497762ecb44cd877dfc34665d162d5f52",
+    "package": "datasets-islr",
+    "version": "ISLR2 1.3-2",
+    "license": "GPL-2.0-only"
   }
 }

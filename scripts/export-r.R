@@ -17,6 +17,29 @@ export <- function(d, id) {
                              lapply(factors, function(n) data.frame(column=n, level=levels(d[[n]])))))
   write.table(levels,file.path(out,paste0(id,'.levels')),sep=',',row.names=FALSE,qmethod='double')
 }
+if (package == 'datasets-islr') {
+  islr <- new.env()
+  for (f in list.files(file.path(root,'ISLR2/data'),full.names=TRUE)) load(f,envir=islr)
+  with(islr, {
+    stopifnot(!anyDuplicated(rownames(College)), !anyDuplicated(rownames(Hitters)))
+    sorted.factor <- function(x) factor(x, levels=sort(unique(x), method='radix'))
+    genes <- function(x) { colnames(x) <- seq_len(ncol(x)); as.data.frame(x, check.names=FALSE) }
+    sets <- list(
+      auto=Auto, bikeshare=Bikeshare, boston=Boston, 'brain-cancer'=BrainCancer, caravan=Caravan,
+      carseats=Carseats, college=cbind(name=rownames(College), College), credit=Credit,
+      default=Default, fund=Fund, hitters=cbind(player=rownames(Hitters), Hitters),
+      khan=cbind(split=factor(rep(c('train','test'), c(nrow(Khan$xtrain), nrow(Khan$xtest))),
+                              levels=c('train','test')),
+                 y=c(Khan$ytrain, Khan$ytest), genes(rbind(Khan$xtrain, Khan$xtest))),
+      nci60=cbind(label=sorted.factor(NCI60$labs), genes(NCI60$data)),
+      nyse=transform(NYSE, day_of_week=factor(day_of_week, levels=c('mon','tues','wed','thur','fri')),
+                     train=as.integer(train)),
+      oj=OJ, portfolio=Portfolio, publication=transform(Publication, mech=sorted.factor(mech)),
+      smarket=Smarket, wage=Wage, weekly=Weekly)
+    for (id in names(sets)) export(sets[[id]], id)
+  })
+  quit(save='no')
+}
 if (package == 'datasets-r') {
   load(file.path(root,'palmerpenguins/R/sysdata.rda'))
   export(penguins_df, 'penguins')
