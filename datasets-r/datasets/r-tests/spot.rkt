@@ -2,7 +2,7 @@
 (module+ test
   (require (only-in datasets/core dataset-info dataset-missing? dataset-table-column
                     dataset-table-columns dataset-table-row-count load-dataset-table)
-           (only-in datasets/r-data/r-objects r-objects)
+           (only-in datasets/r-private/objects r-objects)
            (only-in racket/contract/base -> any contract-out listof)
            (only-in racket/format ~s)
            (only-in racket/list remove-duplicates)

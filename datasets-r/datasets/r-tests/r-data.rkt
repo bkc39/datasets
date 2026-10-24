@@ -170,6 +170,10 @@
                     (sort (hash-ref meta "levels") string<?))))
   (check-equal? (sort (map path->string (directory-list (build-path r-data "data"))) string<?)
                 (sort (for/list ([id (in-list ids)]) (format "~a.rktd.gz" id)) string<?))
+  (check-equal? (for/list ([p (in-list (directory-list r-data))]
+                           #:when (regexp-match? #rx"[.]rkt$" (path->string p)))
+                  (path->string p))
+                '("info.rkt"))
 
   (define license-files (directory-list (build-path r-data "licenses")))
   (match-define (list _ 'AND data-license) ((get-info/full package-root) 'license))

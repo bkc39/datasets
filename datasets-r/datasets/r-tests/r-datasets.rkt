@@ -8,7 +8,7 @@
 (define-runtime-path r-data "../r-data")
 (define-runtime-path spots-file "r-datasets-spots.rktd")
 (module+ test
-  (require (only-in datasets/r-data/r-objects r-objects)
+  (require (only-in datasets/r-private/objects r-objects)
            (only-in rackunit check-equal? check-false check-regexp-match check-true)
            (only-in (submod "spot.rkt" test) check-spot r-dataset-ids))
   (define exceptions

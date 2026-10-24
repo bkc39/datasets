@@ -1,5 +1,5 @@
 #lang scribble/manual
-@(require (only-in datasets/r-data/r-objects r-objects) (only-in racket/match match))
+@(require (only-in datasets/r-private/objects r-objects) (only-in racket/match match))
 
 @title[#:tag "datasets-from-r"]{Datasets from R}
 
