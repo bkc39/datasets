@@ -20,9 +20,15 @@ raco scribble --htmls --dest "$staging/site" --dest-base ../ \
   datasets-core/datasets/core-doc/datasets-core.scrbl \
   datasets/datasets/main-doc/datasets.scrbl
 python3 scripts/finish-docs.py "$staging/site"
+scanned=("$staging/site" datasets-core/datasets/core-doc/doc datasets/datasets/main-doc/doc)
+for dir in "${scanned[@]}"; do
+  if [[ ! -d $dir ]]; then
+    echo "build-docs: $dir missing" >&2
+    exit 1
+  fi
+done
 scan=0
-badlinks=$(grep -rl 'class="badlink"' "$staging/site" datasets-core/datasets/core-doc/doc \
-             datasets/datasets/main-doc/doc) || scan=$?
+badlinks=$(grep -rl 'class="badlink"' "${scanned[@]}") || scan=$?
 rejected="$project_root/.cache/docs-badlinks"
 rm -rf -- "$rejected"
 case $scan in

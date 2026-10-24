@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Regenerate committed data from hash-verified archives; needs Python 3.12+ and R; source definitions are pinned to R 4.3.3.
 Pass an archive directory (offline), or --fetch to download sources into it first.
-Writes TARGET/registry.rktd and TARGET/data/<id>.rktd.gz for one package.
+Writes TARGET/registry.rktd and TARGET/data/<id>.rktd.gz for one package; for datasets-r also the R object table
+datasets-r/datasets/r-private/objects.rkt, or TARGET/r-private/objects.rkt when --target is given.
 """
 import argparse, csv, gzip, hashlib, io, json, re, subprocess, sys, tarfile, tempfile, urllib.request, zipfile
 from pathlib import Path
@@ -19,6 +20,7 @@ if args.package not in DEFAULTS: sys.exit(f'No import recipes for package {args.
 PACKAGE = args.package
 OUT = args.target or ROOT/DEFAULTS[PACKAGE][0]
 PROVENANCE = args.provenance or ROOT/DEFAULTS[PACKAGE][1]
+PRIVATE = args.target/'r-private' if args.target else ROOT/'datasets-r/datasets/r-private'
 (OUT/'data').mkdir(parents=True,exist_ok=True); PROVENANCE.mkdir(parents=True,exist_ok=True)
 SOURCES = {k:s for k,s in json.loads((ROOT/'scripts/sources.json').read_text()).items() if PACKAGE in s.get('packages',[s.get('package','datasets-core')])}
 fetch = args.fetch
@@ -207,9 +209,9 @@ def import_r():
         def object_row(r):
             cell=sexp('Skipped. '+r['target']) if r['disposition']=='skipped' else f"(dataset {r['target']})"
             return f"((tt {sexp(r['object'])}) {sexp(r['class'])} {cell})"
-        (OUT.parent/'r-private').mkdir(exist_ok=True)
-        (OUT.parent/'r-private'/'objects.rkt').write_text("#lang racket/base\n(provide r-objects)\n(define r-objects\n  '("
-                                         +'\n    '.join(object_row(r) for r in objects)+'))\n')
+        PRIVATE.mkdir(parents=True,exist_ok=True)
+        (PRIVATE/'objects.rkt').write_text("#lang racket/base\n(provide r-objects)\n(define r-objects\n  '("
+                                     +'\n    '.join(object_row(r) for r in objects)+'))\n')
 {'datasets-core':import_core,'datasets-r':import_r}[PACKAGE]()
 (OUT/'registry.rktd').write_text(sexp(dict(sorted(registry.items())))+'\n')
 for stale in (OUT/'data').iterdir():
