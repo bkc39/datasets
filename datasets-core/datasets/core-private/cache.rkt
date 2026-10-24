@@ -50,7 +50,8 @@
     [(convert-fetch? fetch)
      (define converter (load-converter who name info))
      (convert-set who name info final converter idle)]
-    [else (write-cache-file who name final (lambda (part) (download-file who name fetch part idle)))]))
+    [else
+     (write-cache-file who name final (lambda (part) (download-file who name #f fetch part idle)))]))
 
 (define-syntax-parse-rule (with-cache-failure [who:expr message:expr field:expr ...] body:expr ...+)
   (with-handlers ([exn:fail? (lambda (e)
@@ -83,8 +84,7 @@
       (rename-file-or-directory part final #t))
     final))
 
-(define (download-file who name pin part idle)
-  (define file-name (hash-ref pin "name" #f))
+(define (download-file who name file-name pin part idle)
   (define fields (if file-name (list "dataset" name "file" file-name) (list "dataset" name)))
   (let loop ([urls (hash-ref pin "urls")] [failures '()])
     (match urls
@@ -121,9 +121,10 @@
     (match files
       ['() (write-converted who name info final (converted-text who name info converter paths))]
       [(cons file more)
+       (define file-name (hash-ref file "name"))
        (with-part-file [part who name final (string-append (hash-ref file "sha256") ".raw")]
-         (download-file who name file part idle)
-         (loop more (hash-set paths (hash-ref file "name") part)))])))
+         (download-file who name file-name file part idle)
+         (loop more (hash-set paths file-name part)))])))
 
 (define (converted-text who name info converter files)
   (define fields (converter-fields name info))

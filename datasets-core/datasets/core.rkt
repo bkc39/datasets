@@ -411,7 +411,8 @@
    (for/vector #:length (vector-length columns) ([i (in-range (vector-length columns))])
      (define column (vector-ref columns i))
      (vector-set! columns i #f)
-     (vector->immutable-vector (vector-copy column 0 count)))))
+     (vector->immutable-vector
+      (if (= count (vector-length column)) column (vector-copy column 0 count))))))
 
 (define (fetch-dataset name #:idle-timeout [idle 60])
   (define-values (info data-dir) (dataset-entry 'fetch-dataset name))

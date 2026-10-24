@@ -338,6 +338,27 @@
                           (and (regexp-match? #rx"toy-remote" m)
                                (regexp-match? (regexp-quote url) m)))))))))
 
+  (test-case "C25 an extra name key on a single-file pin changes neither the error nor the log"
+    (define receiver (make-log-receiver (current-logger) 'info 'datasets))
+    (define (drain) (match (sync/timeout 0 receiver) [#f '()] [(vector _ m _ _) (cons m (drain))]))
+    (define (outcome extra)
+      (with-server (hash "/missing" '(status 404))
+                   (lambda (u)
+                     (list (hash-update (fetch-entry (list (u "/missing"))) "fetch" extra)))
+        (lambda (srv root registry)
+          (define url (regexp-quote (http-fixture-url srv "/missing")))
+          (drain)
+          (define message (with-handlers ([(lambda (_) #t) (lambda (e) e)])
+                            (fetch-dataset 'toy-remote)))
+          (map (lambda (s) (regexp-replace* url s "URL"))
+               (cons (if (exn:fail? message) (exn-message message) (format "~e" message))
+                     (drain))))))
+    (define baseline (outcome values))
+    (check-regexp-match #rx"^fetch-dataset: cannot download dataset\n" (car baseline))
+    (check-equal? (for/list ([extra (in-list (list "x.gz" 42))])
+                    (outcome (lambda (f) (hash-set f "name" extra))))
+                  (list baseline baseline)))
+
   (test-case "C27 queries create nothing"
     (call-with-fetch-fixture (list (fetch-entry (list "file:///nonexistent/toy.rktd.gz")))
       (lambda (root registry)

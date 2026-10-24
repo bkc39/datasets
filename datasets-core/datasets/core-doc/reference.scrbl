@@ -87,8 +87,8 @@ collection-level @tt{info.rkt}: a list of paths relative to that file's
 directory. Each dataset's data is @tt{data/@italic{name}.rktd.gz} beside its
 registry: gzip-compressed UTF-8 text of an opening parenthesis and newline, each
 row on its own line as two spaces followed by its @racket[write] form, then a
-closing parenthesis and newline. Loading reads only this form; data with comments
-raises @racket[exn:fail]. The registries of all installed packages are merged when first used.
+closing parenthesis and newline. Loading expects this form; other text may be
+rejected. The registries of all installed packages are merged when first used.
 Each later call checks the registry files and declaring @tt{info.rkt} files of
 the packages already found, and merges again when one changes. The installed
 package index is read again when the collection search path changes, as
@@ -174,7 +174,8 @@ cached file. The temporary files are deleted whether or not this succeeds. A fil
 whose every URL fails, a converter that cannot be loaded or raises, a malformed
 row, or content whose SHA-256 differs from the @tt{sha256} metadata raises
 @racket[exn:fail] naming the dataset and the file or converter, and nothing is
-cached.}
+cached. A contract violation from the converter propagates unchanged (see
+@secref["datasets-core-convert-reference"]).}
 @examples[#:eval ev (file-exists? (fetch-dataset 'iris))]
 
 @defproc[(clear-dataset-cache [name (or/c #f symbol?) #f]) void?]{
