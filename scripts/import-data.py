@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
-"""Regenerate committed data from hash-verified archives; needs Python 3.12+ and R; source definitions are pinned to R 4.3.3.
+"""Regenerate committed data from hash-verified archives; needs Python 3.12+ and R (xlrd for --package datasets-uci); source definitions are pinned to R 4.3.3.
 Pass an archive directory (offline), or --fetch to download sources into it first.
 Writes TARGET/registry.rktd and TARGET/data/<id>.rktd.gz for one package.
 """
 import argparse, csv, gzip, hashlib, io, json, re, subprocess, sys, tarfile, tempfile, urllib.request, zipfile
+import xml.etree.ElementTree as ET
 from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULTS = {'datasets-core': ('datasets-core/datasets/core-data', 'datasets-core/datasets/provenance'),
-            'datasets-r': ('datasets-r/datasets/r-data', 'datasets-r/datasets/r-data/provenance')}
+            'datasets-r': ('datasets-r/datasets/r-data', 'datasets-r/datasets/r-data/provenance'),
+            'datasets-uci': ('datasets-uci/datasets/uci-data', 'datasets-uci/datasets/uci-data/provenance')}
 cli = argparse.ArgumentParser(description=__doc__)
 cli.add_argument('--fetch', action='store_true')
 cli.add_argument('--package', default='datasets-core')
@@ -178,7 +180,192 @@ def import_r():
             for j,n in enumerate(names):
                 if n in levels and not {r[j] for r in rows if r[j] is not None}<=set(levels[n]): raise ValueError(f'{id}: {n} value outside levels')
             add(id,records[0],rows,source,names=names,levels=levels,**kw)
-{'datasets-core':import_core,'datasets-r':import_r}[PACKAGE]()
+PIXELS=[f'pixel_{i}_{j}' for i in range(8) for j in range(8)]
+NUMERIC=re.compile(r'[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?')
+def kebab(s): return re.sub('[^a-z0-9]+','-',s.lower()).strip('-')
+def members(source,*names,inner=None):
+    with zipfile.ZipFile(cache/SOURCES[source]['file']) as a:
+        if inner is None: return [a.read(n) for n in names]
+        with zipfile.ZipFile(io.BytesIO(a.read(inner))) as b: return [b.read(n) for n in names]
+def delimited(data,delimiter=',',skip='|'):
+    lines=[l for l in data.decode('utf-8').splitlines() if l.strip() and not l.startswith(skip)]
+    return [[v.strip() for v in r] for r in csv.reader(lines,delimiter=delimiter)]
+def with_header(records): return records[0],records[1:]
+def xlsx_records(data):
+    m='{http://schemas.openxmlformats.org/spreadsheetml/2006/main}'
+    with zipfile.ZipFile(io.BytesIO(data)) as a:
+        shared=[''.join(t.text or '' for t in si.iter(m+'t')) for si in ET.fromstring(a.read('xl/sharedStrings.xml')).iter(m+'si')]
+        sheet=ET.fromstring(a.read('xl/worksheets/sheet1.xml'))
+    rows=[{re.match('[A-Z]+',c.get('r')).group():(shared[int(c.find(m+'v').text)] if c.get('t')=='s' else c.find(m+'v').text) for c in row.iter(m+'c') if c.find(m+'v') is not None} for row in sheet.iter(m+'row')]
+    columns=sorted(rows[0],key=lambda k:(len(k),k))
+    return [[cells.get(k) for k in columns] for cells in rows if cells]
+def xls_records(data):
+    import xlrd
+    sheet=xlrd.open_workbook(file_contents=data).sheet_by_index(0)
+    return [[None if v=='' else v if isinstance(v,str) else repr(v) for v in sheet.row_values(i)] for i in range(sheet.nrows)]
+def uci_typed(records,missing,strings):
+    columns=[]
+    for j,column in enumerate(zip(*records)):
+        values=[None if v in missing else v for v in column]
+        present=[v for v in values if v is not None]
+        if j in strings or not all(NUMERIC.fullmatch(v) for v in present): columns.append(values); continue
+        numbers=[None if v is None else float(v) for v in values]
+        integral=all(v.is_integer() for v in numbers if v is not None)
+        columns.append([None if v is None else int(v) if integral else v for v in numbers])
+    return [list(r) for r in zip(*columns)]
+def names_levels(text,pattern):
+    return {kebab(n):[v.strip().strip('"') for v in vs.split(',')] for n,vs in re.findall(pattern,text,re.M)}
+def optdigits():
+    train,test=members('uci-optdigits','optdigits.tra','optdigits.tes')
+    return PIXELS+['class','split'],[r+['train'] for r in delimited(train)]+[r+['test'] for r in delimited(test)]
+def adult():
+    data,test,doc=members('uci-adult','adult.data','adult.test','adult.names')
+    original=re.findall(r'^([a-z-]+): ',doc.decode(),re.M)+['income','split']
+    return original,[r+['train'] for r in delimited(data)]+[r[:-1]+[r[-1].removesuffix('.'),'test'] for r in delimited(test)]
+def auto_mpg():
+    (data,)=members('uci-auto-mpg','auto-mpg.data')
+    rows=[left.split()+[name.strip().strip('"')] for left,name in (l.split('\t') for l in data.decode().splitlines() if l.strip())]
+    return ['mpg','cylinders','displacement','horsepower','weight','acceleration','model year','origin','car name'],rows
+def wine_quality():
+    red,white=members('uci-wine-quality','winequality-red.csv','winequality-white.csv')
+    (header,reds),(_,whites)=with_header(delimited(red,';')),with_header(delimited(white,';'))
+    return header+['colour'],[r+['red'] for r in reds]+[r+['white'] for r in whites]
+def student_performance():
+    mat,por=members('uci-student-performance','student-mat.csv','student-por.csv',inner='student.zip')
+    (header,maths),(_,portuguese)=with_header(delimited(mat,';')),with_header(delimited(por,';'))
+    return header+['subject'],[r+['math'] for r in maths]+[r+['portuguese'] for r in portuguese]
+def concrete():
+    return with_header(xls_records(*members('uci-concrete-strength','Concrete_Data.xls')))
+def energy():
+    return with_header(xlsx_records(*members('uci-energy-efficiency','ENB2012_data.xlsx')))
+SPAM_CHARS={';':'semicolon','(':'paren','[':'bracket','!':'exclamation','$':'dollar','#':'hash'}
+def spambase():
+    data,doc=members('uci-spambase','spambase.data','spambase.names')
+    return re.findall(r'^([a-z_0-9]+_[^:\s]+|capital_run_length_\w+):',doc.decode(),re.M)+['spam'],delimited(data)
+def mushroom_attributes():
+    doc=members('uci-mushroom','agaricus-lepiota.names')[0].decode()
+    return [(n,' '.join(text.split())) for n,text in re.findall(r'^\s+\d+\. ([a-z?-]+):\s+(.*?)(?=^\s+\d+\. |\Z)',doc[doc.index('7. Attribute Information'):doc.index('8. Missing')],re.M|re.S)]
+def mushroom():
+    return ['class']+[n for n,_ in mushroom_attributes()],delimited(members('uci-mushroom','agaricus-lepiota.data')[0])
+def uci_cite(authors,year,title,source,paper=None):
+    s=SOURCES[source]
+    return (f'{authors} ({year}). {title}.' if authors else f'{title} [Dataset]. ({year}).')+f" UCI Machine Learning Repository. doi:{s['doi']}. {s['page']}"+(f' Described in: {paper}' if paper else '')
+YES_NO=['no','yes']
+STUDENT_YES_NO=['schoolsup','famsup','paid','activities','nursery','higher','internet','romantic']
+BIKE_DESCRIPTIONS={'instant':'Record index','dteday':'Date (ISO 8601)','season':'Season: 1 winter, 2 spring, 3 summer, 4 fall','yr':'Year: 0 = 2011, 1 = 2012','mnth':'Month (1 to 12)','hr':'Hour (0 to 23)','holiday':'Whether the day is a holiday','weekday':'Day of the week','workingday':'1 if the day is neither weekend nor holiday, otherwise 0','weathersit':'Weather: 1 clear or partly cloudy; 2 mist; 3 light snow or rain; 4 heavy rain, ice, snow or fog','temp':'Normalized temperature in Celsius: (t - t_min)/(t_max - t_min), t_min = -8, t_max = +39','atemp':'Normalized feeling temperature in Celsius: (t - t_min)/(t_max - t_min), t_min = -16, t_max = +50','hum':'Normalized humidity, divided by 100','windspeed':'Normalized wind speed, divided by 67','casual':'Count of casual users','registered':'Count of registered users','cnt':'Count of total rental bikes, casual and registered'}
+BIKE_NOTE=' casual + registered = cnt, so leave casual and registered out when predicting cnt. Descriptions follow the UCI dataset page, which corrects the bundled Readme.txt (season 1:springer, temp divided by 41, atemp by 50); season 1 is winter, which matches the January rows.'
+BIKE_PAPER='Fanaee-T, H. and Gama, J. (2013). Event labeling combining ensemble detectors and background knowledge. Progress in Artificial Intelligence, 1-15. doi:10.1007/s13748-013-0040-3'
+DIGIT_DESCRIPTIONS={'digit':'Digit class 0-9'}|{f'pixel-{i}-{j}':f'Count of on pixels in 4x4 block row {i}, column {j} of the 32x32 bitmap (0-16)' for i in range(8) for j in range(8)}
+UCI_DOCS={'uci-optdigits':['optdigits.names'],'uci-adult':['adult.names'],'uci-auto-mpg':['auto-mpg.names'],'uci-abalone':['abalone.names'],'uci-wine-quality':['winequality.names'],
+          'uci-heart-disease':['heart-disease.names'],'uci-mushroom':['agaricus-lepiota.names'],'uci-car-evaluation':['car.names'],'uci-spambase':['spambase.names','spambase.DOCUMENTATION'],
+          'uci-concrete-strength':['Concrete_Readme.txt'],'uci-bike-sharing':[('Readme.txt','bike-sharing-Readme.txt')]}
+def import_uci():
+    for source,docs in UCI_DOCS.items():
+        for doc in docs:
+            member,name=doc if isinstance(doc,tuple) else (doc,doc)
+            (PROVENANCE/name).write_bytes(*members(source,member))
+    (PROVENANCE/'bank-additional-names.txt').write_bytes(*members('uci-bank-marketing','bank-additional/bank-additional-names.txt',inner='bank-additional.zip'))
+    (PROVENANCE/'student.txt').write_bytes(*members('uci-student-performance','student.txt',inner='student.zip'))
+    adult_doc=members('uci-adult','adult.names')[0].decode()
+    bank_doc=members('uci-bank-marketing','bank-additional/bank-additional-names.txt',inner='bank-additional.zip')[0].decode('utf-8-sig').replace('\r','')
+    bank_levels=names_levels(bank_doc,r'^\s*\d+ - ([a-z_.]+)\s*:?[^(\n]*\(categorical: ([^)]*?)(?:;[^)]*)?\)')|{'month':['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'],'y':YES_NO}
+    mushroom_codes={kebab(n):[pair.split('=')[1] for pair in re.split(r',\s*',text) if not pair.endswith('=?')] for n,text in mushroom_attributes()}
+    mushroom_text={kebab(n):text for n,text in mushroom_attributes()}
+    optdigits_cite=uci_cite('Alpaydin, E. and Kaynak, C.',1998,'Optical Recognition of Handwritten Digits','uci-optdigits')
+    citations.update({'digits':optdigits_cite,'optdigits':optdigits_cite,
+        'adult':uci_cite('Becker, B. and Kohavi, R.',1996,'Adult','uci-adult'),
+        'auto-mpg':uci_cite('Quinlan, R.',1993,'Auto MPG','uci-auto-mpg'),
+        'abalone':uci_cite('Nash, W., Sellers, T., Talbot, S., Cawthorn, A. and Ford, W.',1994,'Abalone','uci-abalone','Nash, W. J., Sellers, T. L., Talbot, S. R., Cawthorn, A. J. and Ford, W. B. (1994). The Population Biology of Abalone (Haliotis species) in Tasmania. I. Blacklip Abalone (H. rubra) from the North Coast and Islands of Bass Strait. Sea Fisheries Division, Technical Report No. 48.'),
+        'wine-quality':uci_cite('Cortez, P., Cerdeira, A., Almeida, F., Matos, T. and Reis, J.',2009,'Wine Quality','uci-wine-quality','Cortez, P., Cerdeira, A., Almeida, F., Matos, T. and Reis, J. (2009). Modeling wine preferences by data mining from physicochemical properties. Decision Support Systems 47(4), 547-553. doi:10.1016/j.dss.2009.05.016'),
+        'bank-marketing':uci_cite('Moro, S., Rita, P. and Cortez, P.',2014,'Bank Marketing','uci-bank-marketing','Moro, S., Cortez, P. and Rita, P. (2014). A data-driven approach to predict the success of bank telemarketing. Decision Support Systems. doi:10.1016/j.dss.2014.03.001'),
+        'heart-disease':uci_cite('Janosi, A., Steinbrunn, W., Pfisterer, M. and Detrano, R.',1989,'Heart Disease','uci-heart-disease','Detrano, R. et al. (1989). International application of a new probability algorithm for the diagnosis of coronary artery disease. American Journal of Cardiology 64, 304-310.'),
+        'mushroom':uci_cite(None,1981,'Mushroom','uci-mushroom','The Audubon Society Field Guide to North American Mushrooms (1981). G. H. Lincoff (Pres.), New York: Alfred A. Knopf.'),
+        'car-evaluation':uci_cite('Bohanec, M.',1988,'Car Evaluation','uci-car-evaluation','Bohanec, M. and Rajkovic, V. (1988). Knowledge acquisition and explanation for multi-attribute decision making. 8th International Workshop on Expert Systems and their Applications, Avignon, 59-78.'),
+        'spambase':uci_cite('Hopkins, M., Reeber, E., Forman, G. and Suermondt, J.',1999,'Spambase','uci-spambase'),
+        'banknote-authentication':uci_cite('Lohweg, V.',2012,'Banknote Authentication','uci-banknote-authentication'),
+        'seeds':uci_cite('Charytanowicz, M., Niewczas, J., Kulczycki, P., Kowalski, P. and Lukasik, S.',2010,'Seeds','uci-seeds','Charytanowicz, M., Niewczas, J., Kulczycki, P., Kowalski, P. A., Lukasik, S. and Zak, S. (2010). Complete Gradient Clustering Algorithm for Features Analysis of X-Ray Images. Information Technologies in Biomedicine. doi:10.1007/978-3-642-13105-9_2'),
+        'concrete-strength':uci_cite('Yeh, I.-C.',1998,'Concrete Compressive Strength','uci-concrete-strength','Yeh, I.-C. (1998). Modeling of strength of high performance concrete using artificial neural networks. Cement and Concrete Research 28(12), 1797-1808. doi:10.1016/S0008-8846(98)00165-3. Copyright Prof. I-Cheng Yeh.'),
+        'energy-efficiency':uci_cite('Tsanas, A. and Xifara, A.',2012,'Energy Efficiency','uci-energy-efficiency','Tsanas, A. and Xifara, A. (2012). Accurate quantitative estimation of energy performance of residential buildings using statistical machine learning tools. Energy and Buildings 49.'),
+        'student-performance':uci_cite('Cortez, P.',2008,'Student Performance','uci-student-performance','Cortez, P. and Silva, A. (2008). Using data mining to predict secondary school student performance. Proceedings of the 5th Annual Future Business Technology Conference.'),
+        'bike-sharing-daily':uci_cite('Fanaee-T, H.',2013,'Bike Sharing','uci-bike-sharing',BIKE_PAPER),
+        'bike-sharing-hourly':uci_cite('Fanaee-T, H.',2013,'Bike Sharing','uci-bike-sharing',BIKE_PAPER)})
+    recipes=[
+        ('digits','uci-optdigits',lambda:(PIXELS+['class'],delimited(members('uci-optdigits','optdigits.tes')[0])),dict(
+            names=[kebab(n) for n in PIXELS]+['digit'],targets=['digit'],descriptions=DIGIT_DESCRIPTIONS,
+            notes='The 1,797-row optdigits.tes test portion, identical row for row to the data of scikit-learn load_digits (checked against scikit-learn 1.8.0): 64 pixel counts (0-16) of an 8x8 grid in row-major order, then the digit class. Pixel names follow scikit-learn (pixel_ROW_COL; the source names no attributes). The full 5,620-row set is optdigits.')),
+        ('optdigits','uci-optdigits',optdigits,dict(
+            names=[kebab(n) for n in PIXELS]+['digit','split'],targets=['digit'],levels={'split':['train','test']},descriptions=DIGIT_DESCRIPTIONS|{'split':'Source file: train (optdigits.tra, 30 writers) or test (optdigits.tes, 13 other writers)'},
+            notes='All 5,620 rows: the 3,823 optdigits.tra rows, then the 1,797 optdigits.tes rows, told apart by split. Writers of the two splits do not overlap. Pixel names follow scikit-learn; digits is the test portion alone.')),
+        ('adult','uci-adult',adult,dict(
+            missing={'?'},targets=['income'],levels=names_levels(adult_doc,r'^([a-z-]+): ((?!continuous)[^\n]*)\.$')|{'income':['<=50K','>50K'],'split':['train','test']},
+            descriptions={'fnlwgt':'Final sampling weight','education-num':'Education, as a number','income':'Whether income exceeds $50K/yr','split':'Source file: train (adult.data) or test (adult.test)'},
+            notes='1994 US Census extract: the 32,561 adult.data rows, then the 16,281 adult.test rows, told apart by split. The trailing period on test income labels is removed. ? is rendered as missing (workclass, occupation, native-country).')),
+        ('auto-mpg','uci-auto-mpg',auto_mpg,dict(
+            missing={'?'},targets=['mpg'],
+            descriptions={'cylinders':'Number of cylinders','model-year':'Model year (19xx)','origin':'Origin code (1, 2 or 3)','car-name':'Car name; not unique across rows'},
+            notes='auto-mpg.data: the StatLib cars with the 8 unknown-mpg rows removed. The 6 ? horsepower values are rendered as missing. Integral values written with a decimal point are stored as integers.')),
+        ('abalone','uci-abalone',lambda:(['Sex','Length','Diameter','Height','Whole weight','Shucked weight','Viscera weight','Shell weight','Rings'],delimited(members('uci-abalone','abalone.data')[0])),dict(
+            levels={'sex':['M','F','I']},targets=['rings'],units={'length':'mm / 200','diameter':'mm / 200','height':'mm / 200','whole-weight':'grams / 200','shucked-weight':'grams / 200','viscera-weight':'grams / 200','shell-weight':'grams / 200'},
+            descriptions={'sex':'M, F or I (infant)','length':'Longest shell measurement','diameter':'Perpendicular to length','height':'With meat in shell','whole-weight':'Whole abalone','shucked-weight':'Weight of meat','viscera-weight':'Gut weight (after bleeding)','shell-weight':'After being dried','rings':'Rings; +1.5 gives the age in years'},
+            notes='Continuous measurements as distributed, scaled by 1/200 by the donors; rows with missing values were removed upstream.')),
+        ('wine-quality','uci-wine-quality',wine_quality,dict(
+            levels={'colour':['red','white']},targets=['quality'],descriptions={'quality':'Sensory quality score between 0 and 10','colour':'Red or white vinho verde'},
+            notes='Red and white vinho verde in one table: the 1,599 red rows, then the 4,898 white rows, told apart by colour.')),
+        ('bank-marketing','uci-bank-marketing',lambda:with_header(delimited(members('uci-bank-marketing','bank-additional/bank-additional-full.csv',inner='bank-additional.zip')[0],';')),dict(
+            missing={'unknown'},levels={kebab(k):[l for l in v if l!='unknown'] for k,v in bank_levels.items()},targets=['y'],units={'duration':'seconds'},
+            descriptions={'duration':'Last contact duration; known only after the call, so for benchmarking only','pdays':'Days since last contact in a previous campaign; 999 = not previously contacted','y':'Whether the client subscribed a term deposit'},
+            notes='bank-additional-full.csv: 41,188 calls, May 2008 to November 2010, ordered by date, with five social and economic context attributes; the file analysed by Moro et al. (2014), chosen over the older bank-full.csv (45,211 rows, no context attributes). The documented unknown label is rendered as missing; pdays 999 is kept.')),
+        ('heart-disease','uci-heart-disease',lambda:(['age','sex','cp','trestbps','chol','fbs','restecg','thalach','exang','oldpeak','slope','ca','thal','num'],delimited(members('uci-heart-disease','processed.cleveland.data')[0])),dict(
+            missing={'?'},targets=['num'],units={'age':'years','trestbps':'mm Hg','chol':'mg/dl'},
+            descriptions={'age':'Age','sex':'1 = male, 0 = female','cp':'Chest pain type: 1 typical angina, 2 atypical angina, 3 non-anginal pain, 4 asymptomatic','trestbps':'Resting blood pressure on admission','chol':'Serum cholesterol','fbs':'Fasting blood sugar > 120 mg/dl: 1 true, 0 false','restecg':'Resting electrocardiographic results: 0 normal, 1 ST-T wave abnormality, 2 left ventricular hypertrophy','thalach':'Maximum heart rate achieved','exang':'Exercise induced angina: 1 yes, 0 no','oldpeak':'ST depression induced by exercise relative to rest','slope':'Slope of the peak exercise ST segment: 1 upsloping, 2 flat, 3 downsloping','ca':'Number of major vessels (0-3) colored by fluoroscopy','thal':'3 normal, 6 fixed defect, 7 reversible defect','num':'Angiographic disease status: 0 absence, 1-4 presence'},
+            notes='processed.cleveland.data: the 303 Cleveland Clinic patients and the 14 attributes used in published experiments. ? is rendered as missing (ca, thal). Coded attributes stay numeric with their codes in the descriptions; integral values written with a decimal point are stored as integers.')),
+        ('mushroom','uci-mushroom',mushroom,dict(
+            missing={'?'},levels={'class':['e','p']}|mushroom_codes,targets=['class'],descriptions={'class':'edible=e, poisonous=p'}|mushroom_text,
+            notes='Hypothetical samples of 23 gilled mushroom species, keeping the source one-letter codes (decoded in each description) and the source column order with class first. bruises? is renamed bruises. The 2,480 ? stalk-root values are rendered as missing. Donated by J. Schlimmer (1987); the UCI page names no creator.')),
+        ('car-evaluation','uci-car-evaluation',lambda:(['buying','maint','doors','persons','lug_boot','safety','class'],delimited(members('uci-car-evaluation','car.data')[0])),dict(
+            levels={'buying':['vhigh','high','med','low'],'maint':['vhigh','high','med','low'],'doors':['2','3','4','5more'],'persons':['2','4','more'],'lug-boot':['small','med','big'],'safety':['low','med','high'],'class':['unacc','acc','good','vgood']},targets=['class'],
+            descriptions={'buying':'Buying price','maint':'Price of the maintenance','doors':'Number of doors','persons':'Capacity in terms of persons to carry','lug-boot':'Size of luggage boot','safety':'Estimated safety of the car','class':'Car acceptability'},
+            notes='All 1,728 combinations of the six attributes with their acceptability class.')),
+        ('spambase','uci-spambase',spambase,dict(
+            names_fn=lambda n:'char-freq-'+SPAM_CHARS[n[-1]] if n.startswith('char_freq_') else kebab(n),targets=['spam'],descriptions={'spam':'1 = spam, 0 = not spam'},
+            notes='4,601 e-mails: 48 word and 6 character frequencies (percent), three capital-run-length statistics and the spam class. Character columns are named after the character (char_freq_; is char-freq-semicolon, and so on).')),
+        ('banknote-authentication','uci-banknote-authentication',lambda:(['variance','skewness','curtosis','entropy','class'],delimited(members('uci-banknote-authentication','data_banknote_authentication.txt')[0])),dict(
+            targets=['class'],descriptions={'variance':'Variance of the wavelet transformed image','skewness':'Skewness of the wavelet transformed image','curtosis':'Curtosis of the wavelet transformed image','entropy':'Entropy of the image','class':'Class (0 or 1)'},
+            notes='Wavelet features of images of genuine and forged banknote-like specimens. The archive carries no documentation file; names and descriptions follow the UCI dataset page.')),
+        ('seeds','uci-seeds',lambda:(['area','perimeter','compactness','length of kernel','width of kernel','asymmetry coefficient','length of kernel groove','class'],[l.split() for l in members('uci-seeds','seeds_dataset.txt')[0].decode().splitlines() if l.strip()]),dict(
+            targets=['class'],descriptions={'area':'Area A','perimeter':'Perimeter P','compactness':'Compactness C = 4*pi*A/P^2','class':'Wheat variety (1, 2 or 3): Kama, Rosa and Canadian, 70 kernels each'},
+            notes='X-ray measurements of 210 wheat kernels. The source file separates some fields with two tabs; fields are split on whitespace. The archive carries no documentation file; names follow the UCI dataset page.')),
+        ('concrete-strength','uci-concrete-strength',concrete,dict(
+            names=['cement','blast-furnace-slag','fly-ash','water','superplasticizer','coarse-aggregate','fine-aggregate','age','concrete-compressive-strength'],targets=['concrete-compressive-strength'],
+            units={n:'kg/m^3 of mixture' for n in ['cement','blast-furnace-slag','fly-ash','water','superplasticizer','coarse-aggregate','fine-aggregate']}|{'age':'days','concrete-compressive-strength':'MPa'},
+            notes='Concrete_Data.xls in raw, unscaled form; cell values as stored in the workbook. Column names shortened from the workbook headers (kept as original names).')),
+        ('energy-efficiency','uci-energy-efficiency',energy,dict(
+            names=['relative-compactness','surface-area','wall-area','roof-area','overall-height','orientation','glazing-area','glazing-area-distribution','heating-load','cooling-load'],targets=['heating-load','cooling-load'],
+            descriptions={'relative-compactness':'Relative compactness','surface-area':'Surface area','wall-area':'Wall area','roof-area':'Roof area','overall-height':'Overall height','orientation':'Orientation','glazing-area':'Glazing area','glazing-area-distribution':'Glazing area distribution','heating-load':'Heating load','cooling-load':'Cooling load'},
+            notes='768 simulated building shapes from ENB2012_data.xlsx with two responses. The archive carries no documentation file; names X1-X8, Y1 and Y2 are replaced by the names on the UCI dataset page. Cell values as stored in the workbook.')),
+        ('student-performance','uci-student-performance',student_performance,dict(
+            levels={'school':['GP','MS'],'sex':['F','M'],'address':['U','R'],'famsize':['LE3','GT3'],'pstatus':['T','A'],'mjob':['teacher','health','services','at_home','other'],'fjob':['teacher','health','services','at_home','other'],'reason':['home','reputation','course','other'],'guardian':['mother','father','other'],'subject':['math','portuguese']}|{n:YES_NO for n in STUDENT_YES_NO},
+            targets=['g3'],descriptions={'g1':'First period grade (0-20)','g2':'Second period grade (0-20)','g3':'Final grade (0-20)','subject':'Course: math (student-mat.csv) or portuguese (student-por.csv)'},
+            notes='Two Portuguese secondary schools in one table: the 395 mathematics rows, then the 649 Portuguese-language rows, told apart by subject. Some students appear in both courses; the source has no student identifier.')),
+        ('bike-sharing-daily','uci-bike-sharing',lambda:with_header(delimited(members('uci-bike-sharing','day.csv')[0])),dict(
+            identifiers=['instant'],targets=['cnt'],descriptions=BIKE_DESCRIPTIONS,notes='Capital Bikeshare (Washington, D.C.) rentals per day, 2011-2012, with weather and calendar attributes (day.csv).'+BIKE_NOTE)),
+        ('bike-sharing-hourly','uci-bike-sharing',lambda:with_header(delimited(members('uci-bike-sharing','hour.csv')[0])),dict(
+            identifiers=['instant'],targets=['cnt'],descriptions=BIKE_DESCRIPTIONS,notes='Capital Bikeshare (Washington, D.C.) rentals per hour, 2011-2012, with weather and calendar attributes (hour.csv); hours without rentals are absent.'+BIKE_NOTE)),
+    ]
+    for id,source,read,kw in recipes:
+        original,records=read()
+        names_fn=kw.pop('names_fn',kebab)
+        names=kw.pop('names',None) or [names_fn(n) for n in original]
+        levels=kw.pop('levels',{})
+        rows=uci_typed(records,kw.pop('missing',set()),{j for j,n in enumerate(names) if n in levels})
+        if {len(r) for r in rows}!={len(names)}: raise ValueError(f'{id}: ragged rows')
+        for j,n in enumerate(names):
+            if n not in levels: continue
+            present={r[j] for r in rows if r[j] is not None}
+            if not present<=set(levels[n]): raise ValueError(f'{id}: {n} values {present-set(levels[n])} outside levels')
+            levels[n]=[l for l in levels[n] if l in present]
+        add(id,original,rows,source,names=names,levels=levels,**kw)
+{'datasets-core':import_core,'datasets-r':import_r,'datasets-uci':import_uci}[PACKAGE]()
 (OUT/'registry.rktd').write_text(sexp(dict(sorted(registry.items())))+'\n')
 for stale in (OUT/'data').iterdir():
     if stale.name not in {f'{id}.rktd.gz' for id in registry}: stale.unlink()
