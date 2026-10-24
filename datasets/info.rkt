@@ -2,7 +2,8 @@
 (define collection 'multi)
 (define version "0.1")
 (define deps
-  '(("base" #:version "9.3") "datasets-core" "datasets-r" "datasets-uci" "datasets-islr" "polars"
+  '(("base" #:version "9.3") "datasets-core" "datasets-r" "datasets-uci" "datasets-islr" "datasets-fetch"
+    "polars"
     "math-lib" "data-frame"))
 (define build-deps '("rackunit-lib" "scribble-lib" "racket-doc" "math-doc" "plot-lib"))
 (define pkg-desc "Bundled, attributed datasets and dataframe adapters")

@@ -17,6 +17,7 @@ original-owner permission. Code is Apache-2.0 OR MIT. Full license texts and
 upstream variable descriptions and citations are bundled in
 @tt{datasets/licenses} and @tt{datasets/provenance} for @tt{datasets-core}, and
 in @tt{licenses} and @tt{provenance} beside the registry of any other package.
+@tt{datasets-fetch} ships no data, so its entries name upstream terms of use.
 The maintainer importer pins source archives by SHA-256. Normalized checksums cover
 the exact UTF-8 bytes of each dataset's uncompressed @tt{.rktd} content. Historical observations are not
 silently corrected except for choosing the documented corrected UCI Iris variant.

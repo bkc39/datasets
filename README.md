@@ -13,19 +13,21 @@ in `datasets-r`, plus digits, optdigits, adult, auto-mpg, abalone, wine-quality,
 bank-marketing, heart-disease, mushroom, car-evaluation, spambase,
 banknote-authentication, seeds, concrete-strength, energy-efficiency,
 student-performance, bike-sharing-daily, and bike-sharing-hourly in
-`datasets-uci`. No downloads occur when loading data.
+`datasets-uci`. These are bundled, so loading them downloads nothing.
 
 ```sh
 raco pkg install --auto datasets
 ```
 
 The 20 datasets of ISLR2 (auto, boston, hitters, smarket, wage, ...) are in
-`datasets-islr`. For the lightweight table API alone, install `datasets-core`
-instead.
-From a checkout, install the five packages with:
+`datasets-islr`. `datasets-fetch` lists larger sets, covtype and
+california-housing, that are downloaded from upstream and converted on first
+load; it ships no data. For the lightweight table API alone, install
+`datasets-core` instead.
+From a checkout, install the six packages with:
 
 ```sh
-raco pkg install ./datasets-core ./datasets-r ./datasets-uci ./datasets-islr
+raco pkg install ./datasets-core ./datasets-r ./datasets-uci ./datasets-islr ./datasets-fetch
 raco pkg install --auto ./datasets
 ```
 
@@ -46,14 +48,16 @@ source abbreviations such as `mpg` remain. Selection preserves requested order.
 Empty selections and duplicate names are rejected. Matrices require numeric,
 nonmissing values: categories are not encoded, nor missing values imputed.
 
-The repository has five top-level, independently installable package directories:
-`datasets-core/`, `datasets-r/`, `datasets-uci/`, `datasets-islr/`, and `datasets/`. Each declares
+The repository has six top-level, independently installable package directories:
+`datasets-core/`, `datasets-r/`, `datasets-uci/`, `datasets-islr/`, `datasets-fetch/`, and `datasets/`. Each declares
 `collection 'multi` and contributes distinct directories to the shared `datasets` collection.
 `datasets-r` contributes `datasets/r-data`, found through its registry, and its
 tests; it depends on `datasets-core`, and `datasets` depends on it. Its sets have
 no named loader: use `(load-dataset 'penguins)`. `datasets-uci` contributes
 `datasets/uci-data` the same way; `(load-dataset 'digits)`. `datasets-islr`
-contributes `datasets/islr-data` the same way.
+contributes `datasets/islr-data` the same way. `datasets-fetch` contributes
+`datasets/fetch-data`, a registry of converted fetch-tier sets, and their
+private converters; it requires `datasets-core` 0.2.
 
 `datasets-core` contributes `datasets/core` and depends only on `base` at runtime.
 It provides `load-dataset-table`, `dataset-names`, `dataset-info`, table predicates
@@ -105,7 +109,8 @@ titanic 0.1.0), MIT (datasauRus 0.1.9), and GPL-2 or GPL-3 (R 4.3.3 `datasets`).
 The `datasets-uci` sets are CC BY 4.0 per their UCI Machine Learning Repository pages.
 This is a redistribution basis, not a claim of independent original-owner
 permission. The `datasets-islr` sets are GPL-2
-([ISLR2 1.3-2](https://CRAN.R-project.org/package=ISLR2)). See [NOTICE](datasets-core/NOTICE) and
+([ISLR2 1.3-2](https://CRAN.R-project.org/package=ISLR2)). `datasets-fetch`
+redistributes no data; each entry names the upstream terms of use. See [NOTICE](datasets-core/NOTICE) and
 [datasets-r/NOTICE](datasets-r/NOTICE), [datasets-uci/NOTICE](datasets-uci/NOTICE),
 [datasets-islr/NOTICE](datasets-islr/NOTICE), bundled license texts, and upstream documentation under
 `datasets-core/datasets/provenance/`, `datasets-r/datasets/r-data/provenance/`,
