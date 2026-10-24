@@ -8,8 +8,9 @@
 (define-runtime-path r-data "../r-data")
 (define-runtime-path spots-file "r-datasets-spots.rktd")
 (module+ test
-  (require (only-in rackunit check-equal? check-false check-regexp-match check-true)
-           (only-in (submod "spot.rkt" test) check-spot r-dataset-ids r-objects))
+  (require (only-in datasets/r-data/r-objects r-objects)
+           (only-in rackunit check-equal? check-false check-regexp-match check-true)
+           (only-in (submod "spot.rkt" test) check-spot r-dataset-ids))
   (define exceptions
     (hash "BJsales" "bj-sales" "BJsales.lead" "bj-sales" "CO2" "co2-uptake" "DNase" "dnase"
           "UKgas" "uk-gas" "UScitiesD" "us-cities-d" "WWWusage" "www-usage"

@@ -6,6 +6,11 @@ cd "$project_root"
 mkdir -p "$project_root/.cache"
 staging=$(mktemp -d "$project_root/.cache/docs.XXXXXX")
 trap 'rm -rf -- "$staging"' EXIT
+# The dev shell's user doc index is copied from the nix build, so its paths are stale.
+if [[ -n "${PLTUSERHOME:-}" ]]; then
+  rm -f -- "$(racket -l racket/base -l setup/dirs \
+                -e '(display (build-path (find-user-doc-dir) "docindex.sqlite"))')"
+fi
 raco setup --avoid-main --pkgs polars data-frame threading-doc
 rm -rf -- "$project_root/datasets-core/datasets/core-doc/doc" "$project_root/datasets/datasets/main-doc/doc"
 raco setup --pkgs datasets-core datasets-r datasets 2>&1 | tee "$staging/setup.log"
@@ -20,6 +25,11 @@ raco scribble --htmls --dest "$staging/site" --dest-base ../ \
   datasets-core/datasets/core-doc/datasets-core.scrbl \
   datasets/datasets/main-doc/datasets.scrbl
 python3 scripts/finish-docs.py "$staging/site"
+if badlinks=$(grep -rl 'class="badlink"' "$staging/site" datasets-core/datasets/core-doc/doc \
+                 datasets/datasets/main-doc/doc); then
+  printf 'build-docs: broken links in\n%s\n' "$badlinks" >&2
+  exit 1
+fi
 if [[ -e "$project_root/doc" ]]; then
   mv "$project_root/doc" "$staging/previous"
 fi

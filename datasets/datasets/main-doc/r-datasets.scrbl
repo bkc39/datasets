@@ -1,5 +1,5 @@
 #lang scribble/manual
-@(require racket/file racket/match)
+@(require (only-in datasets/r-data/r-objects r-objects) (only-in racket/match match))
 
 @title[#:tag "datasets-from-r"]{Datasets from R}
 
@@ -9,7 +9,7 @@
    (match x
      [(? string?) x]
      [(list 'tt s) (tt s)]
-     [(list 'dataset id) (secref (format "dataset-~a" id) #:doc catalog)]))
+     [(list 'dataset id) (tt (symbol->string id))]))
 
 Every object of the @tt{datasets} package of R 4.3.3 is imported by
 @tt{datasets-r}, linked to equivalent data in @tt{datasets-core}, or skipped, as
@@ -48,6 +48,5 @@ is in the @secref["datasets-catalog" #:doc catalog]. Imports are mechanical:
 
 @tabular[#:sep (hspace 2)
          (cons (list "R object" "Class" "Dataset")
-               (for/list ([row (in-list (file->value (collection-file-path "r-objects.rktd"
-                                                                           "datasets" "r-data")))])
+               (for/list ([row (in-list r-objects)])
                  (map r-object-cell row)))]

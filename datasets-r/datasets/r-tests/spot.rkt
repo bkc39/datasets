@@ -1,23 +1,18 @@
 #lang racket/base
 (module+ test
-  (require (for-syntax racket/base)
-           (only-in datasets/core dataset-info dataset-missing? dataset-table-column
+  (require (only-in datasets/core dataset-info dataset-missing? dataset-table-column
                     dataset-table-columns dataset-table-row-count load-dataset-table)
+           (only-in datasets/r-data/r-objects r-objects)
            (only-in racket/contract/base -> any contract-out listof)
-           (only-in racket/file file->value)
            (only-in racket/format ~s)
            (only-in racket/list remove-duplicates)
            (only-in racket/match match)
-           (only-in racket/runtime-path define-runtime-path)
            (only-in racket/vector vector-count)
            (only-in rackunit check-= check-equal? check-regexp-match))
   (provide (contract-out
             [check-spot (-> list? any)]
-            [r-dataset-ids (listof symbol?)]
-            [r-objects list?]))
+            [r-dataset-ids (listof symbol?)]))
 
-  (define-runtime-path r-objects-file "../r-data/r-objects.rktd")
-  (define r-objects (file->value r-objects-file))
   (define r-dataset-ids
     (remove-duplicates
      (for*/list ([object (in-list r-objects)]

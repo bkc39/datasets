@@ -14,7 +14,7 @@ Bundled observations are distributed separately under the upstream terms:
   Hendricks; data from Kaggle, https://www.kaggle.com/c/titanic/data.
   https://CRAN.R-project.org/package=titanic
 - The datasets package of R 4.3.3 (every object not in datasets-core; see
-  datasets/r-data/r-objects.rktd): GPL-2.0-only OR GPL-3.0-only. R Core Team
+  datasets/r-data/r-objects.rkt): GPL-2.0-only OR GPL-3.0-only. R Core Team
   and original dataset authors; see datasets/r-data/provenance/*.Rd for
   citations. https://www.r-project.org/Licenses/
 

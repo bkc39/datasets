@@ -207,7 +207,8 @@ def import_r():
         def object_row(r):
             cell=sexp('Skipped. '+r['target']) if r['disposition']=='skipped' else f"(dataset {r['target']})"
             return f"((tt {sexp(r['object'])}) {sexp(r['class'])} {cell})"
-        (OUT/'r-objects.rktd').write_text('(\n'+'\n'.join('  '+object_row(r) for r in objects)+'\n)\n')
+        (OUT/'r-objects.rkt').write_text("#lang racket/base\n(provide r-objects)\n(define r-objects\n  '("
+                                         +'\n    '.join(object_row(r) for r in objects)+'))\n')
 {'datasets-core':import_core,'datasets-r':import_r}[PACKAGE]()
 (OUT/'registry.rktd').write_text(sexp(dict(sorted(registry.items())))+'\n')
 for stale in (OUT/'data').iterdir():
