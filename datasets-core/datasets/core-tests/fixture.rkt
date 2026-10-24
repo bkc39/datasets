@@ -5,9 +5,10 @@
          (only-in datasets/core-private/codec gunzip-file hex)
          (only-in file/gzip gzip-through-ports)
          (only-in net/url path->url url->string)
-         (only-in racket/contract/base -> ->* and/c any any/c contract-out hash/c listof or/c)
+         (only-in racket/contract/base -> ->* and/c any any/c contract-out hash/c list/c listof or/c)
          (only-in racket/file delete-directory/files file->bytes make-directory*
                   make-temporary-directory)
+         (only-in racket/match match-lambda)
          (only-in racket/path find-relative-path)
          (only-in racket/port call-with-output-bytes)
          (only-in racket/runtime-path define-runtime-path)
@@ -35,7 +36,23 @@
           [fetch-error? (-> (or/c string? regexp?) ... (-> any/c boolean?))]
           [with-server (-> hash? (-> (-> string? string?) (listof hash?))
                            (-> any/c complete-path? complete-path? any) any)]
-          [toy-at (-> string? (-> (-> string? string?) (listof hash?)))])
+          [toy-at (-> string? (-> (-> string? string?) (listof hash?)))]
+          [toy-rows list?]
+          [toy-content-sha256 string?]
+          [raw-a bytes?]
+          [raw-a-sha256 string?]
+          [raw-b bytes?]
+          [raw-b-sha256 string?]
+          [set-entry (->* ((listof (list/c string? (listof string?) string?)))
+                          (#:binding string? #:module string? #:data-sha256 string?)
+                          (and/c hash? immutable?))]
+          [convert-ok (and/c hash? immutable?)]
+          [toy-set-entry (->* ((-> string? string?))
+                              (#:binding string? #:module string? #:data-sha256 string?)
+                              (and/c hash? immutable?))]
+          [wide-entry (->* (exact-positive-integer? #:rows exact-nonnegative-integer?)
+                           (#:data-sha256 string?)
+                           (and/c hash? immutable?))])
          rows->rktd-bytes gzip-bytes gunzip-file hex gen-entry fetch-ok)
 
 (define-runtime-path fixtures "fixtures")
@@ -187,3 +204,45 @@
 
 (define ((toy-at path) u)
   (list (fetch-entry (list (u path)))))
+
+(define toy-rows '((1 "a" 0.5) (2 missing 1.5) (3 "c" missing)))
+(define toy-content-sha256 (hex (sha256-bytes (rows->rktd-bytes toy-rows))))
+(define raw-a (rows->rktd-bytes '((1 "a" 0.5))))
+(define raw-a-sha256 (hex (sha256-bytes raw-a)))
+(define raw-b (rows->rktd-bytes '((2 missing 1.5) (3 "c" missing))))
+(define raw-b-sha256 (hex (sha256-bytes raw-b)))
+
+(define (converter-fetch files binding module)
+  (hash "format" "convert"
+        "files" (map (match-lambda [(list name urls sha256) (hash "name" name "urls" urls "sha256" sha256)])
+                     files)
+        "converter" (hash "module" module "binding" binding)))
+
+(define (set-entry files #:binding [binding "concat-rows"]
+                   #:module [module "datasets/core-tests/convert-fixture"]
+                   #:data-sha256 [data-sha256 toy-content-sha256])
+  (hash-set* toy-remote
+             "name" "toy-set"
+             "package" "datasets-fetch-fixture"
+             "sha256" data-sha256
+             "fetch" (converter-fetch files binding module)))
+
+(define (toy-set-entry u #:binding [binding "concat-rows"]
+                       #:module [module "datasets/core-tests/convert-fixture"]
+                       #:data-sha256 [data-sha256 toy-content-sha256])
+  (set-entry (list (list "a.rktd" (list (u "/a")) raw-a-sha256)
+                   (list "b.rktd" (list (u "/b")) raw-b-sha256))
+             #:binding binding #:module module #:data-sha256 data-sha256))
+
+(define convert-ok
+  (converter-fetch (list (list "gen.csv" '("file:///fixture/gen.csv") (make-string 64 #\a)))
+                   "concat-rows" "datasets/core-tests/convert-fixture"))
+
+(define (wide-entry m #:rows rows #:data-sha256 [data-sha256 (make-string 64 #\0)])
+  (hash-set* (gen-entry "wide" #:package "datasets-fetch-fixture" #:tier "fetch" #:fetch fetch-ok
+                        #:sha256 data-sha256)
+             "rows" rows
+             "column-count" m
+             "columns" (for/list ([j (in-range m)])
+                         (hash "name" (format "c~a" j) "original-name" (format "c~a" j) "type" "integer"
+                               "levels" '() "unit" #f "description" "c" "missing-count" 0))))

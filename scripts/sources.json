@@ -56,6 +56,166 @@
     "version": "titanic 0.1.0",
     "license": "CC0-1.0"
   },
+  "uci-optdigits": {
+    "file": "datasets-uci-optdigits.zip",
+    "url": "https://archive.ics.uci.edu/static/public/80/optical+recognition+of+handwritten+digits.zip",
+    "sha256": "0d7b054fea010270e9b3f06411c654c5e59547732ad626381980baffe0a23fb0",
+    "package": "datasets-uci",
+    "version": "UCI snapshot 2026-10-23 (hash pinned)",
+    "license": "CC-BY-4.0",
+    "page": "https://archive.ics.uci.edu/dataset/80/optical+recognition+of+handwritten+digits",
+    "doi": "10.24432/C50P49"
+  },
+  "uci-adult": {
+    "file": "datasets-uci-adult.zip",
+    "url": "https://archive.ics.uci.edu/static/public/2/adult.zip",
+    "sha256": "7537312dd56c2b98035880805ce99e68183a30ee468aa5329d6df0fbb3cc21bb",
+    "package": "datasets-uci",
+    "version": "UCI snapshot 2026-10-23 (hash pinned)",
+    "license": "CC-BY-4.0",
+    "page": "https://archive.ics.uci.edu/dataset/2/adult",
+    "doi": "10.24432/C5XW20"
+  },
+  "uci-auto-mpg": {
+    "file": "datasets-uci-auto-mpg.zip",
+    "url": "https://archive.ics.uci.edu/static/public/9/auto+mpg.zip",
+    "sha256": "5fc1507522b73b8050d3aa45df51eefe1b666ae5f428a5f1347b6483339f1003",
+    "package": "datasets-uci",
+    "version": "UCI snapshot 2026-10-23 (hash pinned)",
+    "license": "CC-BY-4.0",
+    "page": "https://archive.ics.uci.edu/dataset/9/auto+mpg",
+    "doi": "10.24432/C5859H"
+  },
+  "uci-abalone": {
+    "file": "datasets-uci-abalone.zip",
+    "url": "https://archive.ics.uci.edu/static/public/1/abalone.zip",
+    "sha256": "755a6a67c5b266961a3f149ea13be2cfb6e6c727e48cee3c83bc0b4526210ee4",
+    "package": "datasets-uci",
+    "version": "UCI snapshot 2026-10-23 (hash pinned)",
+    "license": "CC-BY-4.0",
+    "page": "https://archive.ics.uci.edu/dataset/1/abalone",
+    "doi": "10.24432/C55C7W"
+  },
+  "uci-wine-quality": {
+    "file": "datasets-uci-wine-quality.zip",
+    "url": "https://archive.ics.uci.edu/static/public/186/wine+quality.zip",
+    "sha256": "3ed56667f4b828242bd732d7d1dd7f2861e54432239d7fa63877014cbb0304d4",
+    "package": "datasets-uci",
+    "version": "UCI snapshot 2026-10-23 (hash pinned)",
+    "license": "CC-BY-4.0",
+    "page": "https://archive.ics.uci.edu/dataset/186/wine+quality",
+    "doi": "10.24432/C56S3T"
+  },
+  "uci-bank-marketing": {
+    "file": "datasets-uci-bank-marketing.zip",
+    "url": "https://archive.ics.uci.edu/static/public/222/bank+marketing.zip",
+    "sha256": "e0bf5f5de5b846e2f18e9d90606637267d46dfa260e0f17bb12e605db5efbeb4",
+    "package": "datasets-uci",
+    "version": "UCI snapshot 2026-10-23 (hash pinned)",
+    "license": "CC-BY-4.0",
+    "page": "https://archive.ics.uci.edu/dataset/222/bank+marketing",
+    "doi": "10.24432/C5K306"
+  },
+  "uci-heart-disease": {
+    "file": "datasets-uci-heart-disease.zip",
+    "url": "https://archive.ics.uci.edu/static/public/45/heart+disease.zip",
+    "sha256": "b17cd273da9ce1caa4710fce80227ea454d4dbf9fcbc8e6a9121672751563adc",
+    "package": "datasets-uci",
+    "version": "UCI snapshot 2026-10-23 (hash pinned)",
+    "license": "CC-BY-4.0",
+    "page": "https://archive.ics.uci.edu/dataset/45/heart+disease",
+    "doi": "10.24432/C52P4X"
+  },
+  "uci-mushroom": {
+    "file": "datasets-uci-mushroom.zip",
+    "url": "https://archive.ics.uci.edu/static/public/73/mushroom.zip",
+    "sha256": "face32f32647e0d939f6233f36dd30dd5d619ae9f3f9b8e10bea4ac7e1f60b1a",
+    "package": "datasets-uci",
+    "version": "UCI snapshot 2026-10-23 (hash pinned)",
+    "license": "CC-BY-4.0",
+    "page": "https://archive.ics.uci.edu/dataset/73/mushroom",
+    "doi": "10.24432/C5959T"
+  },
+  "uci-car-evaluation": {
+    "file": "datasets-uci-car-evaluation.zip",
+    "url": "https://archive.ics.uci.edu/static/public/19/car+evaluation.zip",
+    "sha256": "1559d51dcf327f4f8c71b711ceed7fd95a382fc8d8e1998667f4f23b82860403",
+    "package": "datasets-uci",
+    "version": "UCI snapshot 2026-10-23 (hash pinned)",
+    "license": "CC-BY-4.0",
+    "page": "https://archive.ics.uci.edu/dataset/19/car+evaluation",
+    "doi": "10.24432/C5JP48"
+  },
+  "uci-spambase": {
+    "file": "datasets-uci-spambase.zip",
+    "url": "https://archive.ics.uci.edu/static/public/94/spambase.zip",
+    "sha256": "813ac1df8effac70463c09c9c4b11e8803eefcab54771af66150852bcdcd1636",
+    "package": "datasets-uci",
+    "version": "UCI snapshot 2026-10-23 (hash pinned)",
+    "license": "CC-BY-4.0",
+    "page": "https://archive.ics.uci.edu/dataset/94/spambase",
+    "doi": "10.24432/C53G6X"
+  },
+  "uci-banknote-authentication": {
+    "file": "datasets-uci-banknote-authentication.zip",
+    "url": "https://archive.ics.uci.edu/static/public/267/banknote+authentication.zip",
+    "sha256": "1e2acd9a2085fadf3d8145c12d3d22af853320d52294a6590c2eaf75fdc05227",
+    "package": "datasets-uci",
+    "version": "UCI snapshot 2026-10-23 (hash pinned)",
+    "license": "CC-BY-4.0",
+    "page": "https://archive.ics.uci.edu/dataset/267/banknote+authentication",
+    "doi": "10.24432/C55P57"
+  },
+  "uci-seeds": {
+    "file": "datasets-uci-seeds.zip",
+    "url": "https://archive.ics.uci.edu/static/public/236/seeds.zip",
+    "sha256": "5033bd71b24592fa70d9b3cc5be02332dc6d03d0b27e6655e6d553f39afab323",
+    "package": "datasets-uci",
+    "version": "UCI snapshot 2026-10-23 (hash pinned)",
+    "license": "CC-BY-4.0",
+    "page": "https://archive.ics.uci.edu/dataset/236/seeds",
+    "doi": "10.24432/C5H30K"
+  },
+  "uci-concrete-strength": {
+    "file": "datasets-uci-concrete-strength.zip",
+    "url": "https://archive.ics.uci.edu/static/public/165/concrete+compressive+strength.zip",
+    "sha256": "dad85d14de8aee4e07479daa774e6b569a313715b71a3b92c95a07cf91c2c9a7",
+    "package": "datasets-uci",
+    "version": "UCI snapshot 2026-10-23 (hash pinned)",
+    "license": "CC-BY-4.0",
+    "page": "https://archive.ics.uci.edu/dataset/165/concrete+compressive+strength",
+    "doi": "10.24432/C5PK67"
+  },
+  "uci-energy-efficiency": {
+    "file": "datasets-uci-energy-efficiency.zip",
+    "url": "https://archive.ics.uci.edu/static/public/242/energy+efficiency.zip",
+    "sha256": "499441eee27929a4b00417f58fd8c63c9cc14b8a71520cd0dd27fcb626738351",
+    "package": "datasets-uci",
+    "version": "UCI snapshot 2026-10-23 (hash pinned)",
+    "license": "CC-BY-4.0",
+    "page": "https://archive.ics.uci.edu/dataset/242/energy+efficiency",
+    "doi": "10.24432/C51307"
+  },
+  "uci-student-performance": {
+    "file": "datasets-uci-student-performance.zip",
+    "url": "https://archive.ics.uci.edu/static/public/320/student+performance.zip",
+    "sha256": "82ae9d66437b9808df42e8c89d2bb179c46e9cfbcf06f38abc1d20b3b747e177",
+    "package": "datasets-uci",
+    "version": "UCI snapshot 2026-10-23 (hash pinned)",
+    "license": "CC-BY-4.0",
+    "page": "https://archive.ics.uci.edu/dataset/320/student+performance",
+    "doi": "10.24432/C5TG7T"
+  },
+  "uci-bike-sharing": {
+    "file": "datasets-uci-bike-sharing.zip",
+    "url": "https://archive.ics.uci.edu/static/public/275/bike+sharing+dataset.zip",
+    "sha256": "b70182d0d0508e9abbb79306ce5c0cec34869000f8220175ac83d11dbe845401",
+    "package": "datasets-uci",
+    "version": "UCI snapshot 2026-10-23 (hash pinned)",
+    "license": "CC-BY-4.0",
+    "page": "https://archive.ics.uci.edu/dataset/275/bike+sharing+dataset",
+    "doi": "10.24432/C5W894"
+  },
   "ISLR2": {
     "file": "datasets-ISLR2_1.3-2.tar.gz",
     "url": "https://cran.r-project.org/src/contrib/ISLR2_1.3-2.tar.gz",

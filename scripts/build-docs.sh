@@ -8,7 +8,7 @@ staging=$(mktemp -d "$project_root/.cache/docs.XXXXXX")
 trap 'rm -rf -- "$staging"' EXIT
 raco setup --avoid-main --pkgs polars data-frame threading-doc
 rm -rf -- "$project_root/datasets-core/datasets/core-doc/doc" "$project_root/datasets/datasets/main-doc/doc"
-raco setup --pkgs datasets-core datasets-r datasets-islr datasets 2>&1 | tee "$staging/setup.log"
+raco setup --pkgs datasets-core datasets-r datasets-uci datasets-islr datasets 2>&1 | tee "$staging/setup.log"
 if grep -q '^raco setup: WARNING: undefined tag in <pkgs>/datasets' "$staging/setup.log"; then
   echo "build-docs: a datasets manual links an undocumented binding" >&2
   exit 1

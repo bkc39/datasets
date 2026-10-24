@@ -24,6 +24,15 @@ silently corrected except for choosing the documented corrected UCI Iris variant
 @(define (fetch-line info)
    (match (hash-ref info "fetch")
      [#f '()]
+     [(hash-table ("format" "convert") ("files" files)
+                  ("converter" (hash-table ("module" module) ("binding" binding))))
+      (define n (length files))
+      (para (format "Fetch tier: converted on first use from ~a upstream ~a by " n (if (= n 1) "file" "files"))
+            (tt binding) " in " (tt module) ": "
+            (add-between (for/list ([f (in-list files)])
+                           (list (tt (hash-ref f "name")) " (SHA-256 " (tt (hash-ref f "sha256")) ")"))
+                         ", ")
+            "; see " (secref "datasets-core-fetch-guide") ".")]
      [fetch (para "Fetch tier: download SHA-256 " (tt (hash-ref fetch "sha256"))
                   ", fetched on first use; see " (secref "datasets-core-fetch-guide") ".")]))
 

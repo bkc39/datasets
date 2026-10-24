@@ -1,0 +1,35 @@
+#lang racket/base
+(require (only-in datasets/core-private/codec file-sha256)
+         (only-in racket/file file->value)
+         (only-in racket/match match-lambda)
+         (only-in racket/sequence sequence-map))
+(provide concat-rows reversed-rows edge-rows failing-rows lazy-failing-rows raising-rows malformed-rows
+         non-sequence-rows stalling-rows wrong-arity not-a-procedure
+         converter-recorder malformed-row edge-table-rows)
+
+(define converter-recorder (make-parameter void))
+(define malformed-row (make-parameter #f))
+(define edge-table-rows '((1 "x\ny \"q\" é" -0.0) (2 missing 1e21) (3 "c" +nan.0)))
+
+(define (record! files info)
+  ((converter-recorder)
+   (list (immutable? files)
+         (for/hash ([(n p) (in-hash files)]) (values n (list p (file-sha256 p))))
+         info)))
+(define (files-rows files info)
+  (for*/list ([f (in-list (hash-ref (hash-ref info "fetch") "files"))]
+              [row (in-list (file->value (hash-ref files (hash-ref f "name"))))])
+    row))
+(define (concat-rows files info) (record! files info) (files-rows files info))
+(define (reversed-rows files info) (record! files info) (reverse (files-rows files info)))
+(define (edge-rows files info) (record! files info) edge-table-rows)
+(define (failing-rows files info) (record! files info) (error 'failing-rows "upstream format changed"))
+(define (lazy-failing-rows files info)
+  (sequence-map (match-lambda [0 '(1 "a" 0.5)] [i (error 'lazy-failing-rows "line ~a malformed" i)])
+                (in-range 3)))
+(define (raising-rows files info) (record! files info) (raise 'upstream))
+(define (malformed-rows files info) (record! files info) (list '(1 "a" 0.5) (malformed-row)))
+(define (non-sequence-rows files info) (record! files info) 'rows)
+(define (stalling-rows files info) (record! files info) (semaphore-wait (make-semaphore 0)) '())
+(define (wrong-arity files) '())
+(define not-a-procedure 'rows)
