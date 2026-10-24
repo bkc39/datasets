@@ -8,12 +8,12 @@
          (only-in file/gzip gzip-through-ports)
          (only-in net/url get-pure-port/headers string->url url->path url-scheme)
          (only-in racket/contract/base contract)
-         (only-in racket/contract/combinator blame-positive exn:fail:contract:blame-object
-                  exn:fail:contract:blame?)
+         (only-in racket/contract/combinator exn:fail:contract:blame?)
          (only-in racket/file make-directory* make-temporary-file)
-         (only-in racket/format ~e ~s)
+         (only-in racket/format ~e)
          (only-in racket/list append*)
          (only-in racket/match match)
+         (only-in racket/path file-name-from-path path-only)
          (only-in racket/string string-join)
          (only-in syntax/parse/define define-syntax-parse-rule))
 (provide cache-file cache-root clear-cache-directory clear-cache-root download-dataset)
@@ -50,47 +50,51 @@
     [(convert-fetch? fetch)
      (define converter (load-converter who name info))
      (convert-set who name info final converter idle)]
-    [else
-     (with-part-file [part who name final]
-       (try-urls who (list "dataset" name) name (hash-ref fetch "urls") (hash-ref fetch "sha256") part idle)
-       (with-cache-failure [who "cannot write the dataset cache" "dataset" name "file" final]
-         (rename-file-or-directory part final #t))
-       final)]))
+    [else (write-cache-file who name final (lambda (part) (download-file who name fetch part idle)))]))
 
 (define-syntax-parse-rule (with-cache-failure [who:expr message:expr field:expr ...] body:expr ...+)
   (with-handlers ([exn:fail? (lambda (e)
                                (raise-registry-error who message field ... "error" (exn-message e)))])
     body ...))
 
-(define-syntax-parse-rule (with-part-file [part:id who:expr name:expr final:expr] body:expr ...+)
-  (with-part [part who name final (string-append (path->string (file-name-from final)) ".~a.part")]
+(define-syntax-parse-rule (with-converter-failure [who:expr message:expr fields:expr] body:expr ...+)
+  (with-handlers ([converter-failure?
+                   (lambda (e)
+                     (apply raise-registry-error who message (append fields (list "error" (exn-message e)))))])
     body ...))
 
-(define-syntax-parse-rule (with-part [part:id who:expr name:expr beside:expr template:expr]
-                            body:expr ...+)
-  (with-resource [part (make-part-file who name beside template) (delete-if-present part)]
+(define (converter-failure? e)
+  (and (exn:fail? e) (not (exn:fail:contract:blame? e))))
+
+(define-syntax-parse-rule (with-part-file [part:id who:expr name:expr final:expr prefix:expr] body:expr ...+)
+  (with-resource [part (make-part-file who name final prefix) (delete-if-present part)]
     body ...))
 
-(define (file-name-from path)
-  (define-values (_dir file _dir?) (split-path path))
-  file)
-
-(define (make-part-file who name beside template)
-  (define-values (dir _file _dir?) (split-path beside))
+(define (make-part-file who name final prefix)
+  (define dir (path-only final))
   (with-cache-failure [who "cannot write the dataset cache" "dataset" name "directory" dir]
     (make-directory* dir)
-    (make-temporary-file template #:base-dir dir)))
+    (make-temporary-file (string-append prefix ".~a.part") #:base-dir dir)))
 
-(define (try-urls who fields label urls sha256 part idle)
-  (let loop ([urls urls] [failures '()])
+(define (write-cache-file who name final write-part!)
+  (with-part-file [part who name final (path->string (file-name-from-path final))]
+    (write-part! part)
+    (with-cache-failure [who "cannot write the dataset cache" "dataset" name "file" final]
+      (rename-file-or-directory part final #t))
+    final))
+
+(define (download-file who name pin part idle)
+  (define file-name (hash-ref pin "name" #f))
+  (define fields (if file-name (list "dataset" name "file" file-name) (list "dataset" name)))
+  (let loop ([urls (hash-ref pin "urls")] [failures '()])
     (match urls
       ['() (apply raise-registry-error who "cannot download dataset"
                   (append fields (append* (reverse failures))))]
       [(cons url more)
-       (log-datasets-info "downloading ~a from ~a" label url)
+       (log-datasets-info "downloading ~a from ~a" (string-join fields " ") url)
        (match (with-handlers ([exn:fail? exn-message])
                 (download-url url part idle)
-                (hash-problem part sha256))
+                (hash-problem part (hash-ref pin "sha256")))
          [#f (void)]
          [problem (loop more (cons (list "url" url "error" problem) failures))])])))
 
@@ -107,10 +111,7 @@
 (define (load-converter who name info)
   (define binding (string->symbol (converter-ref info "binding")))
   (define value
-    (with-handlers ([exn:fail? (lambda (e)
-                                 (apply raise-registry-error who "cannot load converter"
-                                        (append (converter-fields name info)
-                                                (list "error" (exn-message e)))))])
+    (with-converter-failure [who "cannot load converter" (converter-fields name info)]
       (parameterize ([current-namespace (namespace-anchor->empty-namespace anchor)])
         (dynamic-require (converter-module info) binding))))
   (contract converter/c value (converter-module info) 'datasets/core binding #f))
@@ -120,67 +121,44 @@
     (match files
       ['() (write-converted who name info final (converted-text who name info converter paths))]
       [(cons file more)
-       (define file-name (hash-ref file "name"))
-       (with-part [part who name final (format "~a.raw.~~a.part" (hash-ref file "sha256"))]
-         (try-urls who (list "dataset" name "file" file-name) (format "~a file ~a" name file-name)
-                   (hash-ref file "urls") (hash-ref file "sha256") part idle)
-         (loop more (hash-set paths file-name part)))])))
+       (with-part-file [part who name final (string-append (hash-ref file "sha256") ".raw")]
+         (download-file who name file part idle)
+         (loop more (hash-set paths (hash-ref file "name") part)))])))
 
 (define (converted-text who name info converter files)
   (define fields (converter-fields name info))
-  (define module (converter-module info))
-  (define (converter-blame? e)
-    (and (exn:fail:contract:blame? e)
-         (equal? (blame-positive (exn:fail:contract:blame-object e)) module)))
-  (define (guarded thunk)
-    (with-handlers ([(lambda (e) (and (exn:fail? e) (not (converter-blame? e))))
-                     (lambda (e)
-                       (apply raise-registry-error who "converter failed"
-                              (append fields (list "error" (exn-message e)))))])
-      (thunk)))
   (define width (hash-ref info "column-count"))
-  (define (well-formed? row)
-    (and (list? row) (= (length row) width) (andmap row-value? row)))
-  (log-datasets-info "converting ~a with ~a from ~a" name (converter-ref info "binding") module)
-  (define-values (more? next) (guarded (lambda () (sequence-generate (converter files info)))))
   (define out (open-output-bytes))
+  (log-datasets-info "converting ~a with ~a from ~a" name (converter-ref info "binding")
+                     (converter-ref info "module"))
   (write-string "(\n" out)
-  (let loop ([index 0])
-    (match (guarded (lambda () (and (more?) (list (next)))))
-      [#f (void)]
-      [(list (? well-formed? row))
-       (write-row row out)
-       (loop (add1 index))]
-      [(list row)
-       (apply raise-registry-error who "converter produced a malformed row"
-              (append fields
-                      (list "row" index
-                            "expected" (format "a list of ~a values, each an exact integer, flonum, string or 'missing"
-                                               width)
-                            "given" (~e row))))]))
-  (write-string ")\n" out)
-  (get-output-bytes out #t))
+  (match (with-converter-failure [who "converter failed" fields]
+           (for/or ([row (converter files info)] [index (in-naturals)])
+             (cond
+               [(well-formed? row width) (write-string "  " out) (write row out) (newline out) #f]
+               [else (list index row)])))
+    [#f (write-string ")\n" out) (get-output-bytes out #t)]
+    [(list index row)
+     (apply raise-registry-error who "converter produced a malformed row"
+            (append fields
+                    (list "row" index
+                          "expected" (format "a list of ~a values, each an exact integer, flonum, string or 'missing"
+                                             width)
+                          "given" (~e row))))]))
 
-(define (write-row row out)
-  (write-string (string-join (map value->string row) " " #:before-first "  (" #:after-last ")\n") out))
-
-(define (value->string value)
-  (match value
-    [(? string?) (~s value)]
-    ['missing "missing"]
-    [_ (number->string value)]))
+(define (well-formed? row width)
+  (and (list? row) (= (length row) width) (andmap row-value? row)))
 
 (define (write-converted who name info final text)
   (define expected (hash-ref info "sha256"))
   (define actual (hex (sha256-bytes text)))
   (cond
     [(equal? actual expected)
-     (with-part-file [part who name final]
-       (with-cache-failure [who "cannot write the dataset cache" "dataset" name "file" final]
-         (call-with-output-file part #:exists 'truncate
-           (lambda (out) (gzip-through-ports (open-input-bytes text) out #f 0)))
-         (rename-file-or-directory part final #t))
-       final)]
+     (write-cache-file who name final
+                       (lambda (part)
+                         (with-cache-failure [who "cannot write the dataset cache" "dataset" name "file" final]
+                           (call-with-output-file part #:exists 'truncate
+                             (lambda (out) (gzip-through-ports (open-input-bytes text) out #f 0))))))]
     [else (apply raise-registry-error who "converted data sha256 mismatch"
                  (append (converter-fields name info) (list "expected" expected "actual" actual)))]))
 

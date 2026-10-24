@@ -160,11 +160,10 @@
     [else #f]))
 
 (define (file-problem file)
-  (cond
-    [(not (and (string? (hash-ref file "name" #f))
-               (regexp-match? #px"^[A-Za-z0-9][A-Za-z0-9._-]*$" (hash-ref file "name"))))
-     (list "name" "a file name: letters, digits, '.', '_' and '-'")]
-    [else (pin-problem file)]))
+  (define name (hash-ref file "name" #f))
+  (if (and (string? name) (regexp-match? #px"^[A-Za-z0-9][A-Za-z0-9._-]*$" name))
+      (pin-problem file)
+      (list "name" "a file name: letters, digits, '.', '_' and '-'")))
 
 (define (converter-hash? v)
   (and (hash? v)
@@ -330,16 +329,15 @@
                              "error" (exn-message e))]
       [else (apply raise-registry-error 'load-dataset-table "cannot read dataset data"
                    "dataset" name "file" file "error" (exn-message e) remedy-fields)]))
+  (define (unparsable detail)
+    (raise-registry-error 'load-dataset-table "cannot parse dataset data" "dataset" name
+                          "package" (hash-ref info "package") "file" file "error" detail))
   (define text (with-handlers ([exn:fail? unreadable]) (gunzip-file file)))
   (define actual (hex (sha256-bytes text)))
   (cond
     [(equal? actual expected)
-     (with-handlers ([exn:fail? (lambda (e)
-                                  (raise-registry-error 'load-dataset-table "cannot parse dataset data"
-                                                        "dataset" name "package" (hash-ref info "package")
-                                                        "file" file "error" (exn-message e)))])
-       (call-with-default-reading-parameterization
-        (lambda () (text->columns text indices (hash-ref info "rows")))))]
+     (call-with-default-reading-parameterization
+      (lambda () (text->columns text indices (hash-ref info "rows") unparsable)))]
     [(pinned?)
      (raise-registry-error 'load-dataset-table "registry sha256 does not match the pinned download"
                            "dataset" name "package" (hash-ref info "package") "file" file
@@ -374,45 +372,46 @@
   (define-values (columns row-count) (read-columns name file info indices))
   (dataset-table (map string->immutable-string names) columns row-count info))
 
-(define (text->columns text indices rows)
+(define (text->columns text indices rows unparsable)
   (define in (open-input-bytes text))
-  (define capacity (if (exact-nonnegative-integer? rows) (min rows (bytes-length text)) 0))
-  (define width (length indices))
-  (match (regexp-try-match #px"^\\s*[(]" in)
-    [#f (error 'load-dataset-table "expected an opening parenthesis")]
-    [_ (let loop ([columns (for/vector #:length width ([_ (in-list indices)]) (make-vector capacity))]
-                  [count 0])
-         (cond
-           [(regexp-try-match #px"^\\s*[)]" in) (values (freeze-columns columns count) count)]
-           [else
-            (define row (row-values (read in) indices count))
-            (define room
-              (cond [(< count (vector-length (vector-ref columns 0))) columns]
-                    [else (for/vector #:length width ([c (in-vector columns)])
-                            (vector-extend c (max 16 (* 2 count))))]))
-            (for ([column (in-vector room)] [v (in-list row)])
-              (vector-set! column count v))
-            (loop room (add1 count))]))]))
+  (define initial (if (exact-nonnegative-integer? rows) (min rows (bytes-length text)) 0))
+  (define (read-row)
+    (with-handlers ([exn:fail? (lambda (e) (unparsable (exn-message e)))])
+      (read in)))
+  (cond
+    [(not (regexp-try-match #px"^\\s*[(]" in)) (unparsable "expected an opening parenthesis")]
+    [else
+     (let loop ([columns (for/vector ([_ (in-list indices)]) (make-vector initial))]
+                [capacity initial]
+                [count 0])
+       (cond
+         [(regexp-try-match #px"^\\s*[)]" in) (values (freeze-columns columns count) count)]
+         [(= count capacity)
+          (define larger (max 16 (* 2 count)))
+          (loop (for/vector ([c (in-vector columns)]) (vector-extend c larger)) larger count)]
+         [else
+          (store-row! columns count (read-row) indices unparsable)
+          (loop columns capacity (add1 count))]))]))
 
-(define (row-values row indices index)
-  (match row
-    [(? list?)
+(define (store-row! columns count row indices unparsable)
+  (cond
+    [(eof-object? row) (unparsable (format "unexpected end of data after row ~a" count))]
+    [(not (list? row)) (unparsable (format "row ~a is not a list" count))]
+    [(<= (length row) (apply max -1 indices))
+     (unparsable (format "row ~a has ~a values" count (length row)))]
+    [else
      (define cells (list->vector row))
-     (for/list ([i (in-list indices)])
-       (cond [(>= i (vector-length cells))
-              (error 'load-dataset-table "row ~a has ~a values" index (vector-length cells))]
-             [(eq? (vector-ref cells i) 'missing) dataset-missing]
-             [else (freeze (vector-ref cells i))]))]
-    [(? eof-object?) (error 'load-dataset-table "unexpected end of data after row ~a" index)]
-    [_ (error 'load-dataset-table "row ~a is not a list" index)]))
+     (for ([column (in-vector columns)] [i (in-list indices)])
+       (vector-set! column count (match (vector-ref cells i)
+                                   ['missing dataset-missing]
+                                   [v (freeze v)])))]))
 
 (define (freeze-columns columns count)
   (vector->immutable-vector
    (for/vector #:length (vector-length columns) ([i (in-range (vector-length columns))])
      (define column (vector-ref columns i))
      (vector-set! columns i #f)
-     (vector->immutable-vector
-      (if (= count (vector-length column)) column (vector-copy column 0 count))))))
+     (vector->immutable-vector (vector-copy column 0 count)))))
 
 (define (fetch-dataset name #:idle-timeout [idle 60])
   (define-values (info data-dir) (dataset-entry 'fetch-dataset name))

@@ -25,8 +25,8 @@ silently corrected except for choosing the documented corrected UCI Iris variant
      [#f '()]
      [(hash-table ("format" "convert") ("files" files)
                   ("converter" (hash-table ("module" module) ("binding" binding))))
-      (para (format "Fetch tier: converted on first use from ~a upstream ~a by " (length files)
-                    (if (= (length files) 1) "file" "files"))
+      (define n (length files))
+      (para (format "Fetch tier: converted on first use from ~a upstream ~a by " n (if (= n 1) "file" "files"))
             (tt binding) " in " (tt module) ": "
             (add-between (for/list ([f (in-list files)])
                            (list (tt (hash-ref f "name")) " (SHA-256 " (tt (hash-ref f "sha256")) ")"))

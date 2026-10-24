@@ -47,7 +47,10 @@
                           (#:binding string? #:module string? #:data-sha256 string?)
                           (and/c hash? immutable?))]
           [convert-ok (and/c hash? immutable?)]
-          [wide-entry (->* (exact-positive-integer? #:rows exact-positive-integer?)
+          [toy-set-entry (->* ((-> string? string?))
+                              (#:binding string? #:module string? #:data-sha256 string?)
+                              (and/c hash? immutable?))]
+          [wide-entry (->* (exact-positive-integer? #:rows exact-nonnegative-integer?)
                            (#:data-sha256 string?)
                            (and/c hash? immutable?))])
          rows->rktd-bytes gzip-bytes gunzip-file hex gen-entry fetch-ok)
@@ -203,7 +206,7 @@
   (list (fetch-entry (list (u path)))))
 
 (define toy-rows '((1 "a" 0.5) (2 missing 1.5) (3 "c" missing)))
-(define toy-content-sha256 "80b5018dc4754eafe4a8105356287019f87c4b5c8a081bb590ef131d0e815a5c")
+(define toy-content-sha256 (hex (sha256-bytes (rows->rktd-bytes toy-rows))))
 (define raw-a (rows->rktd-bytes '((1 "a" 0.5))))
 (define raw-a-sha256 (hex (sha256-bytes raw-a)))
 (define raw-b (rows->rktd-bytes '((2 missing 1.5) (3 "c" missing))))
@@ -223,6 +226,13 @@
              "package" "datasets-fetch-fixture"
              "sha256" data-sha256
              "fetch" (converter-fetch files binding module)))
+
+(define (toy-set-entry u #:binding [binding "concat-rows"]
+                       #:module [module "datasets/core-tests/convert-fixture"]
+                       #:data-sha256 [data-sha256 toy-content-sha256])
+  (set-entry (list (list "a.rktd" (list (u "/a")) raw-a-sha256)
+                   (list "b.rktd" (list (u "/b")) raw-b-sha256))
+             #:binding binding #:module module #:data-sha256 data-sha256))
 
 (define convert-ok
   (converter-fetch (list (list "gen.csv" '("file:///fixture/gen.csv") (make-string 64 #\a)))
