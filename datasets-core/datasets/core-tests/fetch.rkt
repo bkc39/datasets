@@ -338,7 +338,7 @@
                           (and (regexp-match? #rx"toy-remote" m)
                                (regexp-match? (regexp-quote url) m)))))))))
 
-  (test-case "C25 an extra name key on a single-file pin changes neither the error nor the log"
+  (test-case "an extra name key on a single-file pin changes neither the error nor the log"
     (define receiver (make-log-receiver (current-logger) 'info 'datasets))
     (define (drain) (match (sync/timeout 0 receiver) [#f '()] [(vector _ m _ _) (cons m (drain))]))
     (define (outcome extra)
