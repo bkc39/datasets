@@ -1,5 +1,5 @@
 #lang scribble/manual
-@(require racket/list racket/match scribble/eval
+@(require scribble/eval "islr-chapters.rkt"
           (for-label racket/base datasets datasets/data-frame
                      math/matrix (prefix-in pl: (except-in polars head series-ref ~>)) (prefix-in df: data-frame)))
 @(define ev (make-base-eval))
@@ -139,33 +139,20 @@ book, are the first column of @racket['hitters]:
  (for/sum ([salary (in-vector (dataset-table-column hitters "salary"))])
    (if (dataset-missing? salary) 1 0))]
 
-The chapters and labs that use each dataset; @racket['us-arrests] comes from
-@tt{datasets-core}.
+The @tt{islr2-chapters} key of each dataset's metadata lists the chapters whose
+text and labs, and whose exercises, use it:
 
-@(define (catalog-link id)
-   (secref (format "dataset-~a" id) #:doc '(lib "datasets/core-doc/datasets-core.scrbl")))
-@(tabular
-  #:sep (hspace 2)
-  (cons
-   (list "Chapter" "Text and lab" "Exercises")
-   (for/list ([row (in-list
-                    '(("1 Introduction" (wage smarket nci60) ())
-                      ("2 Statistical Learning" (auto) (college boston))
-                      ("3 Linear Regression" (credit auto boston carseats) (carseats boston))
-                      ("4 Classification" (default smarket caravan bikeshare) (weekly auto boston))
-                      ("5 Resampling Methods" (auto portfolio) (default weekly boston))
-                      ("6 Linear Model Selection and Regularization" (credit hitters)
-                                                                     (college boston))
-                      ("7 Moving Beyond Linearity" (wage) (auto boston college))
-                      ("8 Tree-Based Methods" (hitters carseats boston) (carseats oj hitters caravan))
-                      ("9 Support Vector Machines" (khan) (auto oj))
-                      ("10 Deep Learning" (hitters nyse) (default))
-                      ("11 Survival Analysis" (brain-cancer publication) ())
-                      ("12 Unsupervised Learning" (nci60 us-arrests) ())
-                      ("13 Multiple Testing" (fund khan) ())))])
-     (define (links ids) (add-between (map catalog-link ids) ", "))
-     (match-define (list chapter text exercises) row)
-     (list chapter (links text) (links exercises)))))
+@examples[#:eval ev
+ (hash-ref (dataset-info 'auto) "islr2-chapters")]
+
+The table below is built from those keys. Chapter 12 also uses
+@racket['us-arrests], from @tt{datasets-core}. The
+@secref["datasets-catalog" #:doc '(lib "datasets/core-doc/datasets-core.scrbl")]
+describes the columns and provenance of each dataset.
+
+@(tabular #:sep (hspace 2)
+  (cons (list "Chapter" "Text and labs" "Exercises")
+        (islr-chapter-cells (lambda (id) (racketvalfont (format "'~a" id))))))
 
 @section[#:tag "datasets-matrices-guide"]{Preparing a numeric matrix}
 

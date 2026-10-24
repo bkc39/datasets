@@ -155,38 +155,53 @@ def import_core():
             add(id,names,[r[2:]+[r[1],str(r[0])] for r in rows],id,levels={'diagnosis':['M','B']},identifiers=['id'],targets=['diagnosis'],notes='UCI diagnostic dataset. Source ID and M/B diagnosis moved after 30 measurements. Worst means mean of the three largest values; source IDs retained as strings.')
 ISLR_CITATION='James, G., Witten, D., Hastie, T. and Tibshirani, R. (2022). ISLR2: Introduction to Statistical Learning, Second Edition. R package version 1.3-2. Book: An Introduction to Statistical Learning with Applications in R, Second Edition (2021), Springer, https://www.statlearning.com. Original sources in the bundled upstream documentation.'
 ISLR_RECIPES=[
-    ('auto','Auto',dict(targets=['mpg'],units={'mpg':'miles per gallon','weight':'lbs'},chapters='lab 2.3; chapter 3; lab 5.3; exercises in chapters 2-5, 7 and 9',
+    ('auto','Auto',dict(targets=['mpg'],units={'mpg':'miles per gallon','weight':'lbs'},
         notes='The 392 vehicles with a known horsepower: ISLR2 dropped 5 of the 397 rows of Auto.data, and the numeric row names that index them are not kept. name is categorical with all 304 R levels.')),
-    ('bikeshare','Bikeshare',dict(targets=['bikers'],chapters='chapter 4 (Poisson regression) and lab 4.7',
+    ('bikeshare','Bikeshare',dict(targets=['bikers'],
         notes='Only 2011 is included: 8,645 hours, day 1 to 365. hr is categorical with levels "0" to "23"; mnth keeps R\'s level labels.')),
-    ('boston','Boston',dict(targets=['medv'],units={'medv':'$1000s'},chapters='lab 3.6; lab 8.3; exercises in chapters 2, 4-7',
+    ('boston','Boston',dict(targets=['medv'],units={'medv':'$1000s'},
         notes='ISLR2\'s Boston: MASS::Boston without the black column.')),
-    ('brain-cancer','BrainCancer',dict(targets=['time','status'],units={'gtv':'cm^3','time':'months'},chapters='chapter 11 and lab 11.8',
+    ('brain-cancer','BrainCancer',dict(targets=['time','status'],units={'gtv':'cm^3','time':'months'},
         notes='Survival data: time with status 1 = event observed, 0 = censored. One diagnosis is missing.')),
-    ('caravan','Caravan',dict(targets=['purchase'],chapters='lab 4.7 (K-nearest neighbors); exercise in chapter 8')),
-    ('carseats','Carseats',dict(targets=['sales'],units={'sales':'thousands of units'},chapters='lab 3.6; lab 8.3; exercises in chapters 3 and 8')),
-    ('college','College',dict(identifiers=['name'],targets=['apps'],chapters='exercises in chapters 2, 6 and 7',
+    ('caravan','Caravan',dict(targets=['purchase'],renames={'mink123-m':'mink123m'})),
+    ('carseats','Carseats',dict(targets=['sales'],units={'sales':'thousands of units'})),
+    ('college','College',dict(identifiers=['name'],targets=['apps'],renames={'f-undergrad':'full-time-undergrad','p-undergrad':'part-time-undergrad','ph-d':'phd','s-f-ratio':'sf-ratio'},
         originals={'name':'row names'},descriptions={'name':'College name'},notes='The college names, R row names, become the first column, name.')),
-    ('credit','Credit',dict(targets=['balance'],chapters='chapters 3 and 6 (text)')),
-    ('default','Default',dict(targets=['default'],chapters='chapter 4 (text); exercises in chapters 5 and 10')),
-    ('fund','Fund',dict(chapters='chapter 13 and lab 13.6',
+    ('credit','Credit',dict(targets=['balance'])),
+    ('default','Default',dict(targets=['default'])),
+    ('fund','Fund',dict(
         notes='Wide form: one row per month (50), one column per manager (2,000).')),
-    ('hitters','Hitters',dict(identifiers=['player'],targets=['salary'],units={'salary':'thousands of dollars'},chapters='lab 6.5; chapter 8 (text); lab 10.9; exercise in chapter 8',
+    ('hitters','Hitters',dict(identifiers=['player'],targets=['salary'],units={'salary':'thousands of dollars'},renames={'c-at-bat':'career-at-bat','c-hits':'career-hits','c-hm-run':'career-hm-run','c-runs':'career-runs','crbi':'career-rbi','c-walks':'career-walks'},
         originals={'player':'row names'},descriptions={'player':'Player name'},notes='The player names, R row names, become the first column, player, with their leading hyphen kept. The 59 missing salaries are retained.')),
-    ('khan','Khan',dict(targets=['y'],originals={'split':'xtrain or xtest','y':'ytrain or ytest'},descriptions={'split':'Training or test sample','y':'Tumour class, 1-4'},chapters='lab 9.6; lab 13.6',
+    ('khan','Khan',dict(targets=['y'],originals={'split':'xtrain or xtest','y':'ytrain or ytest'},descriptions={'split':'Training or test sample','y':'Tumour class, 1-4'},
         notes='Wide form of the Khan list: the 63 xtrain rows then the 20 xtest rows, told apart by split; y is ytrain or ytest, the tumour class 1-4; gene-1 to gene-2308 are the expression values, original names their column numbers.')),
-    ('nci60','NCI60',dict(originals={'label':'labs'},descriptions={'label':'Cancer type of the cell line'},chapters='chapter 1; lab 12.5',
+    ('nci60','NCI60',dict(originals={'label':'labs'},descriptions={'label':'Cancer type of the cell line'},
         notes='Wide form of the NCI60 list: label is labs, the cancer type (categorical, sorted levels); gene-1 to gene-6830 are the columns of data, original names their column names. The labels are for checking clusters, not a target.')),
-    ('nyse','NYSE',dict(targets=['log-volume'],chapters='lab 10.9 (recurrent neural networks)',
+    ('nyse','NYSE',dict(targets=['log-volume'],
         notes='date stays an ISO 8601 string; day-of-week is categorical, weekdays in order; train, an R logical, is 1 for the first 4,281 days and 0 after.')),
-    ('oj','OJ',dict(targets=['purchase'],chapters='exercises in chapters 8 and 9')),
-    ('portfolio','Portfolio',dict(chapters='lab 5.3 (the bootstrap)')),
-    ('publication','Publication',dict(targets=['time','status'],units={'time':'months'},chapters='chapter 11 and lab 11.8',
+    ('oj','OJ',dict(targets=['purchase'],renames={'weekof-purchase':'week-of-purchase'})),
+    ('portfolio','Portfolio',dict()),
+    ('publication','Publication',dict(targets=['time','status'],units={'time':'months'},
         notes='Survival data: time to publication with status 1 = published. mech, an R character column, is categorical with sorted levels.')),
-    ('smarket','Smarket',dict(targets=['direction'],chapters='chapter 1; lab 4.7')),
-    ('wage','Wage',dict(targets=['wage'],units={'wage':'thousands of dollars'},chapters='chapter 1; chapter 7 and lab 7.8',
+    ('smarket','Smarket',dict(targets=['direction'])),
+    ('wage','Wage',dict(targets=['wage'],units={'wage':'thousands of dollars'},
         notes='The numeric row names are not kept. region keeps all nine R levels though only 2. Middle Atlantic occurs.')),
-    ('weekly','Weekly',dict(targets=['direction'],chapters='exercises in chapters 4 and 5')),
+    ('weekly','Weekly',dict(targets=['direction'])),
+]
+ISLR_CHAPTERS=[
+    (['nci60','smarket','wage'],[]),
+    (['auto'],['auto','boston','college']),
+    (['auto','boston','carseats','credit'],['auto','boston','carseats']),
+    (['bikeshare','caravan','default','smarket'],['auto','boston','weekly']),
+    (['auto','portfolio'],['auto','boston','default','weekly']),
+    (['credit','hitters'],['boston','college']),
+    (['wage'],['auto','boston','college']),
+    (['boston','carseats','hitters'],['caravan','carseats','hitters','oj']),
+    (['khan'],['auto','oj']),
+    (['hitters','nyse'],['default']),
+    (['brain-cancer','publication'],[]),
+    (['nci60'],[]),
+    (['fund','khan'],[]),
 ]
 citations.update({id:ISLR_CITATION for id,_,_ in ISLR_RECIPES})
 def import_islr():
@@ -205,7 +220,7 @@ def import_islr():
     def plain(s):
         s=re.sub(r'%%.*','',s)
         while (t:=re.sub(r'\\[a-z]+\{([^{}]*)\}',r'\1',s))!=s: s=t
-        return ' '.join(s.split())
+        return ' '.join(re.sub(r'\\([%{}\\])',r'\1',s).split())
     def rd_items(text):
         items={}; i=0
         while (i:=text.find('\\item{',i))>=0:
@@ -225,10 +240,10 @@ def import_islr():
             original=records[0]
             originals=kw.get('originals',{})
             genes=id in ('khan','nci60')
-            names=['gene-'+o if genes and o.isdigit() else kebab(o) for o in original]
+            names=[kw.get('renames',{}).get(n,n) for n in ['gene-'+o if genes and o.isdigit() else kebab(o) for o in original]]
             if len(set(names))<len(names): raise ValueError(f'{id}: duplicate column names')
             levels={}
-            for c,l in factor_levels: levels.setdefault(kebab(c),[]).append(l)
+            for c,l in factor_levels: levels.setdefault(names[original.index(c)],[]).append(l)
             identifiers=kw.get('identifiers',[])
             strings={n for n in names if n in levels or n in identifiers}
             rows=[[None if v=='NA' else v if n in strings else number(v) for v,n in zip(r,names)] for r in records[1:]]
@@ -238,8 +253,9 @@ def import_islr():
             descriptions={n:items[o] for n,o in zip(names,original) if o in items}|kw.get('descriptions',{})
             summary=rd_field(rd,'description').removesuffix('.')+'.'
             factors='R factors rendered as labels with levels in metadata; ' if levels else ''
-            notes=' '.join(filter(None,[summary,kw.get('notes'),factors+'names normalized to kebab-case.',f"ISLR2 use: {kw['chapters']}."]))
+            notes=' '.join(filter(None,[summary,kw.get('notes'),factors+'names normalized to kebab-case.']))
             add(id,[originals.get(n,o) for n,o in zip(names,original)],rows,'ISLR2',names=names,levels=levels,identifiers=identifiers,targets=kw.get('targets',[]),units=kw.get('units',{}),descriptions=descriptions,notes=notes)
+            registry[id]['islr2-chapters']={k:[c+1 for c,used in enumerate(ISLR_CHAPTERS) if id in used[j]] for j,k in enumerate(['text','exercises'])}
 def import_r():
     def kebab(s): return re.sub('[^a-z0-9]+','-',re.sub('([a-z])([A-Z])',r'\1-\2',s).lower()).strip('-')
     def typed(records):

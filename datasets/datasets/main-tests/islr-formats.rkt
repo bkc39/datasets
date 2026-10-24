@@ -1,8 +1,9 @@
 #lang racket/base
 (require (prefix-in df: (only-in data-frame df-ref df-row-count))
-         (only-in datasets dataset-info dataset-missing dataset-missing? dataset-names
+         (only-in datasets dataset-missing dataset-missing? dataset-names
                   dataset-table-column dataset-table-names dataset-table-row-count load-dataset)
          (only-in datasets/data-frame data-frame-column-names)
+         (only-in datasets/islr-tests/columns column-names)
          (only-in math/matrix matrix-num-cols matrix-num-rows matrix-ref)
          (prefix-in pl: (only-in polars dataframe-column dataframe-column-names polars-null?
                                  series-ref shape))
@@ -32,10 +33,9 @@
       (weekly ("direction" 0 "Down"))))
   (define (polars-value frame name row) (pl:series-ref (pl:dataframe-column frame name) row))
   (define (numeric-columns id)
-    (for/list ([meta (in-list (hash-ref (dataset-info id) "columns"))]
-               #:when (and (member (hash-ref meta "type") '("integer" "real"))
-                           (zero? (hash-ref meta "missing-count"))))
-      (hash-ref meta "name")))
+    (column-names id (lambda (meta)
+                       (and (member (hash-ref meta "type") '("integer" "real"))
+                            (zero? (hash-ref meta "missing-count"))))))
 
   (check-equal? (map car cells) (dataset-names #:package "datasets-islr"))
   (for ([c (in-list cells)])
@@ -51,7 +51,8 @@
     (check-equal? (pl:dataframe-column-names frame) names)
     (check-equal? (df:df-row-count df) rows)
     (check-equal? (data-frame-column-names df) names)
-    (check-equal? (list (matrix-num-rows matrix) (matrix-num-cols matrix)) (list rows (length columns)))
+    (check-equal? (list (matrix-num-rows matrix) (matrix-num-cols matrix))
+                  (list rows (length columns)))
     (for ([name (in-list columns)] [j (in-naturals)])
       (check-equal? (matrix-ref matrix (sub1 rows) j)
                     (vector-ref (dataset-table-column table name) (sub1 rows))))
