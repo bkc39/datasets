@@ -193,18 +193,20 @@ ISLR_CHAPTERS=[
     (['auto'],['auto','boston','college']),
     (['auto','boston','carseats','credit'],['auto','boston','carseats']),
     (['bikeshare','caravan','default','smarket'],['auto','boston','weekly']),
-    (['auto','portfolio'],['auto','boston','default','weekly']),
+    (['auto','portfolio'],['boston','default','weekly']),
     (['credit','hitters'],['boston','college']),
-    (['wage'],['auto','boston','college']),
-    (['boston','carseats','hitters'],['caravan','carseats','hitters','oj']),
+    (['wage'],['auto','boston','college','wage']),
+    (['boston','carseats','hitters'],['boston','caravan','carseats','hitters','oj']),
     (['khan'],['auto','oj']),
-    (['hitters','nyse'],['default']),
-    (['brain-cancer','publication'],[]),
-    (['nci60'],[]),
-    (['fund','khan'],[]),
+    (['hitters','nyse'],['default','nyse']),
+    (['brain-cancer','publication'],['brain-cancer']),
+    (['nci60'],['boston']),
+    (['fund','khan'],['carseats']),
 ]
 citations.update({id:ISLR_CITATION for id,_,_ in ISLR_RECIPES})
 def import_islr():
+    if unknown:=sorted({id for used in ISLR_CHAPTERS for ids in used for id in ids}-{id for id,_,_ in ISLR_RECIPES}):
+        raise ValueError(f'ISLR_CHAPTERS names no recipe: {unknown}')
     def kebab(s):
         s=re.sub('([A-Z])(?=[A-Z][a-z])',r'\1-',re.sub('([a-z0-9])([A-Z])',r'\1-\2',s))
         return re.sub('[^a-z0-9]+','-',s.lower()).strip('-')
@@ -240,7 +242,10 @@ def import_islr():
             original=records[0]
             originals=kw.get('originals',{})
             genes=id in ('khan','nci60')
-            names=[kw.get('renames',{}).get(n,n) for n in ['gene-'+o if genes and o.isdigit() else kebab(o) for o in original]]
+            kebabs=['gene-'+o if genes and o.isdigit() else kebab(o) for o in original]
+            renames=kw.get('renames',{})
+            if unknown:=sorted(set(renames)-set(kebabs)): raise ValueError(f'{id}: renames name no column: {unknown}')
+            names=[renames.get(n,n) for n in kebabs]
             if len(set(names))<len(names): raise ValueError(f'{id}: duplicate column names')
             levels={}
             for c,l in factor_levels: levels.setdefault(names[original.index(c)],[]).append(l)

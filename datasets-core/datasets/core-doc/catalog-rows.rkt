@@ -1,14 +1,19 @@
 #lang racket/base
 (require (only-in racket/contract/base -> contract-out list/c listof)
          (only-in racket/list append* last)
-         (only-in racket/match match))
+         (only-in racket/match match match*))
 (provide (contract-out [catalog-column-rows
                         (-> (listof hash?) (listof (list/c string? string? string? string?)))]))
 
 (define (indexed name)
-  (match (regexp-match #px"^(.*[^0-9])([0-9]+)$" name)
+  (match (and (string? name) (regexp-match #px"^(.*?)([0-9]+)$" name))
     [(list _ stem index) (cons stem (string->number index))]
     [#f #f]))
+
+(define (follows? previous name)
+  (match* ((indexed previous) (indexed name))
+    [((cons stem i) (cons stem j)) (= j (add1 i))]
+    [(_ _) #f]))
 
 (define (own-description column)
   (define description (hash-ref column "description"))
@@ -23,10 +28,13 @@
 
 (define (continues? run column)
   (define previous (car run))
+  (define original (hash-ref column "original-name" #f))
   (and (run-key column)
        (equal? (run-key column) (run-key previous))
-       (= (cdr (indexed (hash-ref column "name")))
-          (add1 (cdr (indexed (hash-ref previous "name")))))))
+       (follows? (hash-ref previous "name") (hash-ref column "name"))
+       (or (not original)
+           (equal? original (hash-ref column "name"))
+           (follows? (hash-ref previous "original-name" #f) original))))
 
 (define (runs columns)
   (for/fold ([runs '()] #:result (reverse (map reverse runs))) ([column (in-list columns)])

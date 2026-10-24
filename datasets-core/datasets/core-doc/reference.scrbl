@@ -243,6 +243,9 @@ string keys:
              download is the dataset's gzip-compressed @tt{.rktd} file, the form
              bundled data is stored in. Other keys are ignored.}))]
 
+A package registry may add further keys, which core passes through unchecked to
+@racket[dataset-info]; @tt{datasets-islr}, for example, adds @tt{islr2-chapters}.
+
 Each column-description hash has @tt{name}, @tt{original-name}, @tt{type},
 @tt{levels}, @tt{unit}, @tt{description}, and @tt{missing-count} keys.
 Semantic types are strings: @tt{integer}, @tt{real}, @tt{categorical},
