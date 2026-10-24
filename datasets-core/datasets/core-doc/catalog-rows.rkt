@@ -6,13 +6,13 @@
                         (-> (listof hash?) (listof (list/c string? string? string? string?)))]))
 
 (define (indexed name)
-  (match (and (string? name) (regexp-match #px"^(.*?)([0-9]+)$" name))
-    [(list _ stem index) (cons stem (string->number index))]
+  (match (regexp-match #px"^(.*?)([0-9]+)([^0-9]*)$" name)
+    [(list _ prefix index suffix) (list prefix (string->number index) suffix)]
     [#f #f]))
 
 (define (follows? previous name)
   (match* ((indexed previous) (indexed name))
-    [((cons stem i) (cons stem j)) (= j (add1 i))]
+    [((list prefix i suffix) (list prefix j suffix)) (= j (add1 i))]
     [(_ _) #f]))
 
 (define (own-description column)
@@ -21,20 +21,17 @@
 
 (define (run-key column)
   (match (indexed (hash-ref column "name"))
-    [(cons stem _)
-     (list stem (hash-ref column "type") (hash-ref column "unit") (hash-ref column "levels")
+    [(list prefix _ suffix)
+     (list prefix suffix (hash-ref column "type") (hash-ref column "unit") (hash-ref column "levels")
            (own-description column))]
     [#f #f]))
 
 (define (continues? run column)
   (define previous (car run))
-  (define original (hash-ref column "original-name" #f))
   (and (run-key column)
        (equal? (run-key column) (run-key previous))
        (follows? (hash-ref previous "name") (hash-ref column "name"))
-       (or (not original)
-           (equal? original (hash-ref column "name"))
-           (follows? (hash-ref previous "original-name" #f) original))))
+       (follows? (hash-ref previous "original-name") (hash-ref column "original-name"))))
 
 (define (runs columns)
   (for/fold ([runs '()] #:result (reverse (map reverse runs))) ([column (in-list columns)])
