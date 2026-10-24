@@ -246,10 +246,8 @@ The following example uses core data with Polars' constructors:
  (require datasets/core)
  (define table (load-dataset-table 'iris #:columns '("sepal-length")))
  (define own-frame
-   (pl:dataframe-new
-    (list (pl:series-new-f64
-           "sepal-length"
-           (vector->list (dataset-table-column table "sepal-length"))))))
+   (pl:dataframe
+    (list (pl:series (dataset-table-column table "sepal-length") #:name "sepal-length"))))
  (pl:dataframe-height own-frame)]
 
 The repository's @tt{examples/core-with-polars.rkt} demonstrates the same pattern
