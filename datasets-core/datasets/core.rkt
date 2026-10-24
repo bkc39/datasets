@@ -6,6 +6,7 @@
          (only-in datasets/core-private/cache cache-file cache-root clear-cache-directory
                   clear-cache-root download-dataset)
          (only-in datasets/core-private/codec file-sha256 gunzip-file hex)
+         (only-in datasets/core-private/convert convert-fetch?)
          (only-in datasets/core-private/error raise-registry-error)
          (only-in datasets/core-private/log log-datasets-warning)
          (only-in datasets/core-private/table
@@ -16,6 +17,7 @@
          (only-in racket/list append-map check-duplicates index-of remove-duplicates take)
          (only-in racket/match == match)
          (only-in racket/runtime-path define-runtime-path)
+         (only-in racket/vector vector-copy vector-extend)
          (only-in setup/getinfo directory-record-path directory-record-spec find-relevant-directory-records
                   get-info/full reset-relevant-directories-state!))
 (provide (contract-out
@@ -131,7 +133,6 @@
   (define missing (for/first ([key (in-list required-keys)] #:unless (hash-has-key? entry key)) key))
   (define fetch (hash-ref entry "fetch" #f))
   (define tier (hash-ref entry "tier" #f))
-  (define (fetch-ref key) (and (hash? fetch) (hash-ref fetch key #f)))
   (cond
     [missing (list missing "present")]
     [(not (equal? (hash-ref entry "name") name)) (list "name" "the dataset's registry key")]
@@ -147,9 +148,38 @@
     [(and (equal? tier "bundled") fetch) (list "fetch" "#f for a bundled dataset")]
     [(and (equal? tier "fetch") (not (hash? fetch))) (list "fetch" "a hash for a fetch-tier dataset")]
     [(equal? tier "bundled") #f]
-    [(not ((nonempty-list-of string?) (fetch-ref "urls"))) (list "urls" "a nonempty list of strings")]
-    [(not (sha256-string? (fetch-ref "sha256"))) (list "sha256" "64 lowercase hexadecimal digits")]
-    [(not (string? (fetch-ref "format"))) (list "format" "a string")]
+    [(convert-fetch? fetch) (convert-problem fetch)]
+    [(pin-problem fetch)]
+    [(not (string? (hash-ref fetch "format" #f))) (list "format" "a string")]
+    [else #f]))
+
+(define (pin-problem h)
+  (cond
+    [(not ((nonempty-list-of string?) (hash-ref h "urls" #f))) (list "urls" "a nonempty list of strings")]
+    [(not (sha256-string? (hash-ref h "sha256" #f))) (list "sha256" "64 lowercase hexadecimal digits")]
+    [else #f]))
+
+(define (file-problem file)
+  (cond
+    [(not (and (string? (hash-ref file "name" #f))
+               (regexp-match? #px"^[A-Za-z0-9][A-Za-z0-9._-]*$" (hash-ref file "name"))))
+     (list "name" "a file name: letters, digits, '.', '_' and '-'")]
+    [else (pin-problem file)]))
+
+(define (converter-hash? v)
+  (and (hash? v)
+       (string? (hash-ref v "module" #f))
+       (module-path? (string->symbol (hash-ref v "module")))
+       (string? (hash-ref v "binding" #f))))
+
+(define (convert-problem fetch)
+  (define files (hash-ref fetch "files" #f))
+  (cond
+    [(not ((nonempty-list-of hash?) files)) (list "files" "a nonempty list of file hashes")]
+    [(ormap file-problem files)]
+    [(check-duplicates (map (lambda (f) (hash-ref f "name")) files)) (list "files" "distinct file names")]
+    [(not (converter-hash? (hash-ref fetch "converter" #f)))
+     (list "converter" "a hash with a collection module path \"module\" and a string \"binding\"")]
     [else #f]))
 
 (define (read-registry file core?)
@@ -284,12 +314,12 @@
                                    "available" (dataset-table-names table)))
   (vector-ref (dataset-table-columns table) i))
 
-(define (read-rows name file info)
+(define (read-columns name file info indices)
   (define expected (hash-ref info "sha256"))
   (define fetch (hash-ref info "fetch"))
   (define remedy-fields (if fetch (list "remedy" (format "(clear-dataset-cache '~a)" name)) '()))
   (define (pinned?)
-    (and fetch
+    (and fetch (not (convert-fetch? fetch))
          (with-handlers ([exn:fail? (lambda (_) #f)])
            (equal? (file-sha256 file) (hash-ref fetch "sha256")))))
   (define (unreadable e)
@@ -308,7 +338,8 @@
                                   (raise-registry-error 'load-dataset-table "cannot parse dataset data"
                                                         "dataset" name "package" (hash-ref info "package")
                                                         "file" file "error" (exn-message e)))])
-       (call-with-default-reading-parameterization (lambda () (read (open-input-bytes text)))))]
+       (call-with-default-reading-parameterization
+        (lambda () (text->columns text indices (hash-ref info "rows")))))]
     [(pinned?)
      (raise-registry-error 'load-dataset-table "registry sha256 does not match the pinned download"
                            "dataset" name "package" (hash-ref info "package") "file" file
@@ -340,15 +371,48 @@
           [(file-exists? final) final]
           [else (download-dataset 'load-dataset-table (symbol->string name) info final
                                   #:download? download? #:idle-timeout 60)]))
-  (define rows (map list->vector (read-rows name file info)))
-  (define columns
-    (vector->immutable-vector
-     (for/vector ([i (in-list indices)])
-       (vector->immutable-vector
-        (for/vector ([row (in-list rows)])
-          (define v (vector-ref row i))
-          (if (eq? v 'missing) dataset-missing (freeze v)))))))
-  (dataset-table (map string->immutable-string names) columns (length rows) info))
+  (define-values (columns row-count) (read-columns name file info indices))
+  (dataset-table (map string->immutable-string names) columns row-count info))
+
+(define (text->columns text indices rows)
+  (define in (open-input-bytes text))
+  (define capacity (if (exact-nonnegative-integer? rows) (min rows (bytes-length text)) 0))
+  (define width (length indices))
+  (match (regexp-try-match #px"^\\s*[(]" in)
+    [#f (error 'load-dataset-table "expected an opening parenthesis")]
+    [_ (let loop ([columns (for/vector #:length width ([_ (in-list indices)]) (make-vector capacity))]
+                  [count 0])
+         (cond
+           [(regexp-try-match #px"^\\s*[)]" in) (values (freeze-columns columns count) count)]
+           [else
+            (define row (row-values (read in) indices count))
+            (define room
+              (cond [(< count (vector-length (vector-ref columns 0))) columns]
+                    [else (for/vector #:length width ([c (in-vector columns)])
+                            (vector-extend c (max 16 (* 2 count))))]))
+            (for ([column (in-vector room)] [v (in-list row)])
+              (vector-set! column count v))
+            (loop room (add1 count))]))]))
+
+(define (row-values row indices index)
+  (match row
+    [(? list?)
+     (define cells (list->vector row))
+     (for/list ([i (in-list indices)])
+       (cond [(>= i (vector-length cells))
+              (error 'load-dataset-table "row ~a has ~a values" index (vector-length cells))]
+             [(eq? (vector-ref cells i) 'missing) dataset-missing]
+             [else (freeze (vector-ref cells i))]))]
+    [(? eof-object?) (error 'load-dataset-table "unexpected end of data after row ~a" index)]
+    [_ (error 'load-dataset-table "row ~a is not a list" index)]))
+
+(define (freeze-columns columns count)
+  (vector->immutable-vector
+   (for/vector #:length (vector-length columns) ([i (in-range (vector-length columns))])
+     (define column (vector-ref columns i))
+     (vector-set! columns i #f)
+     (vector->immutable-vector
+      (if (= count (vector-length column)) column (vector-copy column 0 count))))))
 
 (define (fetch-dataset name #:idle-timeout [idle 60])
   (define-values (info data-dir) (dataset-entry 'fetch-dataset name))

@@ -1,0 +1,36 @@
+#lang racket/base
+(require (only-in datasets/core-private/codec file-sha256)
+         (only-in racket/file file->value))
+(provide concat-rows reversed-rows edge-rows failing-rows raising-rows malformed-rows
+         non-sequence-rows stalling-rows wrong-arity not-a-procedure
+         converter-calls converter-started-evt reset-converter! set-malformed-row! edge-table-rows)
+
+(define calls (box '()))
+(define started (box (make-semaphore 0)))
+(define malformed (box #f))
+(define edge-table-rows '((1 "x\ny \"q\" é" -0.0) (2 missing 1e21) (3 "c" +nan.0)))
+
+(define (record! files info)
+  (set-box! calls (cons (list (immutable? files)
+                              (for/hash ([(n p) (in-hash files)]) (values n (list p (file-sha256 p))))
+                              info)
+                        (unbox calls))))
+(define (files-rows files info)
+  (for*/list ([f (in-list (hash-ref (hash-ref info "fetch") "files"))]
+              [row (in-list (file->value (hash-ref files (hash-ref f "name"))))])
+    row))
+(define (concat-rows files info) (record! files info) (files-rows files info))
+(define (reversed-rows files info) (record! files info) (reverse (files-rows files info)))
+(define (edge-rows files info) (record! files info) edge-table-rows)
+(define (failing-rows files info) (record! files info) (error 'failing-rows "upstream format changed"))
+(define (raising-rows files info) (record! files info) (raise 'upstream))
+(define (malformed-rows files info) (record! files info) (list '(1 "a" 0.5) (unbox malformed)))
+(define (non-sequence-rows files info) (record! files info) 'rows)
+(define (stalling-rows files info)
+  (record! files info) (semaphore-post (unbox started)) (semaphore-wait (make-semaphore 0)) '())
+(define (wrong-arity files) '())
+(define not-a-procedure 'rows)
+(define (converter-calls) (reverse (unbox calls)))
+(define (converter-started-evt) (unbox started))
+(define (reset-converter!) (set-box! calls '()) (set-box! malformed #f) (set-box! started (make-semaphore 0)))
+(define (set-malformed-row! row) (set-box! malformed row))

@@ -111,10 +111,13 @@ index raises.
 
 @section[#:tag "datasets-core-cache-reference"]{Downloads and the cache}
 
-Fetch-tier datasets are not stored in any package. Their data is downloaded once
-into the cache directory and read from there. A cached file is named by the
-SHA-256 its registry entry pins, so a registry update that changes the data
-downloads the new file rather than reusing the old one.
+Fetch-tier datasets are not stored in any package. Their data is fetched once
+into the cache directory and read from there. A dataset whose @tt{fetch} format is
+@tt{rktd.gz} is downloaded ready to read; a converted set is built locally from
+upstream files (see @secref["datasets-core-convert-reference"]). A cached file is
+named by a SHA-256 its registry entry pins, of the download for @tt{rktd.gz} and of
+the converted content for a converted set, so a registry update that changes the
+data fetches it again rather than reusing the old file.
 
 @defproc[(dataset-cache-directory) complete-path?]{
 Returns the directory holding downloaded datasets: the value of
@@ -135,7 +138,8 @@ Returns @racket[#t] if loading @racket[name] needs no download: always for a
 bundled dataset, and for a fetch-tier dataset when its file is in
 @racket[(dataset-cache-directory)]. Never contacts a server and does not read the
 file; @racket[load-dataset-table] checks its SHA-256. An unknown dataset raises
-@racket[exn:fail:contract].}
+@racket[exn:fail:contract]. For a converted set only the converted file counts;
+upstream files are never kept.}
 @examples[#:eval ev (dataset-cached? 'iris)]
 
 @defproc[(fetch-dataset [name symbol?]
@@ -155,24 +159,69 @@ redirects, have no timeout. If every URL fails, raises
 @racket[exn:fail] listing each URL and its failure, with the expected and actual
 SHA-256 for a mismatch. Raises @racket[exn:fail] without contacting a server when
 the @tt{format} is not supported; an unknown dataset raises
-@racket[exn:fail:contract].}
+@racket[exn:fail:contract].
+
+For a converted set the result is the converted file. Each of its @tt{files} is
+downloaded as above, in order, into a temporary file beside the destination; a
+file whose every URL fails raises @racket[exn:fail] naming the file, each URL and
+its failure. The converter is loaded before any download, and the upstream files
+are deleted when the call returns, whether or not it succeeded. A converter that
+cannot be loaded, raises, produces a malformed row, or produces content whose
+SHA-256 differs from the @tt{sha256} metadata raises @racket[exn:fail] naming the
+dataset, its package and the converter, and nothing is cached.}
 @examples[#:eval ev (file-exists? (fetch-dataset 'iris))]
 
 @defproc[(clear-dataset-cache [name (or/c #f symbol?) #f]) void?]{
 Deletes downloaded files from @racket[(dataset-cache-directory)]: those of
 @racket[name], or, when @racket[name] is @racket[#f], those of every dataset,
 including datasets whose package is no longer installed. Only files the cache
-created (verified downloads and leftover temporary files) are removed; other
+created (verified downloads, converted files and leftover temporary files) are removed; other
 files and the directory itself are left alone. A bundled dataset has nothing to
 delete. An unknown @racket[name] raises @racket[exn:fail:contract]. Clearing a
 dataset while another program downloads it makes that download fail.}
+
+@subsection[#:tag "datasets-core-convert-reference"]{Converted sets}
+
+A fetch-tier dataset whose @tt{fetch} format is @tt{convert} is built on first use
+from upstream files. Its @tt{fetch} hash has @tt{files}, a nonempty list of hashes
+each with a @tt{name}, @tt{urls} (mirrors, tried in order) and that file's
+@tt{sha256}, and @tt{converter}, a hash with a @tt{module} (a collection-based
+module path, as a string) and a @tt{binding} it provides:
+
+@racketblock[
+(hash "format" "convert"
+      "files" (list (hash "name" "covtype.data.gz"
+                          "urls" (list "https://archive.ics.uci.edu/ml/machine-learning-databases/covtype/covtype.data.gz"
+                                       "https://ndownloader.figshare.com/files/5976039")
+                          "sha256" "614360d0257557dd1792834a85a1cdebfadc3c4f30b011d56afee7ffb5b15771"))
+      "converter" (hash "module" "datasets/fetch-private/convert" "binding" "covtype-rows"))]
+
+The converted rows are written in the form bundled data is stored in: an opening
+parenthesis and newline, each row on its own line as two spaces followed by its
+@racket[write] form, then a closing parenthesis and newline. The dataset's
+@tt{sha256} pins the SHA-256 of that text, which is checked before the file is
+cached and again on every load. A converter change that alters the data therefore
+takes effect only with a registry update that pins the new content.
+
+@defproc[#:kind "converter" #:link-target? #f
+         (converter [files (hash/c string? complete-path? #:immutable #t)]
+                    [info (and/c hash? immutable?)])
+         sequence?]{
+The protocol a converter binding follows. @racket[files] maps each file's
+@tt{name} to its verified download; @racket[info] is the dataset's
+@racket[dataset-info]. The result is a sequence, possibly lazy, of rows in source
+order. Each row is a list of @tt{column-count} values, each an exact integer, a
+flonum, a string, or @racket['missing]. The files are deleted once the sequence has
+been consumed. A binding that is not a procedure of two arguments, or a result that
+is not a sequence, is a contract violation blaming the converter's module.}
 
 @subsection[#:tag "datasets-core-offline-reference"]{Disabling downloads}
 
 A download happens only when a fetch-tier dataset is not cached.
 @racket[#:download? #f] disables it for one call to @racket[load-dataset-table]; a
 refused download raises @racket[exn:fail] naming the dataset, the expected cache
-file and how to fetch it. Bundled and cached datasets load as usual. Every load
+file and how to fetch it. Bundled and cached datasets load as usual. A converted
+set is neither downloaded nor converted while downloads are disabled. Every load
 checks the data's SHA-256, for both tiers; a corrupt cached file raises
 @racket[exn:fail] naming @racket[clear-dataset-cache] as the remedy.
 
@@ -227,21 +276,17 @@ string keys:
        (list @tt{columns} "Ordered list of column-description hashes.")
        (list @tt{identifiers} "Column names identifying observations; an empty list if none.")
        (list @tt{suggested-targets} "Optional response or label column names; an empty list if unspecified.")
-       (list @tt{source-url} "URL of the pinned upstream archive.")
+       (list @tt{source-url} "URL of the pinned upstream archive, or for a converted set of the upstream page.")
        (list @tt{source-version} "Upstream version or hash-pinned snapshot description.")
-       (list @tt{source-sha256} "Hexadecimal SHA-256 of the upstream archive.")
+       (list @tt{source-sha256} @elem{Hexadecimal SHA-256 of the upstream archive; for a converted set, of its files' @tt{sha256} values joined by newlines in @tt{files} order.})
        (list @tt{sha256} "Hexadecimal SHA-256 of the normalized .rktd content's UTF-8 bytes, before compression.")
-       (list @tt{license} "Accepted upstream redistribution terms.")
+       (list @tt{license} @elem{Accepted upstream terms: of redistribution for bundled data, of use for fetch-tier data. @tt{NOASSERTION} when the source states none; @tt{notes} then give the basis.})
        (list @tt{citation} "Source attribution and bibliographic citation.")
        (list @tt{notes} "Transformations, representation choices, and historical quirks.")
        (list @tt{time-series} "Time-series description hash, or #f.")
        (list @tt{tier} @elem{@tt{bundled} (shipped with its package) or @tt{fetch} (downloaded on first use).})
        (list @tt{package} "Name of the package whose registry declares the dataset.")
-       (list @tt{fetch} @elem{@racket[#f] for bundled data. For fetch-tier data, a
-             hash with @tt{urls} (mirrors, tried in order), the @tt{sha256} of the
-             download, and its @tt{format}. The only format is @tt{rktd.gz}: the
-             download is the dataset's gzip-compressed @tt{.rktd} file, the form
-             bundled data is stored in. Other keys are ignored.}))]
+       (list @tt{fetch} @elem{@racket[#f] for bundled data. For fetch-tier data, a hash whose @tt{format} is @tt{rktd.gz} or @tt{convert}. With @tt{rktd.gz} it has @tt{urls} (mirrors, tried in order) and the @tt{sha256} of the download, the dataset's gzip-compressed @tt{.rktd} file. With @tt{convert} it has @tt{files} and @tt{converter}; see @secref["datasets-core-convert-reference"]. Other keys are ignored.}))]
 
 Each column-description hash has @tt{name}, @tt{original-name}, @tt{type},
 @tt{levels}, @tt{unit}, @tt{description}, and @tt{missing-count} keys.
