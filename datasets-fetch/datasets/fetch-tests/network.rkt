@@ -22,13 +22,16 @@
       (file-position in (- (file-size path) gzip-isize-bytes))
       (integer-bytes->integer (read-bytes gzip-isize-bytes in) #f #f))))
 
+(define (raised->string v)
+  (if (exn? v) (exn-message v) (format "raised ~s" v)))
+
 (define (call-with-memory-limit limit thunk)
   (collect-garbage)
   (define custodian (make-custodian))
   (custodian-limit-memory custodian limit custodian)
   (define result (box 'killed-at-the-memory-limit))
   (thread-wait (parameterize ([current-custodian custodian])
-                 (thread (lambda () (set-box! result (with-handlers ([exn:fail? exn-message]) (thunk)))))))
+                 (thread (lambda () (set-box! result (with-handlers ([(lambda (_) #t) raised->string]) (thunk)))))))
   (custodian-shutdown-all custodian)
   (unbox result))
 
@@ -41,13 +44,17 @@
       (lambda (files) (check-equal? (gzip-isize (hash-ref files "a.gz")) 11))))
   (test-case "call-with-memory-limit returns an error's message, and its sentinel only when the limit kills"
     (check-equal? (call-with-memory-limit small-limit (lambda () (error 'x "boom"))) "x: boom")
-    (check-equal? (call-with-memory-limit small-limit (lambda () 'done)) 'done)
+    (check-equal? (call-with-memory-limit small-limit (lambda () (raise 'oops))) "raised oops")
+    (check-equal? (call-with-memory-limit small-limit (lambda () 'done)) 'done))
+  (test-case "call-with-memory-limit kills an allocating thunk however large the caller's heap"
+    (define ballast (for/list ([_ (in-range 150)]) (make-bytes 1000000)))
     (check-equal? (call-with-memory-limit small-limit
                                           (lambda ()
-                                            (for/fold ([kept '()] #:result 'allocated-all)
-                                                      ([_ (in-range 1000)])
-                                              (cons (make-bytes 100000) kept))))
-                  'killed-at-the-memory-limit)))
+                                            (define kept (for/list ([_ (in-range 320)]) (make-bytes 100000)))
+                                            (collect-garbage)
+                                            (length kept)))
+                  'killed-at-the-memory-limit)
+    (check-equal? (length ballast) 150)))
 
 (module+ network
   (define parity (call-with-input-file parity-file read-json))
