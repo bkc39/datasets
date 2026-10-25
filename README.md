@@ -7,13 +7,15 @@ still being expanded.
 Bundled datasets for Racket 9.3+: mtcars, iris, faithful, anscombe,
 airquality, us-arrests, plant-growth, tooth-growth, titanic, air-passengers,
 diabetes, breast-cancer, and wine in `datasets-core`, plus penguins,
-penguins-raw, gapminder, datasaurus-dozen, titanic-passengers, four of the
-nycflights13 tables (airlines, airports, planes, weather), and the rest of R's `datasets` package (79 more sets: cars, co2, quakes, state, volcano, ...)
-in `datasets-r`, plus digits, optdigits, adult, auto-mpg, abalone, wine-quality,
-bank-marketing, heart-disease, mushroom, car-evaluation, spambase,
-banknote-authentication, seeds, concrete-strength, energy-efficiency,
-student-performance, bike-sharing-daily, and bike-sharing-hourly in
-`datasets-uci`. These are bundled, so loading them downloads nothing.
+penguins-raw, gapminder, datasaurus-dozen, titanic-passengers,
+nycflights13-airlines, nycflights13-airports, nycflights13-planes,
+nycflights13-weather, and the rest of R's `datasets` package (79 more sets:
+cars, co2, quakes, state, volcano, ...) in `datasets-r`, plus digits,
+optdigits, adult, auto-mpg, abalone, wine-quality, bank-marketing,
+heart-disease, mushroom, car-evaluation, spambase, banknote-authentication,
+seeds, concrete-strength, energy-efficiency, student-performance,
+bike-sharing-daily, and bike-sharing-hourly in `datasets-uci`. These are
+bundled, so loading them downloads nothing.
 
 ```sh
 raco pkg install --auto datasets
@@ -21,9 +23,9 @@ raco pkg install --auto datasets
 
 The 20 datasets of ISLR2 (auto, boston, hitters, smarket, wage, ...) are in
 `datasets-islr`. `datasets-fetch` lists larger sets, covtype,
-california-housing and nycflights13-flights, that are downloaded from upstream and converted on first
-load; it ships no data. For the lightweight table API alone, install
-`datasets-core` instead.
+california-housing and nycflights13-flights, that are downloaded from
+upstream and converted on first load; it ships no data. For the lightweight
+table API alone, install `datasets-core` instead.
 From a checkout, install the six packages with:
 
 ```sh

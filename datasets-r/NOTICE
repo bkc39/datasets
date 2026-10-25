@@ -18,6 +18,8 @@ Bundled observations are distributed separately under the upstream terms:
   from the Bureau of Transportation Statistics, OpenFlights, the FAA Aircraft
   Registry and the Iowa Environmental Mesonet.
   https://CRAN.R-project.org/package=nycflights13
+  nycflights13-airports derives from OpenFlights, published under the Open
+  Database License (ODbL).
 - The datasets package of R 4.3.3 (every object not in datasets-core; see
   datasets/r-private/objects.rkt): GPL-2.0-only OR GPL-3.0-only. R Core Team
   and original dataset authors; see datasets/r-data/provenance/*.Rd for

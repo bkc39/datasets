@@ -1,39 +1,41 @@
 #lang racket/base
-(require (only-in datasets dataset-info dataset-table-column dataset-table-names
-                  dataset-table-row-count load-dataset)
-         (only-in datasets/fetch-tests/digest column-digest)
-         (only-in json read-json)
-         (only-in racket/match match-define))
 (module+ test
-  (require (only-in rackunit check-equal? check-not-false))
-  (define parity
-    (call-with-input-file (collection-file-path "parity.json" "datasets" "fetch-tests" "fixtures")
-      read-json))
-  (define (column-type id name)
-    (for/first ([c (in-list (hash-ref (dataset-info id) "columns"))]
-                #:when (equal? (hash-ref c "name") name))
-      (hash-ref c "type")))
+  (require (only-in datasets dataset-info dataset-table-column load-dataset)
+           (only-in datasets/fetch-private/convert csv-header-rows)
+           (only-in datasets/fetch-tests/digest parity-problems parity-reference)
+           (only-in racket/sequence sequence->list)
+           (only-in racket/set for/set list->set set-member?)
+           (only-in rackunit check-equal? check-true)
+           (only-in threading ~>))
+  (define (column id name)
+    (~> id (load-dataset #:format 'table) (dataset-table-column name)))
+  (define flights-info (dataset-info 'nycflights13-flights))
+  (define flights
+    (let ([rows (~> (collection-file-path "flights-mini.csv" "datasets" "fetch-tests" "fixtures")
+                    (hash "flights.csv" _)
+                    (csv-header-rows flights-info)
+                    sequence->list)])
+      (for/hash ([c (in-list (hash-ref flights-info "columns"))]
+                 [column-values (in-list (apply map list rows))])
+        (values (hash-ref c "name") column-values))))
+  (define carriers (list->set (vector->list (column 'nycflights13-airlines "carrier"))))
+  (define airports (list->set (vector->list (column 'nycflights13-airports "faa"))))
+  (define weather-hours
+    (for/set ([origin (in-vector (column 'nycflights13-weather "origin"))]
+              [time-hour (in-vector (column 'nycflights13-weather "time-hour"))])
+      (list origin time-hour)))
 
-  (check-equal? (hash-ref (hash-ref parity 'versions) 'nycflights13) "1.0.2")
+  (check-equal? (hash-ref (parity-reference 'versions) 'nycflights13) "1.0.2")
   (for ([id (in-list '(nycflights13-airlines nycflights13-airports nycflights13-planes
                                              nycflights13-weather))])
-    (define table (load-dataset id #:format 'table))
-    (define reference (hash-ref parity id))
-    (check-equal? (dataset-table-row-count table) (hash-ref reference 'rows) (symbol->string id))
-    (check-equal? (sort (map string->symbol (dataset-table-names table)) symbol<?)
-                  (sort (hash-keys (hash-ref reference 'columns)) symbol<?)
-                  (symbol->string id))
-    (for ([name (in-list (dataset-table-names table))])
-      (check-equal? (column-digest (dataset-table-column table name))
-                    (hash-ref (hash-ref reference 'columns) (string->symbol name))
-                    (format "~a ~a" id name))))
+    (check-equal? (parity-problems id (load-dataset id #:format 'table)) '()))
 
-  (for ([key (in-list '((nycflights13-flights "carrier" nycflights13-airlines "carrier")
-                        (nycflights13-flights "tailnum" nycflights13-planes "tailnum")
-                        (nycflights13-flights "origin" nycflights13-airports "faa")
-                        (nycflights13-flights "dest" nycflights13-airports "faa")
-                        (nycflights13-flights "origin" nycflights13-weather "origin")
-                        (nycflights13-flights "time-hour" nycflights13-weather "time-hour")))])
-    (match-define (list left left-name right right-name) key)
-    (for ([type (in-list (list (column-type left left-name) (column-type right right-name)))])
-      (check-not-false (member type '("string" "identifier")) (format "~s" key)))))
+  (check-equal? (length (hash-ref flights "carrier")) 4)
+  (for ([carrier (in-list (hash-ref flights "carrier"))]
+        [origin (in-list (hash-ref flights "origin"))]
+        [dest (in-list (hash-ref flights "dest"))]
+        [time-hour (in-list (hash-ref flights "time-hour"))])
+    (check-true (set-member? carriers carrier) carrier)
+    (check-true (set-member? airports origin) origin)
+    (check-true (set-member? airports dest) dest)
+    (check-true (set-member? weather-hours (list origin time-hour)) (format "~a ~a" origin time-hour))))

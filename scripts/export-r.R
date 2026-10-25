@@ -6,11 +6,14 @@ precise <- function(d) {
   d[] <- lapply(d, function(x) if (is.numeric(x)) ifelse(is.na(x), NA, sprintf('%.17g',x)) else x)
   d
 }
+rendered <- function(x) {
+  if (inherits(x, 'Date')) return(format(x))
+  if (inherits(x, 'POSIXct')) return(format(x, '%Y-%m-%dT%H:%M:%SZ', tz='UTC'))
+  x
+}
 export <- function(d, id) {
   d <- as.data.frame(d)
-  d[] <- lapply(d, function(x) if (inherits(x, 'Date')) format(x)
-                               else if (inherits(x, 'POSIXct')) format(x, '%Y-%m-%dT%H:%M:%SZ', tz='UTC')
-                               else x)
+  d[] <- lapply(d, rendered)
   text <- vapply(d, function(x) is.character(x) || is.factor(x), TRUE)
   stopifnot(!any(unlist(lapply(d[text], function(x) as.character(x) == 'NA')), na.rm=TRUE))
   write.table(precise(d),file.path(out,paste0(id,'.csv')),sep=',',row.names=FALSE,na='NA',qmethod='double')
