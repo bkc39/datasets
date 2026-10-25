@@ -62,10 +62,36 @@
             (append* (for/list ([c (in-list (hash-ref info "columns"))])
                        (column-problems c (dataset-table-column table (hash-ref c "name")) reference)))))
 
+  (define (gzip-content-size path)
+    (call-with-input-file path
+      (lambda (in)
+        (file-position in (- (file-size path) 4))
+        (integer-bytes->integer (read-bytes 4 in) #f #f))))
+
+  (define (bounded-load-problems name)
+    (define info (dataset-info name))
+    (define limit (+ (gzip-content-size (fetch-dataset name))
+                     (* 2 (hash-ref info "rows") (hash-ref info "column-count") 8)
+                     (* 64 1000 1000)))
+    (collect-garbage)
+    (define custodian (make-custodian))
+    (custodian-limit-memory custodian limit custodian)
+    (define rows (box #f))
+    (define-values (_ elapsed)
+      (seconds (lambda ()
+                 (thread-wait
+                  (parameterize ([current-custodian custodian])
+                    (thread (lambda ()
+                              (set-box! rows (dataset-table-row-count (load-dataset-table name #:download? #f))))))))))
+    (custodian-shutdown-all custodian)
+    (printf "~a load under a ~a MB limit ~as\n" name (quotient limit 1000000) elapsed)
+    (expect (list name "rows loaded under a memory limit" limit) (unbox rows) (hash-ref info "rows")))
+
   (printf "DATASETS_HOME ~a\n" (dataset-cache-directory))
   (define names (dataset-names #:package "datasets-fetch"))
   (define problems
-    (append (append-map pinned-bytes-problems names) (append-map table-problems names)))
+    (append (append-map pinned-bytes-problems names) (append-map table-problems names)
+            (bounded-load-problems 'fashion-mnist)))
   (if (null? problems)
       (printf "network checks hold for ~a\n" names)
       (error (string-join problems "\n" #:before-first "network checks failed:\n"))))

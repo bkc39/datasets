@@ -20,9 +20,9 @@ raco pkg install --auto datasets
 ```
 
 The 20 datasets of ISLR2 (auto, boston, hitters, smarket, wage, ...) are in
-`datasets-islr`. `datasets-fetch` lists larger sets, covtype and
-california-housing, that are downloaded from upstream and converted on first
-load; it ships no data. For the lightweight table API alone, install
+`datasets-islr`. `datasets-fetch` lists larger sets, covtype,
+california-housing, mnist and fashion-mnist, that are downloaded from upstream
+and converted on first load; it ships no data. For the lightweight table API alone, install
 `datasets-core` instead.
 From a checkout, install the six packages with:
 

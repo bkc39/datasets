@@ -2,19 +2,21 @@
 (require (only-in datasets/core dataset-missing)
          (only-in datasets/fetch-private/archive gunzip-file tar-gz-member)
          (only-in datasets/fetch-private/csv csv-rows info->column-specs)
+         (only-in datasets/fetch-private/idx read-idx)
          (only-in datasets/fetch-tests/digest column-digest)
          (only-in datasets/fetch-tests/fixture call-with-upstream-files)
-         (only-in racket/list make-list)
+         (only-in racket/list make-list range)
          (only-in racket/match match match-define)
          (only-in racket/sequence sequence->list))
 (module+ test
   (require (only-in rackunit check-eqv? check-equal? check-exn check-not-false check-regexp-match test-case))
   (define (csv-case-rows input specs keywords arguments)
     (sequence->list (keyword-apply csv-rows keywords arguments (list (open-input-string input) specs))))
-  (define ((csv-error? . needles) e)
+  (define ((parser-error? who . needles) e)
     (and (exn:fail? e) (not (exn:fail:contract? e))
-         (regexp-match? #rx"^csv-rows: " (exn-message e))
+         (regexp-match? (regexp (format "^~a: " who)) (exn-message e))
          (for/and ([n (in-list needles)]) (regexp-match? (regexp-quote n) (exn-message e)))))
+  (define (csv-error? . needles) (apply parser-error? 'csv-rows needles))
   (define csv-cases
     '((header-select "rownames,b,a\n1,x,2\n2,\"y,z\",\n" (("a" integer) ("b" string)) () ()
                      (rows (2 "x") (missing "y,z")))
@@ -82,6 +84,34 @@
                  (for ([row (csv-rows (open-input-string "1\n2\nx\n") '(("n" integer)) #:header? #f)])
                    (set-box! seen (cons row (unbox seen))))))
     (check-equal? (reverse (unbox seen)) '((1) (2))))
+
+  (define idx-cases
+    '((rank-3 (0 0 8 3) (2 2 2) 8 (dims 2 2 2))
+      (rank-1 (0 0 8 1) (3) 3 (dims 3))
+      (element-type (0 0 9 1) (8) 8 (error "unsupported element type" "type: 9"))
+      (short-data (0 0 8 3) (2 2 2) 7 (error "short data" "expected bytes: 8" "given bytes: 7"))
+      (trailing-data (0 0 8 3) (2 2 2) 9 (error "trailing data"))
+      (no-dimensions (0 0 8 0) () 0 (error "no dimensions"))
+      (zero-dimension (0 0 8 2) (3 0) 0 (error "zero dimension"))
+      (bad-magic (1 0 8 1) (1) 1 (error "not an IDX file"))
+      (short-magic (0 0) () 0 (error "short magic number"))
+      (short-dimensions (0 0 8 2) (5) 0 (error "short dimension"))
+      (huge-dimensions-on-short-data (0 0 8 2) (4294967295 4294967295) 8
+                                     (error "short data" "expected bytes: 18446744065119617025"))))
+
+  (test-case "read-idx: case table"
+    (for ([c (in-list idx-cases)])
+      (match-define (list name magic dims size expected) c)
+      (define input
+        (apply bytes-append (apply bytes magic)
+               (append (map (lambda (d) (integer->integer-bytes d 4 #f #t)) dims)
+                       (list (apply bytes (range size))))))
+      (define (run) (call-with-values (lambda () (read-idx (open-input-bytes input))) list))
+      (match expected
+        [(cons 'dims expected-dims)
+         (check-equal? (run) (list expected-dims (apply bytes (range size))) (symbol->string name))]
+        [(cons 'error needles)
+         (check-exn (apply parser-error? 'read-idx needles) run (symbol->string name))])))
 
   (test-case "info->column-specs maps registry types by original name"
     (check-equal? (info->column-specs

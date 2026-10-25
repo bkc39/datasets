@@ -3,7 +3,8 @@
          (only-in datasets/core dataset-info dataset-missing dataset-table-columns fetch-dataset
                   load-dataset-table)
          (only-in datasets/core-tests/fixture cache-files call-with-fetch-fixture rows->rktd-bytes)
-         (only-in datasets/fetch-private/convert california-housing-rows covtype-rows csv-header-rows)
+         (only-in datasets/fetch-private/convert california-housing-rows covtype-rows csv-header-rows
+                  idx-image-rows)
          (only-in datasets/fetch-tests/fixture call-with-upstream-files)
          (only-in file/sha1 bytes->hex-string)
          (only-in net/url path->url url->string)
@@ -29,6 +30,24 @@
                 (fl/ 452600.0 100000.0))
           (list 8.3014 21.0 (fl/ 7099.0 1138.0) (fl/ 1106.0 1138.0) 2401.0 (fl/ 2401.0 1138.0) 37.86 -122.22
                 (fl/ 358500.0 100000.0))))
+  (define (pixel i k) (modulo (+ (* 31 k) (* 97 i)) 256))
+  (define (image-bytes from count)
+    (apply bytes (for*/list ([i (in-range from (+ from count))] [k (in-range 784)]) (pixel i k))))
+  (define idx-upstream
+    `(("train-images-idx3-ubyte.gz" (idx-gz (2 28 28) ,(image-bytes 0 2)))
+      ("train-labels-idx1-ubyte.gz" (idx-gz (2) ,(bytes 7 2)))
+      ("t10k-images-idx3-ubyte.gz" (idx-gz (1 28 28) ,(image-bytes 2 1)))
+      ("t10k-labels-idx1-ubyte.gz" (idx-gz (1) ,(bytes 9)))))
+  (define idx-expected
+    (for/list ([i (in-range 3)] [label (in-list '(7 2 9))] [split (in-list '("train" "train" "test"))])
+      (append (for/list ([k (in-range 784)]) (pixel i k)) (list label split))))
+  (define (idx-upstream-with name upstream)
+    (map (match-lambda [(list (== name) _) (list name upstream)] [file file]) idx-upstream))
+  (define (file-entry files file)
+    (define path (hash-ref files file))
+    (hash "name" file
+          "urls" (list (~> path path->url url->string))
+          "sha256" (call-with-input-file path (lambda (in) (bytes->hex-string (sha256-bytes in))))))
   (define csv-info
     (hash "columns" (map (match-lambda [(list name type) (hash "name" name "original-name" name "type" type)])
                          '(("y" "real") ("name" "string") ("x" "integer")))))
@@ -39,7 +58,8 @@
                           (("cal_housing.tgz" (tgz (("CaliforniaHousing/cal_housing.domain" "x: continuous.\n")
                                                     ("CaliforniaHousing/cal_housing.data" ,cal-lines)))))
                           ,(dataset-info 'california-housing)
-                          ,cal-expected)))
+                          ,cal-expected)
+      (mnist ,idx-image-rows ,idx-upstream ,(dataset-info 'mnist) ,idx-expected)))
   (define converter-cases
     `(,@registry-cases
       (csv-header ,csv-header-rows (("data.csv" (plain ,(fixture "rdatasets-mini.csv")))) ,csv-info
@@ -68,10 +88,29 @@
           (check-exn (lambda (e) (and (exn:fail? e) (regexp-match? rx (exn-message e))))
                      (lambda () (sequence->list (converter files info))))))))
 
+  (test-case "idx-image-rows rejects files that disagree with each other or with the registry"
+    (for ([c (in-list `(("train-labels-idx1-ubyte.gz" (idx-gz (3) ,(bytes 7 2 1))
+                         ("image and label counts differ" "split: train" "images: 2" "labels: 3"))
+                        ("t10k-images-idx3-ubyte.gz" (idx-gz (1 27 29) ,(make-bytes 783 0))
+                         ("image size does not match the column count" "split: test" "expected pixels: 784"
+                          "given: 27x29"))
+                        ("train-images-idx3-ubyte.gz" (idx-gz (2 784) ,(image-bytes 0 2))
+                         ("expected 3-dimensional images and 1-dimensional labels"))
+                        ("t10k-labels-idx1-ubyte.gz" (gz "not idx") ("read-idx: not an IDX file"))))])
+      (match-define (list name upstream needles) c)
+      (call-with-upstream-files (idx-upstream-with name upstream)
+        (lambda (files)
+          (check-exn (lambda (e)
+                       (and (exn:fail? e)
+                            (for/and ([n (in-list needles)])
+                              (regexp-match? (regexp-quote n) (exn-message e)))))
+                     (lambda () (sequence->list (idx-image-rows files (dataset-info 'mnist))))
+                     name)))))
+
   (test-case "the converters run through core: loaded from the registry entry, cached converted"
     (for ([c (in-list registry-cases)])
-      (match-define (list name _ (list (list file upstream)) info expected) c)
-      (call-with-upstream-files `((,file ,upstream))
+      (match-define (list name _ upstream info expected) c)
+      (call-with-upstream-files upstream
         (lambda (files)
           (define mini (string->symbol (format "~a-mini" name)))
           (define fetch (hash-ref info "fetch"))
@@ -81,10 +120,8 @@
                        "package" "datasets-fetch-fixture"
                        "sha256" (~> expected rows->rktd-bytes sha256-bytes bytes->hex-string)
                        "fetch" (hash-set fetch "files"
-                                         (list (hash "name" file
-                                                     "urls" (list (~> files (hash-ref file) path->url url->string))
-                                                     "sha256" (call-with-input-file (hash-ref files file)
-                                                               (lambda (in) (bytes->hex-string (sha256-bytes in)))))))))
+                                         (map (match-lambda [(list file _) (file-entry files file)])
+                                              upstream))))
           (call-with-fetch-fixture (list entry)
             (lambda (root _registry)
               (define table (load-dataset-table mini))
