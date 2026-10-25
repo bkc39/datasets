@@ -1,6 +1,8 @@
 #lang racket/base
 (require (only-in datasets/core dataset-info dataset-names)
+         (only-in datasets/core-doc/catalog-rows catalog-column-rows)
          (only-in datasets/core-tests/fixture call-with-environment call-with-temporary-fixture)
+         (only-in datasets/fetch-private/convert idx-file-names)
          (only-in file/sha1 bytes->hex-string)
          (only-in racket/match match-define match-lambda)
          (only-in racket/string string-join)
@@ -9,6 +11,11 @@
   (require (only-in rackunit check-equal? check-false check-not-false check-regexp-match check-true
                     test-case))
   (define (indexed prefix n) (for/list ([i (in-range n)]) (format "~a-~a" prefix i)))
+  (define image-columns
+    (append (for/list ([k (in-range 1 785)]) (format "pixel~a" k)) '("label" "split")))
+  (define (idx-files base shas)
+    (for/list ([name (in-list idx-file-names)] [sha (in-list shas)])
+      (list name (string-append base name) sha)))
   (define sets
     `((california-housing
        20640 ("med-inc" "house-age" "ave-rooms" "ave-bedrms" "population" "ave-occup" "latitude" "longitude"
@@ -25,6 +32,22 @@
          "https://archive.ics.uci.edu/ml/machine-learning-databases/covtype/covtype.data.gz"
          "614360d0257557dd1792834a85a1cdebfadc3c4f30b011d56afee7ffb5b15771"))
        "covtype-rows" "CC-BY-4.0")
+      (fashion-mnist
+       70000 ,image-columns
+       ,(idx-files "http://fashion-mnist.s3-website.eu-central-1.amazonaws.com/"
+                   '("3aede38d61863908ad78613f6a32ed271626dd12800ba2636569512369268a84"
+                     "a04f17134ac03560a47e3764e11b92fc97de4d1bfaf8ba1a3aa29af54cc90845"
+                     "346e55b948d973a97e58d2351dde16a484bd415d4595297633bb08f03db6a073"
+                     "67da17c76eaffca5446c3361aaab5c3cd6d1c2608764d35dfb1850b086bf8dd5"))
+       "idx-image-rows" "MIT")
+      (mnist
+       70000 ,image-columns
+       ,(idx-files "https://ossci-datasets.s3.amazonaws.com/mnist/"
+                   '("440fcabf73cc546fa21475e81ea370265605f56be210a4024d2ca8f203523609"
+                     "3552534a0a558bbed6aed32b30c495cca23d567ec52cac8be1a0730e8010255c"
+                     "8d422c7b0a1c1c79245a5bcf07fe86e33eeafee792b84584aec276f5a2dbc4e6"
+                     "f7ae60f92e00ec6debd23a6088c31dbd2371eca3ffa0defaefb259924204aec6"))
+       "idx-image-rows" "NOASSERTION")
       (nycflights13-flights
        336776 ("year" "month" "day" "dep-time" "sched-dep-time" "dep-delay" "arr-time" "sched-arr-time"
                "arr-delay" "carrier" "flight" "tailnum" "origin" "dest" "air-time" "distance" "hour"
@@ -57,6 +80,12 @@
       (check-not-false (member license '("CC-BY-4.0" "MIT" "CC0-1.0" "NOASSERTION")))
       (check-equal? (hash-ref info "license") license)
       (check-regexp-match #px"Downloads [0-9.]+ MB" (hash-ref info "notes"))))
+
+  (test-case "the catalog shows the pixel columns of the image sets as one row"
+    (for ([name (in-list '(mnist fashion-mnist))])
+      (check-equal? (map car (catalog-column-rows (hash-ref (dataset-info name) "columns")))
+                    '("pixel1 … pixel784" "label" "split")
+                    (symbol->string name))))
 
   (test-case "queries load no converter"
     (call-with-temporary-fixture
