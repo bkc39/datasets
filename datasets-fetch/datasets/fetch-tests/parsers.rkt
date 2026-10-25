@@ -1,10 +1,10 @@
 #lang racket/base
 (require (only-in datasets/core dataset-missing)
-         (only-in datasets/fetch-private/archive gunzip-file tar-gz-member)
+         (only-in datasets/fetch-private/archive gunzip-file gzip-content-size tar-gz-member)
          (only-in datasets/fetch-private/csv csv-rows info->column-specs)
          (only-in datasets/fetch-private/idx read-idx)
          (only-in datasets/fetch-tests/digest column-digest)
-         (only-in datasets/fetch-tests/fixture call-with-upstream-files)
+         (only-in datasets/fetch-tests/fixture call-with-upstream-files error-with? idx-bytes)
          (only-in racket/list make-list range)
          (only-in racket/match match match-define)
          (only-in racket/sequence sequence->list))
@@ -12,11 +12,7 @@
   (require (only-in rackunit check-eqv? check-equal? check-exn check-not-false check-regexp-match test-case))
   (define (csv-case-rows input specs keywords arguments)
     (sequence->list (keyword-apply csv-rows keywords arguments (list (open-input-string input) specs))))
-  (define ((parser-error? who . needles) e)
-    (and (exn:fail? e) (not (exn:fail:contract? e))
-         (regexp-match? (regexp (format "^~a: " who)) (exn-message e))
-         (for/and ([n (in-list needles)]) (regexp-match? (regexp-quote n) (exn-message e)))))
-  (define (csv-error? . needles) (apply parser-error? 'csv-rows needles))
+  (define (csv-error? . needles) (apply error-with? 'csv-rows needles))
   (define csv-cases
     '((header-select "rownames,b,a\n1,x,2\n2,\"y,z\",\n" (("a" integer) ("b" string)) () ()
                      (rows (2 "x") (missing "y,z")))
@@ -85,33 +81,32 @@
                    (set-box! seen (cons row (unbox seen))))))
     (check-equal? (reverse (unbox seen)) '((1) (2))))
 
-  (define idx-cases
-    '((rank-3 (0 0 8 3) (2 2 2) 8 (dims 2 2 2))
-      (rank-1 (0 0 8 1) (3) 3 (dims 3))
-      (element-type (0 0 9 1) (8) 8 (error "unsupported element type" "type: 9"))
-      (short-data (0 0 8 3) (2 2 2) 7 (error "short data" "expected bytes: 8" "given bytes: 7"))
-      (trailing-data (0 0 8 3) (2 2 2) 9 (error "trailing data"))
-      (no-dimensions (0 0 8 0) () 0 (error "no dimensions"))
-      (zero-dimension (0 0 8 2) (3 0) 0 (error "zero dimension"))
-      (bad-magic (1 0 8 1) (1) 1 (error "not an IDX file"))
-      (short-magic (0 0) () 0 (error "short magic number"))
-      (short-dimensions (0 0 8 2) (5) 0 (error "short dimension"))
-      (huge-dimensions-on-short-data (0 0 8 2) (4294967295 4294967295) 8
-                                     (error "short data" "expected bytes: 18446744065119617025"))))
+  (define (idx-input dims size #:magic [magic (bytes 0 0 8 (length dims))])
+    (define data (apply bytes (range size)))
+    (values (idx-bytes dims data #:magic magic) data))
+  (define (read-idx-list input)
+    (call-with-values (lambda () (read-idx (open-input-bytes input))) list))
 
-  (test-case "read-idx: case table"
-    (for ([c (in-list idx-cases)])
-      (match-define (list name magic dims size expected) c)
-      (define input
-        (apply bytes-append (apply bytes magic)
-               (append (map (lambda (d) (integer->integer-bytes d 4 #f #t)) dims)
-                       (list (apply bytes (range size))))))
-      (define (run) (call-with-values (lambda () (read-idx (open-input-bytes input))) list))
-      (match expected
-        [(cons 'dims expected-dims)
-         (check-equal? (run) (list expected-dims (apply bytes (range size))) (symbol->string name))]
-        [(cons 'error needles)
-         (check-exn (apply parser-error? 'read-idx needles) run (symbol->string name))])))
+  (test-case "read-idx reads the dimensions and the data"
+    (for ([dims (in-list '((2 2 2) (3)))])
+      (define-values (input data) (idx-input dims (apply * dims)))
+      (check-equal? (read-idx-list input) (list dims data) (format "~a" dims))))
+
+  (test-case "read-idx: malformed files"
+    (for ([c (in-list '((element-type (0 0 9 1) (8) 8 "unsupported element type" "type: 9")
+                        (short-data (0 0 8 3) (2 2 2) 7 "short data" "expected bytes: 8" "given bytes: 7")
+                        (trailing-data (0 0 8 3) (2 2 2) 9 "trailing data")
+                        (no-dimensions (0 0 8 0) () 0 "no dimensions")
+                        (zero-dimension (0 0 8 2) (3 0) 0 "zero dimension")
+                        (bad-magic (1 0 8 1) (1) 1 "not an IDX file")
+                        (short-magic (0 0) () 0 "short magic number")
+                        (short-dimensions (0 0 8 2) (5) 0 "short dimension")
+                        (huge-dimensions-on-short-data (0 0 8 2) (4294967295 4294967295) 8
+                                                       "short data" "expected bytes: 18446744065119617025")))])
+      (match-define (list* name magic dims size needles) c)
+      (define-values (input _) (idx-input dims size #:magic (apply bytes magic)))
+      (check-exn (apply error-with? 'read-idx needles) (lambda () (read-idx-list input))
+                 (symbol->string name))))
 
   (test-case "info->column-specs maps registry types by original name"
     (check-equal? (info->column-specs
@@ -121,10 +116,7 @@
                                      (hash "name" (format "c~a" i) "original-name" (format "C~a" i)
                                            "type" type))))
                   '(("C0" integer) ("C1" real) ("C2" string) ("C3" string) ("C4" string)))
-    (check-exn (lambda (e)
-                 (and (exn:fail? e) (not (exn:fail:contract? e))
-                      (regexp-match? #rx"^info->column-specs: unknown column type\n  column: C0\n  type: \"date\""
-                                     (exn-message e))))
+    (check-exn (error-with? 'info->column-specs "unknown column type\n  column: C0\n  type: \"date\"")
                (lambda () (info->column-specs (hash "columns" (list (hash "original-name" "C0" "type" "date")))))))
 
   (test-case "gunzip-file and tar-gz-member read members by path; a missing member names both"
@@ -133,16 +125,13 @@
        ("b.tgz" (tgz (("Dir/one.txt" "first") ("Dir/two.data" "second\n") ("empty" "")))))
      (lambda (files)
        (check-equal? (gunzip-file (hash-ref files "a.gz")) #"plain text\n")
+       (check-equal? (gzip-content-size (hash-ref files "a.gz")) 11)
        (for ([c (in-list '(("Dir/two.data" #"second\n") ("Dir/one.txt" #"first") ("empty" #"")))])
          (match-define (list member expected) c)
          (check-equal? (tar-gz-member (hash-ref files "b.tgz") member) expected member))
        (for ([member (in-list '("Dir/three" "Dir" "two.data"))])
-         (check-exn (lambda (e)
-                      (and (exn:fail? e)
-                           (regexp-match? #rx"^tar-gz-member: no such member" (exn-message e))
-                           (regexp-match? (regexp-quote (path->string (hash-ref files "b.tgz")))
-                                          (exn-message e))
-                           (regexp-match? (regexp-quote member) (exn-message e))))
+         (check-exn (error-with? 'tar-gz-member "no such member" (path->string (hash-ref files "b.tgz"))
+                                 member)
                     (lambda () (tar-gz-member (hash-ref files "b.tgz") member)))))))
 
   (test-case "digest encodes tagged values"

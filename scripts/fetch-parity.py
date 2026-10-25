@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Write fetch-tests/fixtures/parity.json, the column digests (digest.rkt) of scikit-learn's and torchvision's loaders.
-  SCIKIT_LEARN_DATA=$HOME/.cache/datasets-parity TORCHVISION_ROOT=$HOME/.cache/datasets-parity/torchvision nix shell --impure --expr '(builtins.getFlake "github:NixOS/nixpkgs/9eac87a12312b8f60dd52e1c6e1a265f6fc7f5fc").legacyPackages.x86_64-linux.python3.withPackages (p: [p.scikit-learn p.pandas p.torchvision])' -c python3 -I scripts/fetch-parity.py
+Run with scripts/fetch-parity.sh.
 """
 import hashlib
 import json
@@ -54,7 +54,7 @@ def images(loader):
     splits = [loader(TORCHVISION_ROOT, train=train, download=True) for train in (True, False)]
     pixels = np.concatenate([s.data.numpy().reshape(-1, 784) for s in splits])
     labels = np.concatenate([s.targets.numpy() for s in splits])
-    split = [name for s, name in zip(splits, ("train", "test")) for _ in range(len(s.targets))]
+    split = ["train"] * len(splits[0].targets) + ["test"] * len(splits[1].targets)
     columns = {f"pixel{k + 1}": integers(pixels[:, k]) for k in range(784)}
     columns["label"] = integers(labels)
     columns["split"] = strings(split)

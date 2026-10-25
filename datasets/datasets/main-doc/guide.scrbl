@@ -32,8 +32,8 @@ convenient loaders and adapters to the same collection. The Polars package
 supplies its native library. With Nix, @tt{nix develop} prepares an isolated
 environment containing the six packages and that library.
 @tt{datasets-islr} adds the datasets of ISLR2; see @secref["datasets-islr-guide"].
-@tt{datasets-fetch} adds sets such as @tt{covtype}, @tt{california-housing} and
-@tt{mnist} that are downloaded and converted on first load.
+@tt{datasets-fetch} adds sets such as @tt{covtype} and @tt{mnist} that are
+downloaded and converted on first load.
 
 @examples[#:eval ev
  (require datasets (prefix-in pl: polars))

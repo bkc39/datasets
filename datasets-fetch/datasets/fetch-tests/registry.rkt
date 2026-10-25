@@ -1,6 +1,8 @@
 #lang racket/base
 (require (only-in datasets/core dataset-info dataset-names)
+         (only-in datasets/core-doc/catalog-rows catalog-column-rows)
          (only-in datasets/core-tests/fixture call-with-environment call-with-temporary-fixture)
+         (only-in datasets/fetch-private/convert idx-file-names)
          (only-in file/sha1 bytes->hex-string)
          (only-in racket/match match-define match-lambda)
          (only-in racket/string string-join)
@@ -12,9 +14,7 @@
   (define image-columns
     (append (for/list ([k (in-range 1 785)]) (format "pixel~a" k)) '("label" "split")))
   (define (idx-files base shas)
-    (for/list ([name (in-list '("train-images-idx3-ubyte.gz" "train-labels-idx1-ubyte.gz"
-                                "t10k-images-idx3-ubyte.gz" "t10k-labels-idx1-ubyte.gz"))]
-               [sha (in-list shas)])
+    (for/list ([name (in-list idx-file-names)] [sha (in-list shas)])
       (list name (string-append base name) sha)))
   (define sets
     `((california-housing
@@ -72,6 +72,12 @@
       (check-not-false (member license '("CC-BY-4.0" "MIT" "CC0-1.0" "NOASSERTION")))
       (check-equal? (hash-ref info "license") license)
       (check-regexp-match #px"Downloads [0-9.]+ MB" (hash-ref info "notes"))))
+
+  (test-case "the catalog shows the pixel columns of the image sets as one row"
+    (for ([name (in-list '(mnist fashion-mnist))])
+      (check-equal? (map car (catalog-column-rows (hash-ref (dataset-info name) "columns")))
+                    '("pixel1 … pixel784" "label" "split")
+                    (symbol->string name))))
 
   (test-case "queries load no converter"
     (call-with-temporary-fixture
