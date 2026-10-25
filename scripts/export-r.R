@@ -8,7 +8,9 @@ precise <- function(d) {
 }
 export <- function(d, id) {
   d <- as.data.frame(d)
-  d[] <- lapply(d, function(x) if (inherits(x, 'Date')) format(x) else x)
+  d[] <- lapply(d, function(x) if (inherits(x, 'Date')) format(x)
+                               else if (inherits(x, 'POSIXct')) format(x, '%Y-%m-%dT%H:%M:%SZ', tz='UTC')
+                               else x)
   text <- vapply(d, function(x) is.character(x) || is.factor(x), TRUE)
   stopifnot(!any(unlist(lapply(d[text], function(x) as.character(x) == 'NA')), na.rm=TRUE))
   write.table(precise(d),file.path(out,paste0(id,'.csv')),sep=',',row.names=FALSE,na='NA',qmethod='double')
@@ -16,6 +18,19 @@ export <- function(d, id) {
   levels <- do.call(rbind, c(list(data.frame(column=character(), level=character())),
                              lapply(factors, function(n) data.frame(column=n, level=levels(d[[n]])))))
   write.table(levels,file.path(out,paste0(id,'.levels')),sep=',',row.names=FALSE,qmethod='double')
+  types <- data.frame(column=names(d), type=vapply(d, function(x) if (is.factor(x)) 'factor' else typeof(x), ''))
+  write.table(types,file.path(out,paste0(id,'.types')),sep=',',row.names=FALSE,qmethod='double')
+}
+nycflights13 <- function(tables) {
+  for (table in tables) {
+    e <- new.env()
+    load(file.path(root,'nycflights13/data',paste0(table,'.rda')),envir=e)
+    export(get(table,envir=e), paste0('nycflights13-',table))
+  }
+}
+if (package == 'nycflights13') {
+  nycflights13(c('airlines','airports','flights','planes','weather'))
+  quit(save='no')
 }
 if (package == 'datasets-islr') {
   islr <- new.env()
@@ -52,6 +67,7 @@ if (package == 'datasets-r') {
   titanic_train$Cabin[titanic_train$Cabin == ''] <- NA
   titanic_train$Embarked[titanic_train$Embarked == ''] <- NA
   export(titanic_train, 'titanic-passengers')
+  nycflights13(c('airlines','airports','planes','weather'))
   quit(save='no')
 }
 names <- c(mtcars='mtcars', faithful='faithful', anscombe='anscombe', airquality='airquality', 'us-arrests'='USArrests', 'plant-growth'='PlantGrowth', 'tooth-growth'='ToothGrowth', titanic='Titanic', 'air-passengers'='AirPassengers')

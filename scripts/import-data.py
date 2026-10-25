@@ -87,6 +87,30 @@ R_RECIPES=[
         descriptions={'passenger-id':'Passenger ID','survived':'Survival: 0 = died, 1 = survived','pclass':'Ticket class: 1 = 1st, 2 = 2nd, 3 = 3rd','sib-sp':'Siblings and spouses aboard','parch':'Parents and children aboard','ticket':'Ticket number','fare':'Passenger fare','embarked':'Port of embarkation: C = Cherbourg, Q = Queenstown, S = Southampton'},
         notes='The 891-passenger Kaggle training set (titanic_train). The 418-passenger test set is not included: it has no survival labels. The 177 missing ages are retained as missing; empty cabin (687) and embarked (2) strings are rendered as missing. Ticket stays a string column. Not to be confused with titanic, the 32-cell R contingency table.')),
 ]
+NYCFLIGHTS13_CITATION='Wickham, H. (2021). nycflights13: Flights that Departed NYC in 2013. R package version 1.0.2. https://CRAN.R-project.org/package=nycflights13. Data: '
+NYCFLIGHTS13_NOTES=' Columns keep their R types: integers stay integers, doubles are reals; names normalized to kebab-case; R NA rendered as missing.'
+NYCFLIGHTS13_TIME=' The R POSIXct time_hour (America/New_York) is rendered as an ISO 8601 UTC string, as in nycflights13-flights.'
+citations.update({'nycflights13-airlines':NYCFLIGHTS13_CITATION+'Bureau of Transportation Statistics, https://www.transtats.bts.gov/DL_SelectFields.asp?Table_ID=236',
+                  'nycflights13-airports':NYCFLIGHTS13_CITATION+'OpenFlights, https://openflights.org/data.html, downloaded 2014-06-27',
+                  'nycflights13-planes':NYCFLIGHTS13_CITATION+'FAA Aircraft Registry, https://www.faa.gov/licenses_certificates/aircraft_certification/aircraft_registry/releasable_aircraft_download/',
+                  'nycflights13-weather':NYCFLIGHTS13_CITATION+'ASOS download from the Iowa Environmental Mesonet, https://mesonet.agron.iastate.edu/request/download.phtml'})
+NYCFLIGHTS13_RECIPES=[
+    ('nycflights13-airlines',dict(identifiers=['carrier'],
+        descriptions={'carrier':'Two-letter carrier abbreviation','name':'Full airline name'},
+        notes='Airline names for the carrier codes of nycflights13-flights.'+NYCFLIGHTS13_NOTES)),
+    ('nycflights13-airports',dict(identifiers=['faa'],units={'lat':'degrees','lon':'degrees','alt':'feet','tz':'hours'},
+        descriptions={'faa':'FAA airport code','name':'Usual name of the airport','lat':'Latitude','lon':'Longitude','alt':'Altitude','tz':'Time zone offset from GMT',
+                      'dst':'Daylight saving time zone: A = standard US DST (second Sunday of March to first Sunday of November), U = unknown, N = no DST','tzone':'IANA time zone, as determined by the GeoNames web service'},
+        notes='Metadata for 1,458 airports; faa joins the origin and dest columns of nycflights13-flights.'+NYCFLIGHTS13_NOTES)),
+    ('nycflights13-planes',dict(identifiers=['tailnum'],units={'speed':'mph'},
+        descriptions={'tailnum':'Tail number','year':'Year manufactured','type':'Type of plane','manufacturer':'Manufacturer','model':'Model','engines':'Number of engines','seats':'Number of seats','speed':'Average cruising speed','engine':'Type of engine'},
+        notes='Plane metadata for the tail numbers of nycflights13-flights found in the FAA aircraft registry. American Airways (AA) and Envoy Air (MQ) report fleet numbers rather than tail numbers, so their flights do not match.'+NYCFLIGHTS13_NOTES)),
+    ('nycflights13-weather',dict(units={'temp':'degrees Fahrenheit','dewp':'degrees Fahrenheit','humid':'percent','wind-dir':'degrees','wind-speed':'mph','wind-gust':'mph','precip':'inches','pressure':'millibars','visib':'miles'},
+        descriptions={'origin':'Weather station: EWR, JFK or LGA','year':'Year of recording','month':'Month of recording','day':'Day of recording','hour':'Hour of recording, local time',
+                      'temp':'Temperature','dewp':'Dew point','humid':'Relative humidity','wind-dir':'Wind direction','wind-speed':'Wind speed','wind-gust':'Wind gust speed',
+                      'precip':'Precipitation','pressure':'Sea level pressure','visib':'Visibility','time-hour':'Date and hour of the recording, ISO 8601 UTC'},
+        notes='Hourly meteorological data for the three New York City airports in 2013; joins nycflights13-flights on origin and time-hour.'+NYCFLIGHTS13_TIME+NYCFLIGHTS13_NOTES)),
+]
 CORE_RECIPES={
     'mtcars':dict(
         identifiers=['model'],
@@ -294,6 +318,12 @@ def import_r():
             for j,n in enumerate(names):
                 if n in levels and not {r[j] for r in rows if r[j] is not None}<=set(levels[n]): raise ValueError(f'{id}: {n} value outside levels')
             add(id,records[0],rows,source,names=names,levels=levels,**kw)
+        cast={'integer':int,'double':float,'character':str}
+        for id,kw in NYCFLIGHTS13_RECIPES:
+            with (tmp/f'{id}.csv').open(encoding='utf-8',newline='') as f: header,*records=list(csv.reader(f))
+            with (tmp/f'{id}.types').open(encoding='utf-8') as f: kinds=[r['type'] for r in csv.DictReader(f)]
+            (PROVENANCE/f'{id}.Rd').write_bytes((tmp/'nycflights13/man'/f"{id.removeprefix('nycflights13-')}.Rd").read_bytes())
+            add(id,header,[[None if v=='NA' else cast[k](v) for v,k in zip(r,kinds)] for r in records],'nycflights13',names=[kebab(h) for h in header],**kw)
         def table(name):
             with (tmp/name).open(encoding='utf-8') as f: return list(csv.DictReader(f))
         man=tmp/R_DATASETS/'man'

@@ -24,7 +24,15 @@
        (("covtype.data.gz"
          "https://archive.ics.uci.edu/ml/machine-learning-databases/covtype/covtype.data.gz"
          "614360d0257557dd1792834a85a1cdebfadc3c4f30b011d56afee7ffb5b15771"))
-       "covtype-rows" "CC-BY-4.0")))
+       "covtype-rows" "CC-BY-4.0")
+      (nycflights13-flights
+       336776 ("year" "month" "day" "dep-time" "sched-dep-time" "dep-delay" "arr-time" "sched-arr-time"
+               "arr-delay" "carrier" "flight" "tailnum" "origin" "dest" "air-time" "distance" "hour"
+               "minute" "time-hour")
+       (("flights.csv"
+         "https://raw.githubusercontent.com/vincentarelbundock/Rdatasets/cc03c29690889dbe83089f5206e2422db8c3f71f/csv/nycflights13/flights.csv"
+         "b791a2590c9167aa0bd3cb45af3f64101180878cf088c183eae4011e3a654f42"))
+       "csv-header-rows" "CC0-1.0")))
   (define (sha256-hex s) (~> s string->bytes/utf-8 sha256-bytes bytes->hex-string))
 
   (test-case "the datasets-fetch registry: shapes, pins, converters, terms"
