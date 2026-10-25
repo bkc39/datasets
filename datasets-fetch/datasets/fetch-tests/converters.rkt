@@ -107,6 +107,9 @@
                          ,(format "expected pixels: ~a" pixels) "given: 27x29")
                         ("train-images-idx3-ubyte.gz" (idx-gz (2 ,pixels) ,(image-bytes 0 2)) idx-image-rows
                          "expected 3-dimensional images and 1-dimensional labels" "split: train")
+                        ("train-labels-idx1-ubyte.gz" (idx-gz (2 1) ,(bytes 7 2)) idx-image-rows
+                         "expected 3-dimensional images and 1-dimensional labels" "split: train"
+                         "labels: (2 1)")
                         ("t10k-labels-idx1-ubyte.gz" (gz "not idx") read-idx "not an IDX file")))])
       (match-define (list* name upstream who needles) c)
       (call-with-upstream-files (idx-upstream (hash-set idx-contents name upstream))

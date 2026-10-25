@@ -6,20 +6,11 @@
          (only-in threading ~>))
 (provide (contract-out
           [gunzip-file (-> path-string? bytes?)]
-          [gzip-content-size (-> path-string? exact-nonnegative-integer?)]
           [tar-gz-member (-> path-string? string? bytes?)]))
 
 (define (gunzip-file path)
   (call-with-input-file path
     (lambda (in) (call-with-output-bytes (lambda (out) (gunzip-through-ports in out))))))
-
-(define gzip-size-field-bytes 4)
-
-(define (gzip-content-size path)
-  (call-with-input-file path
-    (lambda (in)
-      (file-position in (- (file-size path) gzip-size-field-bytes))
-      (integer-bytes->integer (read-bytes gzip-size-field-bytes in) #f #f))))
 
 (define (tar-gz-member archive member)
   (let/ec return

@@ -3,31 +3,52 @@
          (only-in datasets/core dataset-cache-directory dataset-info dataset-missing? dataset-names
                   dataset-table-column dataset-table-names dataset-table-row-count fetch-dataset
                   load-dataset-table)
-         (only-in datasets/fetch-private/archive gzip-content-size)
          (only-in datasets/fetch-tests/digest column-digest)
          (only-in file/sha1 bytes->hex-string)
          (only-in json read-json)
          (only-in net/url call/input-url get-pure-port string->url)
-         (only-in racket/file file->string)
          (only-in racket/list append* append-map)
-         (only-in racket/match match)
          (only-in racket/runtime-path define-runtime-path)
          (only-in racket/string string-join)
          (only-in racket/vector vector-count)
          (only-in threading ~>))
 (define-runtime-path parity-file "fixtures/parity.json")
-(define-runtime-path parity-script "../../../scripts/fetch-parity.py")
+
+(define gzip-isize-bytes 4)
+
+(define (gzip-isize path)
+  (call-with-input-file path
+    (lambda (in)
+      (file-position in (- (file-size path) gzip-isize-bytes))
+      (integer-bytes->integer (read-bytes gzip-isize-bytes in) #f #f))))
+
+(define (call-with-memory-limit limit thunk)
+  (collect-garbage)
+  (define custodian (make-custodian))
+  (custodian-limit-memory custodian limit custodian)
+  (define result (box 'killed-at-the-memory-limit))
+  (thread-wait (parameterize ([current-custodian custodian])
+                 (thread (lambda () (set-box! result (with-handlers ([exn:fail? exn-message]) (thunk)))))))
+  (custodian-shutdown-all custodian)
+  (unbox result))
+
 (module+ test
-  (require (only-in rackunit check-equal? test-case))
-  (define (pinned script variable)
-    (match (regexp-match (pregexp (format "(?m:^~a = \"([^\"]+)\"$)" variable)) script)
-      [(list _ version) version]))
-  (test-case "parity.json records the versions fetch-parity.py pins"
-    (when (file-exists? parity-script)
-      (define script (file->string parity-script))
-      (check-equal? (hash-ref (call-with-input-file parity-file read-json) 'versions)
-                    (hasheq 'scikit-learn (pinned script "VERSION")
-                            'torchvision (pinned script "TORCHVISION_VERSION"))))))
+  (require (only-in datasets/fetch-tests/fixture call-with-upstream-files)
+           (only-in rackunit check-equal? test-case))
+  (define small-limit (* 16 1000 1000))
+  (test-case "gzip-isize reads the uncompressed size from the gzip trailer"
+    (call-with-upstream-files '(("a.gz" (gz "plain text\n")))
+      (lambda (files) (check-equal? (gzip-isize (hash-ref files "a.gz")) 11))))
+  (test-case "call-with-memory-limit returns an error's message, and its sentinel only when the limit kills"
+    (check-equal? (call-with-memory-limit small-limit (lambda () (error 'x "boom"))) "x: boom")
+    (check-equal? (call-with-memory-limit small-limit (lambda () 'done)) 'done)
+    (check-equal? (call-with-memory-limit small-limit
+                                          (lambda ()
+                                            (for/fold ([kept '()] #:result 'allocated-all)
+                                                      ([_ (in-range 1000)])
+                                              (cons (make-bytes 100000) kept))))
+                  'killed-at-the-memory-limit)))
+
 (module+ network
   (define parity (call-with-input-file parity-file read-json))
   (define (seconds thunk)
@@ -81,19 +102,9 @@
   (define value-copies 2)
   (define baseline-bytes (* 64 1000 1000))
 
-  (define (call-with-memory-limit limit thunk)
-    (collect-garbage)
-    (define custodian (make-custodian))
-    (custodian-limit-memory custodian limit custodian)
-    (define result (box 'killed-at-the-memory-limit))
-    (thread-wait (parameterize ([current-custodian custodian])
-                   (thread (lambda () (set-box! result (with-handlers ([exn:fail? exn-message]) (thunk)))))))
-    (custodian-shutdown-all custodian)
-    (unbox result))
-
   (define (bounded-load-problems name)
     (define info (dataset-info name))
-    (define text-size (gzip-content-size (fetch-dataset name)))
+    (define text-size (gzip-isize (fetch-dataset name)))
     (define (load-rows limit)
       (define-values (rows elapsed)
         (seconds (lambda ()
@@ -107,8 +118,8 @@
     (append (expect (list name "rows loaded under a memory limit" limit) (load-rows limit)
                     (hash-ref info "rows"))
             (expect (list name "a limit below the text size stops the load")
-                    (exact-integer? (load-rows (quotient text-size 2)))
-                    #f)))
+                    (load-rows (quotient text-size 2))
+                    'killed-at-the-memory-limit)))
 
   (printf "DATASETS_HOME ~a\n" (dataset-cache-directory))
   (define names (dataset-names #:package "datasets-fetch"))

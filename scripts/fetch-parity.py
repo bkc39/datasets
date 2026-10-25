@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Write fetch-tests/fixtures/parity.json, the column digests (digest.rkt) of scikit-learn's and torchvision's loaders.
+"""Write fetch-tests/fixtures/parity.json: the column digests (digest.rkt) of scikit-learn's and torchvision's loaders
+and the library versions they ran with, which scripts/fetch-parity.sh pins.
 Run with scripts/fetch-parity.sh.
 """
 import hashlib
@@ -13,10 +14,6 @@ import torchvision
 from sklearn import datasets
 from torchvision.datasets import MNIST, FashionMNIST
 
-VERSION = "1.8.0"
-TORCHVISION_VERSION = "0.27.0"
-assert sklearn.__version__ == VERSION, sklearn.__version__
-assert torchvision.__version__ == TORCHVISION_VERSION, torchvision.__version__
 TORCHVISION_ROOT = os.environ["TORCHVISION_ROOT"]
 OUT = Path(__file__).resolve().parents[1] / "datasets-fetch/datasets/fetch-tests/fixtures/parity.json"
 
@@ -73,7 +70,7 @@ def california_housing():
     return len(frame), {CALIFORNIA[n]: reals(frame[n].to_numpy()) for n in frame.columns}
 
 
-reference = {"versions": {"scikit-learn": VERSION, "torchvision": TORCHVISION_VERSION}}
+reference = {"versions": {"scikit-learn": sklearn.__version__, "torchvision": torchvision.__version__}}
 for name, load in [("covtype", covtype), ("california-housing", california_housing),
                    ("mnist", lambda: images(MNIST)), ("fashion-mnist", lambda: images(FashionMNIST))]:
     rows, columns = load()

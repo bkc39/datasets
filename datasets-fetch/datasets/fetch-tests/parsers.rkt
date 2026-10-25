@@ -1,6 +1,6 @@
 #lang racket/base
 (require (only-in datasets/core dataset-missing)
-         (only-in datasets/fetch-private/archive gunzip-file gzip-content-size tar-gz-member)
+         (only-in datasets/fetch-private/archive gunzip-file tar-gz-member)
          (only-in datasets/fetch-private/csv csv-rows info->column-specs)
          (only-in datasets/fetch-private/idx read-idx)
          (only-in datasets/fetch-tests/digest column-digest)
@@ -125,7 +125,6 @@
        ("b.tgz" (tgz (("Dir/one.txt" "first") ("Dir/two.data" "second\n") ("empty" "")))))
      (lambda (files)
        (check-equal? (gunzip-file (hash-ref files "a.gz")) #"plain text\n")
-       (check-equal? (gzip-content-size (hash-ref files "a.gz")) 11)
        (for ([c (in-list '(("Dir/two.data" #"second\n") ("Dir/one.txt" #"first") ("empty" #"")))])
          (match-define (list member expected) c)
          (check-equal? (tar-gz-member (hash-ref files "b.tgz") member) expected member))
