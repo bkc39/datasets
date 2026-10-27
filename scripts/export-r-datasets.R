@@ -1,7 +1,5 @@
-args <- commandArgs(TRUE)
-root <- args[1]; out <- args[2]
+source(file.path(dirname(sub('^--file=', '', grep('^--file=', commandArgs(FALSE), value=TRUE))), 'r-export-common.R'))
 data <- file.path(root, 'R-4.3.3/src/library/datasets/data')
-options(digits=17)
 
 r <- new.env()
 for (f in list.files(data)) {
@@ -171,24 +169,13 @@ fold <- function(id, members) {
   }
 }
 
-precise <- function(d) {
-  d[] <- lapply(d, function(x) if (is.numeric(x)) ifelse(is.na(x), NA, sprintf('%.17g', x)) else x)
-  d
-}
 manifest <- list()
 write.dataset <- function(id, objects, s) {
   d <- s$frame
   stopifnot(!anyDuplicated(names(d)), length(s$original) == ncol(d), length(s$description) == ncol(d))
-  write.table(precise(d), file.path(out, paste0(id, '.csv')), sep=',', row.names=FALSE, na='NA',
-              qmethod='double')
-  factors <- names(d)[vapply(d, is.factor, TRUE)]
-  levels <- do.call(rbind, c(list(data.frame(column=character(), level=character())),
-                             lapply(factors, function(n) data.frame(column=n, level=levels(d[[n]])))))
-  write.table(levels, file.path(out, paste0(id, '.levels')), sep=',', row.names=FALSE, qmethod='double')
-  types <- data.frame(column=names(d), type=vapply(d, function(x) if (is.factor(x)) 'factor' else typeof(x), ''))
-  write.table(types, file.path(out, paste0(id, '.types')), sep=',', row.names=FALSE, qmethod='double')
-  write.table(data.frame(name=names(d), original=s$original, description=s$description),
-              file.path(out, paste0(id, '.columns')), sep=',', row.names=FALSE, qmethod='double')
+  export(d, id)
+  write.csv.file(data.frame(name=names(d), original=s$original, description=s$description),
+                 paste0(id, '.columns'))
   series <- s$series
   manifest[[id]] <<- data.frame(
     id=id, objects=paste(objects, collapse='|'), identifiers=paste(s$identifiers, collapse='|'),
@@ -207,9 +194,8 @@ dispositions <- do.call(rbind, lapply(objects, function(n) {
              target=if (n %in% names(core)) core[[n]] else if (n %in% names(skipped)) skipped[[n]]
                     else if (!is.null(fold.id)) fold.id else dataset.id(n))
 }))
-write.table(dispositions, file.path(out, 'r-objects.csv'), sep=',', row.names=FALSE, qmethod='double')
+write.csv.file(dispositions, 'r-objects.csv')
 for (n in setdiff(objects, c(names(core), names(skipped), folded)))
   write.dataset(dataset.id(n), n, shape(n, get(n, envir=r)))
 for (id in names(folds)) write.dataset(id, unname(folds[[id]]), fold(id, folds[[id]]))
-write.table(do.call(rbind, manifest), file.path(out, 'r-datasets.csv'), sep=',', row.names=FALSE,
-            qmethod='double')
+write.csv.file(do.call(rbind, manifest), 'r-datasets.csv')

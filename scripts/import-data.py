@@ -8,7 +8,7 @@ import argparse, csv, gzip, hashlib, io, json, re, shutil, subprocess, sys, tarf
 import xml.etree.ElementTree as ET
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parent))
-from rtable import read_r_table
+from rtable import read_csv_rows, read_r_levels, read_r_table
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULTS = {'datasets-core': ('datasets-core/datasets/core-data', 'datasets-core/datasets/provenance'),
             'datasets-r': ('datasets-r/datasets/r-data', 'datasets-r/datasets/r-data/provenance'),
@@ -48,17 +48,21 @@ def number(s):
         try: return float(s)
         except ValueError: return s
 registry={}
-R_KINDS={'integer':'integer','double':'real','character':'string'}
-def add(id,original,rows,source,levels={},units={},descriptions={},identifiers=[],targets=[],notes='',series=None,names=None,r_types=None):
+def column_kind(name,values,kind,levels,identifiers):
+    if name in identifiers: return 'identifier'
+    if name in levels: return 'categorical'
+    if kind: return kind
+    if all(isinstance(v,int) for v in values): return 'integer'
+    if all(isinstance(v,(int,float)) for v in values): return 'real'
+    return 'string'
+def add(id,original,rows,source,levels={},units={},descriptions={},identifiers=[],targets=[],notes='',series=None,names=None,kinds=None):
     names=names or [re.sub('[^a-z0-9]+','-',s.lower()).strip('-') for s in original]
     aliases={'freq':'frequency','len':'length','supp':'supplement','solar-r':'solar-r','urbanpop':'urban-pop','sepal-length':'sepal-length'}
     names=[aliases.get(n,n) for n in names]
     if id=='diabetes': names=[n.removeprefix('x-') for n in names]
     columns=[]
-    for j,(name,orig) in enumerate(zip(names,original)):
-        values=[r[j] for r in rows if r[j] is not None]
-        kind=('identifier' if name in identifiers else 'categorical' if name in levels else R_KINDS[r_types[j]] if r_types
-              else 'integer' if all(isinstance(v,int) for v in values) else 'real' if all(isinstance(v,(int,float)) for v in values) else 'string')
+    for j,(name,orig,kind) in enumerate(zip(names,original,kinds or [None]*len(names))):
+        kind=column_kind(name,[r[j] for r in rows if r[j] is not None],kind,levels,identifiers)
         columns.append({'name':name,'original-name':orig,'type':kind,'levels':levels.get(name,[]),'unit':units.get(name,False),'description':descriptions.get(name,orig),'missing-count':sum(r[j] is None for r in rows)})
     text='(\n'+'\n'.join('  '+sexp(r) for r in rows)+'\n)\n'
     (OUT/'data'/f'{id}.rktd.gz').write_bytes(gzip.compress(text.encode(),9,mtime=0))
@@ -322,41 +326,35 @@ def import_r():
         (PROVENANCE/'datasauRus-LICENSE').write_bytes((tmp/'datasauRus/LICENSE').read_bytes())
         for id,source,kw in R_RECIPES:
             header,kinds,rows=read_r_table(tmp,id)
-            with (tmp/f'{id}.levels').open(encoding='utf-8') as f: factor_levels=list(csv.reader(f))[1:]
             aliases=kw.pop('aliases',{})
             names=[aliases.get(kebab(o),kebab(o)) for o in header]
-            levels={kebab(c):[] for c,_ in factor_levels}
-            for c,l in factor_levels: levels[kebab(c)].append(l)
-            levels.update(kw.pop('levels',{}))
+            levels=read_r_levels(tmp,id,kebab)|kw.pop('levels',{})
             for j,n in enumerate(names):
                 if n in levels and not {r[j] for r in rows if r[j] is not None}<=set(levels[n]): raise ValueError(f'{id}: {n} value outside levels')
-            add(id,header,rows,source,names=names,levels=levels,r_types=kinds,**kw)
+            add(id,header,rows,source,names=names,levels=levels,kinds=kinds,**kw)
         for id,_,kw in NYCFLIGHTS13_RECIPES:
             shutil.copyfile(tmp/'nycflights13/man'/f"{id.removeprefix('nycflights13-')}.Rd",PROVENANCE/f'{id}.Rd')
             header,kinds,rows=read_r_table(tmp,id)
-            add(id,header,rows,'nycflights13',names=[kebab(h) for h in header],r_types=kinds,**kw|{'notes':kw['notes']+NYCFLIGHTS13_NOTES})
-        def table(name):
-            with (tmp/name).open(encoding='utf-8') as f: return list(csv.DictReader(f))
+            add(id,header,rows,'nycflights13',names=[kebab(h) for h in header],kinds=kinds,**kw|{'notes':kw['notes']+NYCFLIGHTS13_NOTES})
         man=tmp/R_DATASETS/'man'
         pages={a:p for p in sorted(man.glob('*.Rd')) for a in re.findall(r'\\alias\{([^}]*)\}',p.read_text())}
-        manifest=table('r-datasets.csv')
+        manifest=read_csv_rows(tmp,'r-datasets.csv')
         for m in manifest:
             id,objects=m['id'],m['objects'].split('|')
             page=pages[objects[0]]
             (PROVENANCE/f'{id}.Rd').write_bytes(page.read_bytes())
             title=re.search(r'\\title\{((?:[^{}]|\{[^{}]*\})*)\}',page.read_text()).group(1)
             title=' '.join(re.sub(r'\\[A-Za-z]+\{([^{}]*)\}',r'\1',title).replace('--','–').split())
-            columns=table(f'{id}.columns')
+            columns=read_csv_rows(tmp,f'{id}.columns')
             _,kinds,rows=read_r_table(tmp,id)
-            levels={}
-            for l in table(f'{id}.levels'): levels.setdefault(l['column'],[]).append(l['level'])
+            levels=read_r_levels(tmp,id)
             identifiers=[i for i in m['identifiers'].split('|') if i]
             series=m['frequency'] and {'frequency':number(m['frequency']),'start':[number(v) for v in m['start'].split('|')],
                                        'end':[number(v) for v in m['end'].split('|')],'index':m['index'].split('|')}
-            add(id,[c['original'] for c in columns],rows,'R',names=[c['name'] for c in columns],r_types=kinds,
+            add(id,[c['original'] for c in columns],rows,'R',names=[c['name'] for c in columns],kinds=kinds,
                 levels=levels,identifiers=identifiers,descriptions={c['name']:c['description'] for c in columns},series=series,
                 notes=f"{title}. R object{'s'[:len(objects)-1]} {', '.join(objects)}. {m['notes']}")
-        objects=sorted(table('r-objects.csv'),key=lambda r:(r['object'].lower(),r['object']))
+        objects=sorted(read_csv_rows(tmp,'r-objects.csv'),key=lambda r:(r['object'].lower(),r['object']))
         if {r['target'] for r in objects if r['disposition']=='dataset'}!={m['id'] for m in manifest}: raise ValueError('R objects and exported datasets disagree')
         def object_row(r):
             cell=sexp('Skipped. '+r['target']) if r['disposition']=='skipped' else f"(dataset {r['target']})"

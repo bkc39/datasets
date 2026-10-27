@@ -1,29 +1,5 @@
-args <- commandArgs(TRUE)
-root <- args[1]; out <- args[2]
+source(file.path(dirname(sub('^--file=', '', grep('^--file=', commandArgs(FALSE), value=TRUE))), 'r-export-common.R'))
 package <- if (length(args) > 2) args[3] else 'datasets-core'
-options(digits=17)
-precise <- function(d) {
-  d[] <- lapply(d, function(x) if (is.numeric(x)) ifelse(is.na(x), NA, sprintf('%.17g',x)) else x)
-  d
-}
-rendered <- function(x) {
-  if (inherits(x, 'Date')) return(format(x))
-  if (inherits(x, 'POSIXct')) return(format(x, '%Y-%m-%dT%H:%M:%SZ', tz='UTC'))
-  x
-}
-export <- function(d, id) {
-  d <- as.data.frame(d)
-  d[] <- lapply(d, rendered)
-  text <- vapply(d, function(x) is.character(x) || is.factor(x), TRUE)
-  stopifnot(!any(unlist(lapply(d[text], function(x) as.character(x) == 'NA')), na.rm=TRUE))
-  write.table(precise(d),file.path(out,paste0(id,'.csv')),sep=',',row.names=FALSE,na='NA',qmethod='double')
-  factors <- names(d)[vapply(d, is.factor, TRUE)]
-  levels <- do.call(rbind, c(list(data.frame(column=character(), level=character())),
-                             lapply(factors, function(n) data.frame(column=n, level=levels(d[[n]])))))
-  write.table(levels,file.path(out,paste0(id,'.levels')),sep=',',row.names=FALSE,qmethod='double')
-  types <- data.frame(column=names(d), type=vapply(d, function(x) if (is.factor(x)) 'factor' else typeof(x), ''))
-  write.table(types,file.path(out,paste0(id,'.types')),sep=',',row.names=FALSE,qmethod='double')
-}
 nycflights13 <- function(tables) {
   for (table in tables) {
     e <- new.env()
@@ -82,9 +58,9 @@ for (id in names(names)) {
   if (id == 'air-passengers') d <- data.frame(year=rep(1949:1960,each=12), month=rep(1:12,12), passengers=as.numeric(d))
   if (id == 'mtcars') d <- cbind(model=rownames(d),d)
   if (id == 'us-arrests') d <- cbind(state=rownames(d),d)
-  write.table(precise(d),file.path(out,paste0(id,'.csv')),sep=',',row.names=FALSE,na='NA',qmethod='double')
+  export(d, id)
 }
 load(file.path(root,'lars/data/diabetes.RData'))
 d <- as.data.frame(diabetes$x)
 d$response <- diabetes$y
-write.table(precise(d),file.path(out,'diabetes.csv'),sep=',',row.names=FALSE,qmethod='double')
+export(d, 'diabetes')

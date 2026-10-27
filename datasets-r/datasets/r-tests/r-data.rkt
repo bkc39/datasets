@@ -58,7 +58,7 @@
       [(member name identifiers) "identifier"]
       [(pair? levels) "categorical"]
       [(andmap exact-integer? present) "integer"]
-      [(andmap real? present) "real"]
+      [(andmap flonum? present) "real"]
       [else "string"]))
   (define (key-values lines)
     (for*/hash ([line (in-list lines)]
@@ -93,12 +93,13 @@
       (identifiers penguins ())
       (identifiers penguins-raw ())
       (identifiers titanic-passengers ("passenger-id"))
-      (types penguins ("bill-length-mm" "bill-depth-mm" "flipper-length-mm" "body-mass-g" "year")
-             ("real" "real" "integer" "integer" "integer"))
-      (types penguins-raw ("sample-number" "culmen-length-mm" "flipper-length-mm" "body-mass-g")
-             ("real" "real" "real" "real"))
-      (types titanic-passengers ("passenger-id" "survived" "pclass" "age" "sib-sp" "parch" "fare")
-             ("identifier" "integer" "integer" "real" "integer" "integer" "real"))
+      (types penguins ("bill-length-mm" "real") ("bill-depth-mm" "real")
+             ("flipper-length-mm" "integer") ("body-mass-g" "integer") ("year" "integer"))
+      (types penguins-raw ("sample-number" "real") ("culmen-length-mm" "real")
+             ("flipper-length-mm" "real") ("body-mass-g" "real"))
+      (types titanic-passengers ("passenger-id" "identifier") ("survived" "integer")
+             ("pclass" "integer") ("age" "real") ("sib-sp" "integer") ("parch" "integer")
+             ("fare" "real"))
       (row penguins 0 ,penguins-names ("Adelie" "Torgersen" 39.1 18.7 181 3750 "male" 2007))
       (row penguins 3 ("bill-length-mm" "bill-depth-mm" "flipper-length-mm" "body-mass-g" "sex")
            ,(make-list 5 dataset-missing))
