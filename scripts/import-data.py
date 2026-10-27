@@ -48,7 +48,8 @@ def number(s):
         try: return float(s)
         except ValueError: return s
 registry={}
-def add(id,original,rows,source,levels={},units={},descriptions={},identifiers=[],targets=[],notes='',series=None,names=None):
+R_KINDS={'integer':'integer','double':'real','character':'string'}
+def add(id,original,rows,source,levels={},units={},descriptions={},identifiers=[],targets=[],notes='',series=None,names=None,r_types=None):
     names=names or [re.sub('[^a-z0-9]+','-',s.lower()).strip('-') for s in original]
     aliases={'freq':'frequency','len':'length','supp':'supplement','solar-r':'solar-r','urbanpop':'urban-pop','sepal-length':'sepal-length'}
     names=[aliases.get(n,n) for n in names]
@@ -56,7 +57,8 @@ def add(id,original,rows,source,levels={},units={},descriptions={},identifiers=[
     columns=[]
     for j,(name,orig) in enumerate(zip(names,original)):
         values=[r[j] for r in rows if r[j] is not None]
-        kind='identifier' if name in identifiers else 'categorical' if name in levels else 'integer' if all(isinstance(v,int) for v in values) else 'real' if all(isinstance(v,(int,float)) for v in values) else 'string'
+        kind=('identifier' if name in identifiers else 'categorical' if name in levels else R_KINDS[r_types[j]] if r_types
+              else 'integer' if all(isinstance(v,int) for v in values) else 'real' if all(isinstance(v,(int,float)) for v in values) else 'string')
         columns.append({'name':name,'original-name':orig,'type':kind,'levels':levels.get(name,[]),'unit':units.get(name,False),'description':descriptions.get(name,orig),'missing-count':sum(r[j] is None for r in rows)})
     text='(\n'+'\n'.join('  '+sexp(r) for r in rows)+'\n)\n'
     (OUT/'data'/f'{id}.rktd.gz').write_bytes(gzip.compress(text.encode(),9,mtime=0))
@@ -308,10 +310,6 @@ def import_islr():
             registry[id]['islr2-chapters']={k:[c+1 for c,used in enumerate(ISLR_CHAPTERS) if id in used[j]] for j,k in enumerate(['text','exercises'])}
 def import_r():
     def kebab(s): return re.sub('[^a-z0-9]+','-',re.sub('([a-z])([A-Z])',r'\1-\2',s).lower()).strip('-')
-    def typed(records,strings=()):
-        columns=list(zip(*records[1:]))
-        numeric=[h not in strings and all(v=='NA' or isinstance(number(v),(int,float)) for v in c) for h,c in zip(records[0],columns)]
-        return [[number(v) if n else None if v=='NA' else v for v,n in zip(r,numeric)] for r in records[1:]]
     with tempfile.TemporaryDirectory() as tmp:
         tmp=Path(tmp)
         for k,s in SOURCES.items():
@@ -323,21 +321,20 @@ def import_r():
             (PROVENANCE/f'{id}.Rd').write_bytes((tmp/rd).read_bytes())
         (PROVENANCE/'datasauRus-LICENSE').write_bytes((tmp/'datasauRus/LICENSE').read_bytes())
         for id,source,kw in R_RECIPES:
-            with (tmp/f'{id}.csv').open(encoding='utf-8') as f: records=list(csv.reader(f))
+            header,kinds,rows=read_r_table(tmp,id)
             with (tmp/f'{id}.levels').open(encoding='utf-8') as f: factor_levels=list(csv.reader(f))[1:]
             aliases=kw.pop('aliases',{})
-            names=[aliases.get(kebab(o),kebab(o)) for o in records[0]]
+            names=[aliases.get(kebab(o),kebab(o)) for o in header]
             levels={kebab(c):[] for c,_ in factor_levels}
             for c,l in factor_levels: levels[kebab(c)].append(l)
             levels.update(kw.pop('levels',{}))
-            rows=typed(records)
             for j,n in enumerate(names):
                 if n in levels and not {r[j] for r in rows if r[j] is not None}<=set(levels[n]): raise ValueError(f'{id}: {n} value outside levels')
-            add(id,records[0],rows,source,names=names,levels=levels,**kw)
+            add(id,header,rows,source,names=names,levels=levels,r_types=kinds,**kw)
         for id,_,kw in NYCFLIGHTS13_RECIPES:
             shutil.copyfile(tmp/'nycflights13/man'/f"{id.removeprefix('nycflights13-')}.Rd",PROVENANCE/f'{id}.Rd')
-            header,_,rows=read_r_table(tmp,id)
-            add(id,header,rows,'nycflights13',names=[kebab(h) for h in header],**kw|{'notes':kw['notes']+NYCFLIGHTS13_NOTES})
+            header,kinds,rows=read_r_table(tmp,id)
+            add(id,header,rows,'nycflights13',names=[kebab(h) for h in header],r_types=kinds,**kw|{'notes':kw['notes']+NYCFLIGHTS13_NOTES})
         def table(name):
             with (tmp/name).open(encoding='utf-8') as f: return list(csv.DictReader(f))
         man=tmp/R_DATASETS/'man'
@@ -350,13 +347,13 @@ def import_r():
             title=re.search(r'\\title\{((?:[^{}]|\{[^{}]*\})*)\}',page.read_text()).group(1)
             title=' '.join(re.sub(r'\\[A-Za-z]+\{([^{}]*)\}',r'\1',title).replace('--','–').split())
             columns=table(f'{id}.columns')
-            with (tmp/f'{id}.csv').open(encoding='utf-8') as f: records=list(csv.reader(f))
+            _,kinds,rows=read_r_table(tmp,id)
             levels={}
             for l in table(f'{id}.levels'): levels.setdefault(l['column'],[]).append(l['level'])
             identifiers=[i for i in m['identifiers'].split('|') if i]
             series=m['frequency'] and {'frequency':number(m['frequency']),'start':[number(v) for v in m['start'].split('|')],
                                        'end':[number(v) for v in m['end'].split('|')],'index':m['index'].split('|')}
-            add(id,[c['original'] for c in columns],typed(records,set(levels)|set(identifiers)),'R',names=[c['name'] for c in columns],
+            add(id,[c['original'] for c in columns],rows,'R',names=[c['name'] for c in columns],r_types=kinds,
                 levels=levels,identifiers=identifiers,descriptions={c['name']:c['description'] for c in columns},series=series,
                 notes=f"{title}. R object{'s'[:len(objects)-1]} {', '.join(objects)}. {m['notes']}")
         objects=sorted(table('r-objects.csv'),key=lambda r:(r['object'].lower(),r['object']))

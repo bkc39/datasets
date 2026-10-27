@@ -15,10 +15,10 @@
                 ("flipper-length-mm" 0 181) ("bill-length-mm" 3 ,dataset-missing)
                 ("sex" 3 ,dataset-missing))
       (penguins-raw 344 17 ("individual-id" 0 "N1A1") ("delta-13-c" 1 -24.69454)
-                    ("body-mass-g" 343 3775) ("comments" 1 ,dataset-missing))
+                    ("body-mass-g" 343 3775.0) ("comments" 1 ,dataset-missing))
       (gapminder 1704 6 ("country" 1703 "Zimbabwe") ("life-exp" 0 28.801) ("pop" 0 8425333))
       (datasaurus-dozen 1846 3 ("dataset" 0 "dino") ("x" 0 55.3846) ("y" 1845 89.5889019877))
-      (titanic-passengers 891 12 ("name" 0 "Braund, Mr. Owen Harris") ("age" 0 22)
+      (titanic-passengers 891 12 ("name" 0 "Braund, Mr. Owen Harris") ("age" 0 22.0)
                           ("fare" 1 71.2833) ("ticket" 890 "370376") ("age" 5 ,dataset-missing)
                           ("cabin" 0 ,dataset-missing))))
   (define matrix-columns

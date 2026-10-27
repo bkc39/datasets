@@ -1,7 +1,7 @@
 """Read <id>.csv and <id>.types written by scripts/export-r.R."""
 import csv
 
-CAST = {"integer": int, "double": float, "character": str}
+CAST = {"integer": int, "double": float, "character": str, "factor": str}
 
 
 def read_r_table(directory, id):

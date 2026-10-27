@@ -26,6 +26,9 @@ is in the @secref["datasets-catalog" #:doc catalog]. Imports are mechanical:
    @tt{co2-uptake} (@tt{co2} is the Mauna Loa series), @tt{DNase} @tt{dnase},
    @tt{UKgas} @tt{uk-gas}, @tt{UScitiesD} @tt{us-cities-d}, @tt{WWWusage}
    @tt{www-usage}.}
+ @item{Types, as in every @tt{datasets-r} dataset: an R double is @tt{real}
+   even when its values are whole, an R integer is @tt{integer}, a factor is
+   @tt{categorical} and a character vector is a @tt{string}.}
  @item{Data frames: columns as in R. Row names that are not numbers become a
    first identifier column; nlme groupedData attributes are dropped.}
  @item{Time series: index columns @tt{year} and, by frequency, @tt{quarter},

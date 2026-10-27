@@ -185,6 +185,8 @@ write.dataset <- function(id, objects, s) {
   levels <- do.call(rbind, c(list(data.frame(column=character(), level=character())),
                              lapply(factors, function(n) data.frame(column=n, level=levels(d[[n]])))))
   write.table(levels, file.path(out, paste0(id, '.levels')), sep=',', row.names=FALSE, qmethod='double')
+  types <- data.frame(column=names(d), type=vapply(d, function(x) if (is.factor(x)) 'factor' else typeof(x), ''))
+  write.table(types, file.path(out, paste0(id, '.types')), sep=',', row.names=FALSE, qmethod='double')
   write.table(data.frame(name=names(d), original=s$original, description=s$description),
               file.path(out, paste0(id, '.columns')), sep=',', row.names=FALSE, qmethod='double')
   series <- s$series

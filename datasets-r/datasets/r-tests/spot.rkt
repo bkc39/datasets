@@ -48,6 +48,9 @@
       [(list 'row id row names expected)
        (check-equal? (for/list ([name (in-list names)]) (vector-ref (column id name) row)) expected
                      message)]
+      [(list 'types id names expected)
+       (check-equal? (for/list ([name (in-list names)]) (column-meta id name "type")) expected
+                     message)]
       [(list 'missing id names expected)
        (check-equal? (for/list ([name (in-list names)]) (column-count id name dataset-missing?))
                      expected message)]
