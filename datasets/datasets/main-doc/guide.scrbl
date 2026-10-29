@@ -1,5 +1,5 @@
 #lang scribble/manual
-@(require scribble/eval
+@(require scribble/eval "islr-chapters.rkt"
           (for-label racket/base datasets datasets/data-frame
                      math/matrix (prefix-in pl: (except-in polars head series-ref ~>)) (prefix-in df: data-frame)))
 @(define ev (make-base-eval))
@@ -16,11 +16,11 @@ Use Racket 9.3 or later. Install from the Racket catalog:
 
 @commandline{raco pkg install --auto datasets}
 
-This also installs @tt{datasets-core}, the data packages @tt{datasets-r} and
-@tt{datasets-uci}, and the adapter dependencies. From a checkout of the
-repository, install the packages from its root:
+This also installs @tt{datasets-core}, the data packages @tt{datasets-r},
+@tt{datasets-uci}, @tt{datasets-islr}, and the adapter dependencies. From a
+checkout of the repository, install the packages from its root:
 
-@verbatim{raco pkg install ./datasets-core ./datasets-r ./datasets-uci
+@verbatim{raco pkg install ./datasets-core ./datasets-r ./datasets-uci ./datasets-islr
 raco pkg install --auto ./datasets}
 
 The top-level directories are independently installable multi-collection
@@ -29,7 +29,8 @@ packages. @tt{datasets-core} provides @racketmodname[datasets/core];
 the UCI Machine Learning Repository to the core catalog; @tt{datasets} adds the
 convenient loaders and adapters to the same collection. The Polars package
 supplies its native library. With Nix, @tt{nix develop} prepares an isolated
-environment containing the four packages and that library.
+environment containing the five packages and that library.
+@tt{datasets-islr} adds the datasets of ISLR2; see @secref["datasets-islr-guide"].
 
 @examples[#:eval ev
  (require datasets (prefix-in pl: polars))
@@ -130,6 +131,36 @@ Airquality has missing measurements. The table format uses
 Missing values are distinct from zero and @racket[#f]. Decide whether to exclude,
 replace, or otherwise account for them in your analysis. The loaders preserve
 them; matrix conversion reports a missing value instead of silently removing it.
+
+@section[#:tag "datasets-islr-guide"]{Datasets from ISLR2}
+
+@tt{datasets-islr} bundles the 20 datasets of the R package ISLR2, the data of
+@hyperlink["https://www.statlearning.com"]{An Introduction to Statistical
+Learning, Second Edition}. They load by name. Player names, R row names in the
+book, are the first column of @racket['hitters]:
+
+@examples[#:eval ev
+ (define hitters (load-dataset 'hitters #:format 'table))
+ (dataset-table-row-count hitters)
+ (vector-ref (dataset-table-column hitters "player") 1)
+ (hash-ref (dataset-info 'hitters) "suggested-targets")
+ (for/sum ([salary (in-vector (dataset-table-column hitters "salary"))])
+   (if (dataset-missing? salary) 1 0))]
+
+The @tt{islr2-chapters} key of each dataset's metadata lists the chapters whose
+text and labs, and whose exercises, use it:
+
+@examples[#:eval ev
+ (hash-ref (dataset-info 'auto) "islr2-chapters")]
+
+The table below is built from those keys. Chapter 12 also uses
+@racket['us-arrests], from @tt{datasets-core}. The
+@secref["datasets-catalog" #:doc '(lib "datasets/core-doc/datasets-core.scrbl")]
+describes the columns and provenance of each dataset.
+
+@(tabular #:sep (hspace 2)
+  (cons (list "Chapter" "Text and labs" "Exercises")
+        (islr-chapter-cells (lambda (id) (racketvalfont (format "'~a" id))))))
 
 @section[#:tag "datasets-matrices-guide"]{Preparing a numeric matrix}
 

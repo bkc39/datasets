@@ -297,6 +297,9 @@ string keys:
        (list @tt{package} "Name of the package whose registry declares the dataset.")
        (list @tt{fetch} @elem{@racket[#f] for bundled data, a hash for fetch-tier data; see @secref["datasets-core-cache-reference"].}))]
 
+A package registry may add further keys, which core passes through unchecked to
+@racket[dataset-info]; @tt{datasets-islr}, for example, adds @tt{islr2-chapters}.
+
 Each column-description hash has @tt{name}, @tt{original-name}, @tt{type},
 @tt{levels}, @tt{unit}, @tt{description}, and @tt{missing-count} keys.
 Semantic types are strings: @tt{integer}, @tt{real}, @tt{categorical},

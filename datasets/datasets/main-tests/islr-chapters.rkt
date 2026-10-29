@@ -1,0 +1,28 @@
+#lang racket/base
+(require (only-in datasets dataset-names)
+         (only-in datasets/main-doc/islr-chapters islr-chapter-cells islr-chapter-rows)
+         (only-in racket/list append-map remove-duplicates)
+         (only-in racket/match match-lambda))
+(module+ test
+  (require (only-in rackunit check-equal?))
+  (define rows (islr-chapter-rows))
+  (define used
+    (append-map (match-lambda [(list _ text exercises) (append text exercises)]) rows))
+  (check-equal? rows
+                '(("1 Introduction" (nci60 smarket wage) ())
+                  ("2 Statistical Learning" (auto) (auto boston college))
+                  ("3 Linear Regression" (auto boston carseats credit) (auto boston carseats))
+                  ("4 Classification" (bikeshare caravan default smarket) (auto boston weekly))
+                  ("5 Resampling Methods" (auto portfolio) (boston default weekly))
+                  ("6 Linear Model Selection and Regularization" (credit hitters) (boston college))
+                  ("7 Moving Beyond Linearity" (wage) (auto boston college wage))
+                  ("8 Tree-Based Methods" (boston carseats hitters)
+                                          (boston caravan carseats hitters oj))
+                  ("9 Support Vector Machines" (khan) (auto oj))
+                  ("10 Deep Learning" (hitters nyse) (default nyse))
+                  ("11 Survival Analysis" (brain-cancer publication) (brain-cancer))
+                  ("12 Unsupervised Learning" (nci60) (boston))
+                  ("13 Multiple Testing" (fund khan) (carseats))))
+  (check-equal? (list-ref (islr-chapter-cells symbol->string) 8)
+                '("9 Support Vector Machines" ("khan") ("auto" ", " "oj")))
+  (check-equal? (sort (remove-duplicates used) symbol<?) (dataset-names #:package "datasets-islr")))

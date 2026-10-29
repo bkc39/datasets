@@ -9,7 +9,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULTS = {'datasets-core': ('datasets-core/datasets/core-data', 'datasets-core/datasets/provenance'),
             'datasets-r': ('datasets-r/datasets/r-data', 'datasets-r/datasets/r-data/provenance'),
-            'datasets-uci': ('datasets-uci/datasets/uci-data', 'datasets-uci/datasets/uci-data/provenance')}
+            'datasets-uci': ('datasets-uci/datasets/uci-data', 'datasets-uci/datasets/uci-data/provenance'),
+            'datasets-islr': ('datasets-islr/datasets/islr-data', 'datasets-islr/datasets/islr-data/provenance')}
 cli = argparse.ArgumentParser(description=__doc__)
 cli.add_argument('--fetch', action='store_true')
 cli.add_argument('--package', default='datasets-core')
@@ -154,6 +155,114 @@ def import_core():
             measures=['radius','texture','perimeter','area','smoothness','compactness','concavity','concave points','symmetry','fractal dimension']
             names=[m+' '+s for s in ['mean','standard error','worst'] for m in measures]+['diagnosis','id']
             add(id,names,[r[2:]+[r[1],str(r[0])] for r in rows],id,levels={'diagnosis':['M','B']},identifiers=['id'],targets=['diagnosis'],notes='UCI diagnostic dataset. Source ID and M/B diagnosis moved after 30 measurements. Worst means mean of the three largest values; source IDs retained as strings.')
+ISLR_CITATION='James, G., Witten, D., Hastie, T. and Tibshirani, R. (2022). ISLR2: Introduction to Statistical Learning, Second Edition. R package version 1.3-2. Book: An Introduction to Statistical Learning with Applications in R, Second Edition (2021), Springer, https://www.statlearning.com. Original sources in the bundled upstream documentation.'
+ISLR_RECIPES=[
+    ('auto','Auto',dict(targets=['mpg'],units={'mpg':'miles per gallon','weight':'lbs'},
+        notes='The 392 vehicles with a known horsepower: ISLR2 dropped 5 of the 397 rows of Auto.data, and the numeric row names that index them are not kept. name is categorical with all 304 R levels.')),
+    ('bikeshare','Bikeshare',dict(targets=['bikers'],
+        notes='Only 2011 is included: 8,645 hours, day 1 to 365. hr is categorical with levels "0" to "23"; mnth keeps R\'s level labels.')),
+    ('boston','Boston',dict(targets=['medv'],units={'medv':'$1000s'},
+        notes='ISLR2\'s Boston: MASS::Boston without the black column.')),
+    ('brain-cancer','BrainCancer',dict(targets=['time','status'],units={'gtv':'cm^3','time':'months'},
+        notes='Survival data: time with status 1 = event observed, 0 = censored. One diagnosis is missing.')),
+    ('caravan','Caravan',dict(targets=['purchase'],renames={'mink123-m':'mink123m'})),
+    ('carseats','Carseats',dict(targets=['sales'],units={'sales':'thousands of units'})),
+    ('college','College',dict(identifiers=['name'],targets=['apps'],renames={'f-undergrad':'full-time-undergrad','p-undergrad':'part-time-undergrad','ph-d':'phd','s-f-ratio':'sf-ratio'},
+        originals={'name':'row names'},descriptions={'name':'College name'},notes='The college names, R row names, become the first column, name.')),
+    ('credit','Credit',dict(targets=['balance'])),
+    ('default','Default',dict(targets=['default'])),
+    ('fund','Fund',dict(
+        notes='Wide form: one row per month (50), one column per manager (2,000).')),
+    ('hitters','Hitters',dict(identifiers=['player'],targets=['salary'],units={'salary':'thousands of dollars'},renames={'c-at-bat':'career-at-bat','c-hits':'career-hits','c-hm-run':'career-hm-run','c-runs':'career-runs','crbi':'career-rbi','c-walks':'career-walks'},
+        originals={'player':'row names'},descriptions={'player':'Player name'},notes='The player names, R row names, become the first column, player, with their leading hyphen kept. The 59 missing salaries are retained.')),
+    ('khan','Khan',dict(targets=['y'],originals={'split':'xtrain or xtest','y':'ytrain or ytest'},descriptions={'split':'Training or test sample','y':'Tumour class, 1-4'},
+        notes='Wide form of the Khan list: the 63 xtrain rows then the 20 xtest rows, told apart by split; y is ytrain or ytest, the tumour class 1-4; gene-1 to gene-2308 are the expression values, original names their column numbers.')),
+    ('nci60','NCI60',dict(originals={'label':'labs'},descriptions={'label':'Cancer type of the cell line'},
+        notes='Wide form of the NCI60 list: label is labs, the cancer type (categorical, sorted levels); gene-1 to gene-6830 are the columns of data, original names their column names. The labels are for checking clusters, not a target.')),
+    ('nyse','NYSE',dict(targets=['log-volume'],
+        notes='date stays an ISO 8601 string; day-of-week is categorical, weekdays in order; train, an R logical, is 1 for the first 4,281 days and 0 after.')),
+    ('oj','OJ',dict(targets=['purchase'],renames={'weekof-purchase':'week-of-purchase'})),
+    ('portfolio','Portfolio',dict()),
+    ('publication','Publication',dict(targets=['time','status'],units={'time':'months'},
+        notes='Survival data: time to publication with status 1 = published. mech, an R character column, is categorical with sorted levels.')),
+    ('smarket','Smarket',dict(targets=['direction'])),
+    ('wage','Wage',dict(targets=['wage'],units={'wage':'thousands of dollars'},
+        notes='The numeric row names are not kept. region keeps all nine R levels though only 2. Middle Atlantic occurs.')),
+    ('weekly','Weekly',dict(targets=['direction'])),
+]
+ISLR_CHAPTERS=[
+    (['nci60','smarket','wage'],[]),
+    (['auto'],['auto','boston','college']),
+    (['auto','boston','carseats','credit'],['auto','boston','carseats']),
+    (['bikeshare','caravan','default','smarket'],['auto','boston','weekly']),
+    (['auto','portfolio'],['boston','default','weekly']),
+    (['credit','hitters'],['boston','college']),
+    (['wage'],['auto','boston','college','wage']),
+    (['boston','carseats','hitters'],['boston','caravan','carseats','hitters','oj']),
+    (['khan'],['auto','oj']),
+    (['hitters','nyse'],['default','nyse']),
+    (['brain-cancer','publication'],['brain-cancer']),
+    (['nci60'],['boston']),
+    (['fund','khan'],['carseats']),
+]
+citations.update({id:ISLR_CITATION for id,_,_ in ISLR_RECIPES})
+def import_islr():
+    if unknown:=sorted({id for used in ISLR_CHAPTERS for ids in used for id in ids}-{id for id,_,_ in ISLR_RECIPES}):
+        raise ValueError(f'ISLR_CHAPTERS names no recipe: {unknown}')
+    def kebab(s):
+        s=re.sub('([A-Z])(?=[A-Z][a-z])',r'\1-',re.sub('([a-z0-9])([A-Z])',r'\1-\2',s))
+        return re.sub('[^a-z0-9]+','-',s.lower()).strip('-')
+    def groups(text,i,n):
+        out=[]
+        for _ in range(n):
+            start=i=text.index('{',i); depth=0
+            while True:
+                depth+={'{':1,'}':-1}.get(text[i],0); i+=1
+                if depth==0: break
+            out.append(text[start+1:i-1])
+        return out,i
+    def plain(s):
+        s=re.sub(r'%%.*','',s)
+        while (t:=re.sub(r'\\[a-z]+\{([^{}]*)\}',r'\1',s))!=s: s=t
+        return ' '.join(re.sub(r'\\([%{}\\])',r'\1',s).split())
+    def rd_items(text):
+        items={}; i=0
+        while (i:=text.find('\\item{',i))>=0:
+            (name,description),i=groups(text,i,2)
+            items[plain(name)]=plain(description)
+        return items
+    def rd_field(text,field): return plain(groups(text,text.index('\\'+field+'{'),1)[0][0])
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp=Path(tmp)
+        with tarfile.open(cache/SOURCES['ISLR2']['file']) as a: a.extractall(tmp,filter='data')
+        subprocess.run(['Rscript',str(ROOT/'scripts/export-r.R'),str(tmp),str(tmp),PACKAGE],check=True)
+        for id,obj,kw in ISLR_RECIPES:
+            rd=(tmp/f'ISLR2/man/{obj}.Rd').read_text(encoding='utf-8')
+            (PROVENANCE/f'{id}.Rd').write_text(rd,encoding='utf-8')
+            with (tmp/f'{id}.csv').open(encoding='utf-8') as f: records=list(csv.reader(f))
+            with (tmp/f'{id}.levels').open(encoding='utf-8') as f: factor_levels=list(csv.reader(f))[1:]
+            original=records[0]
+            originals=kw.get('originals',{})
+            genes=id in ('khan','nci60')
+            kebabs=['gene-'+o if genes and o.isdigit() else kebab(o) for o in original]
+            renames=kw.get('renames',{})
+            if unknown:=sorted(set(renames)-set(kebabs)): raise ValueError(f'{id}: renames name no column: {unknown}')
+            names=[renames.get(n,n) for n in kebabs]
+            if len(set(names))<len(names): raise ValueError(f'{id}: duplicate column names')
+            levels={}
+            for c,l in factor_levels: levels.setdefault(names[original.index(c)],[]).append(l)
+            identifiers=kw.get('identifiers',[])
+            strings={n for n in names if n in levels or n in identifiers}
+            rows=[[None if v=='NA' else v if n in strings else number(v) for v,n in zip(r,names)] for r in records[1:]]
+            for j,n in enumerate(names):
+                if n in levels and not {r[j] for r in rows if r[j] is not None}<=set(levels[n]): raise ValueError(f'{id}: {n} value outside levels')
+            items=rd_items(rd)
+            descriptions={n:items[o] for n,o in zip(names,original) if o in items}|kw.get('descriptions',{})
+            summary=rd_field(rd,'description').removesuffix('.')+'.'
+            factors='R factors rendered as labels with levels in metadata; ' if levels else ''
+            notes=' '.join(filter(None,[summary,kw.get('notes'),factors+'names normalized to kebab-case.']))
+            add(id,[originals.get(n,o) for n,o in zip(names,original)],rows,'ISLR2',names=names,levels=levels,identifiers=identifiers,targets=kw.get('targets',[]),units=kw.get('units',{}),descriptions=descriptions,notes=notes)
+            registry[id]['islr2-chapters']={k:[c+1 for c,used in enumerate(ISLR_CHAPTERS) if id in used[j]] for j,k in enumerate(['text','exercises'])}
 def import_r():
     def kebab(s): return re.sub('[^a-z0-9]+','-',re.sub('([a-z])([A-Z])',r'\1-\2',s).lower()).strip('-')
     def typed(records):
@@ -365,7 +474,7 @@ def import_uci():
             if not present<=set(levels[n]): raise ValueError(f'{id}: {n} values {present-set(levels[n])} outside levels')
             levels[n]=[l for l in levels[n] if l in present]
         add(id,original,rows,source,names=names,levels=levels,**kw)
-{'datasets-core':import_core,'datasets-r':import_r,'datasets-uci':import_uci}[PACKAGE]()
+{'datasets-core':import_core,'datasets-r':import_r,'datasets-uci':import_uci,'datasets-islr':import_islr}[PACKAGE]()
 (OUT/'registry.rktd').write_text(sexp(dict(sorted(registry.items())))+'\n')
 for stale in (OUT/'data').iterdir():
     if stale.name not in {f'{id}.rktd.gz' for id in registry}: stale.unlink()
