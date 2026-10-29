@@ -307,8 +307,9 @@ Semantic types are strings: @tt{integer}, @tt{real}, @tt{categorical},
 has an empty level list. A unit of @racket[#f] means unspecified. The missing count
 refers to that column in the complete source dataset.
 
-For AirPassengers, the time-series hash has @tt{frequency} (12 observations per
-year), @tt{start} and @tt{end} (year/month lists), and @tt{index} (the year and
-month column names). Other v0.1 datasets have @racket[#f] for @tt{time-series}.
+A time-series hash has @tt{frequency} (observations per unit of the first index
+column, such as 12 for monthly data indexed by year and month), @tt{index} (the
+names of the index columns, outermost first), and @tt{start} and @tt{end} (the
+index values of the first and last rows, one per index column).
 
 @(close-eval ev)

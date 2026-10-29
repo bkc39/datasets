@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Regenerate committed data from hash-verified archives; needs Python 3.12+ and R (xlrd for --package datasets-uci); source definitions are pinned to R 4.3.3.
 Pass an archive directory (offline), or --fetch to download sources into it first.
-Writes TARGET/registry.rktd and TARGET/data/<id>.rktd.gz for one package.
+Writes TARGET/registry.rktd and TARGET/data/<id>.rktd.gz for one package; for datasets-r also the R object table
+datasets-r/datasets/r-private/objects.rkt, or TARGET/r-private/objects.rkt when --target is given.
 """
 import argparse, csv, gzip, hashlib, io, json, re, subprocess, sys, tarfile, tempfile, urllib.request, zipfile
 import xml.etree.ElementTree as ET
@@ -22,8 +23,9 @@ if args.package not in DEFAULTS: sys.exit(f'No import recipes for package {args.
 PACKAGE = args.package
 OUT = args.target or ROOT/DEFAULTS[PACKAGE][0]
 PROVENANCE = args.provenance or ROOT/DEFAULTS[PACKAGE][1]
+PRIVATE = args.target/'r-private' if args.target else ROOT/'datasets-r/datasets/r-private'
 (OUT/'data').mkdir(parents=True,exist_ok=True); PROVENANCE.mkdir(parents=True,exist_ok=True)
-SOURCES = {k:s for k,s in json.loads((ROOT/'scripts/sources.json').read_text()).items() if s.get('package','datasets-core')==PACKAGE}
+SOURCES = {k:s for k,s in json.loads((ROOT/'scripts/sources.json').read_text()).items() if PACKAGE in s.get('packages',[s.get('package','datasets-core')])}
 fetch = args.fetch
 cache = args.archive_dir; cache.mkdir(parents=True,exist_ok=True)
 for s in SOURCES.values():
@@ -66,6 +68,7 @@ citations.update({'penguins':'Horst, A. M., Hill, A. P. and Gorman, K. B. (2020)
                   'titanic-passengers':'Hendricks, P. (2015). titanic: Titanic Passenger Survival Data Set. R package version 0.1.0. Data: Kaggle, Titanic: Machine Learning from Disaster, https://www.kaggle.com/c/titanic/data'})
 citations['penguins-raw']=citations['penguins']
 PENGUIN_UNITS={'bill-length-mm':'mm','bill-depth-mm':'mm','culmen-length-mm':'mm','culmen-depth-mm':'mm','flipper-length-mm':'mm','body-mass-g':'g','delta-15-n':'per mil (o/oo)','delta-13-c':'per mil (o/oo)'}
+R_DATASETS='R-4.3.3/src/library/datasets/'
 R_RECIPES=[
     ('penguins','palmerpenguins',dict(units=PENGUIN_UNITS,targets=['species'],
         descriptions={'species':'Penguin species','island':'Island in the Palmer Archipelago, Antarctica','bill-length-mm':'Bill (culmen) length','bill-depth-mm':'Bill (culmen) depth','flipper-length-mm':'Flipper length','body-mass-g':'Body mass','sex':'Sex','year':'Study year'},
@@ -265,15 +268,17 @@ def import_islr():
             registry[id]['islr2-chapters']={k:[c+1 for c,used in enumerate(ISLR_CHAPTERS) if id in used[j]] for j,k in enumerate(['text','exercises'])}
 def import_r():
     def kebab(s): return re.sub('[^a-z0-9]+','-',re.sub('([a-z])([A-Z])',r'\1-\2',s).lower()).strip('-')
-    def typed(records):
+    def typed(records,strings=()):
         columns=list(zip(*records[1:]))
-        numeric=[all(v=='NA' or isinstance(number(v),(int,float)) for v in c) for c in columns]
+        numeric=[h not in strings and all(v=='NA' or isinstance(number(v),(int,float)) for v in c) for h,c in zip(records[0],columns)]
         return [[number(v) if n else None if v=='NA' else v for v,n in zip(r,numeric)] for r in records[1:]]
     with tempfile.TemporaryDirectory() as tmp:
         tmp=Path(tmp)
-        for s in SOURCES.values():
-            with tarfile.open(cache/s['file']) as a: a.extractall(tmp,filter='data')
+        for k,s in SOURCES.items():
+            with tarfile.open(cache/s['file']) as a:
+                a.extractall(tmp,[m for m in a.getmembers() if k!='R' or m.name.startswith(R_DATASETS)],filter='data')
         subprocess.run(['Rscript',str(ROOT/'scripts/export-r.R'),str(tmp),str(tmp),PACKAGE],check=True)
+        subprocess.run(['Rscript',str(ROOT/'scripts/export-r-datasets.R'),str(tmp),str(tmp)],check=True)
         for id,rd in [('penguins','palmerpenguins/man/penguins.Rd'),('penguins-raw','palmerpenguins/man/penguins_raw.Rd'),('gapminder','gapminder/man/gapminder.Rd'),('datasaurus-dozen','datasauRus/man/datasaurus_dozen.Rd'),('titanic-passengers','titanic/man/titanic_train.Rd')]:
             (PROVENANCE/f'{id}.Rd').write_bytes((tmp/rd).read_bytes())
         (PROVENANCE/'datasauRus-LICENSE').write_bytes((tmp/'datasauRus/LICENSE').read_bytes())
@@ -289,6 +294,35 @@ def import_r():
             for j,n in enumerate(names):
                 if n in levels and not {r[j] for r in rows if r[j] is not None}<=set(levels[n]): raise ValueError(f'{id}: {n} value outside levels')
             add(id,records[0],rows,source,names=names,levels=levels,**kw)
+        def table(name):
+            with (tmp/name).open(encoding='utf-8') as f: return list(csv.DictReader(f))
+        man=tmp/R_DATASETS/'man'
+        pages={a:p for p in sorted(man.glob('*.Rd')) for a in re.findall(r'\\alias\{([^}]*)\}',p.read_text())}
+        manifest=table('r-datasets.csv')
+        for m in manifest:
+            id,objects=m['id'],m['objects'].split('|')
+            page=pages[objects[0]]
+            (PROVENANCE/f'{id}.Rd').write_bytes(page.read_bytes())
+            title=re.search(r'\\title\{((?:[^{}]|\{[^{}]*\})*)\}',page.read_text()).group(1)
+            title=' '.join(re.sub(r'\\[A-Za-z]+\{([^{}]*)\}',r'\1',title).replace('--','–').split())
+            columns=table(f'{id}.columns')
+            with (tmp/f'{id}.csv').open(encoding='utf-8') as f: records=list(csv.reader(f))
+            levels={}
+            for l in table(f'{id}.levels'): levels.setdefault(l['column'],[]).append(l['level'])
+            identifiers=[i for i in m['identifiers'].split('|') if i]
+            series=m['frequency'] and {'frequency':number(m['frequency']),'start':[number(v) for v in m['start'].split('|')],
+                                       'end':[number(v) for v in m['end'].split('|')],'index':m['index'].split('|')}
+            add(id,[c['original'] for c in columns],typed(records,set(levels)|set(identifiers)),'R',names=[c['name'] for c in columns],
+                levels=levels,identifiers=identifiers,descriptions={c['name']:c['description'] for c in columns},series=series,
+                notes=f"{title}. R object{'s'[:len(objects)-1]} {', '.join(objects)}. {m['notes']}")
+        objects=sorted(table('r-objects.csv'),key=lambda r:(r['object'].lower(),r['object']))
+        if {r['target'] for r in objects if r['disposition']=='dataset'}!={m['id'] for m in manifest}: raise ValueError('R objects and exported datasets disagree')
+        def object_row(r):
+            cell=sexp('Skipped. '+r['target']) if r['disposition']=='skipped' else f"(dataset {r['target']})"
+            return f"((tt {sexp(r['object'])}) {sexp(r['class'])} {cell})"
+        PRIVATE.mkdir(parents=True,exist_ok=True)
+        (PRIVATE/'objects.rkt').write_text("#lang racket/base\n(provide r-objects)\n(define r-objects\n  '("
+                                     +'\n    '.join(object_row(r) for r in objects)+'))\n')
 PIXELS=[f'pixel_{i}_{j}' for i in range(8) for j in range(8)]
 NUMERIC=re.compile(r'[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?')
 def kebab(s): return re.sub('[^a-z0-9]+','-',s.lower()).strip('-')

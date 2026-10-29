@@ -7,8 +7,9 @@ still being expanded.
 Bundled datasets for Racket 9.3+: mtcars, iris, faithful, anscombe,
 airquality, us-arrests, plant-growth, tooth-growth, titanic, air-passengers,
 diabetes, breast-cancer, and wine in `datasets-core`, plus penguins,
-penguins-raw, gapminder, datasaurus-dozen, and titanic-passengers in
-`datasets-r`, plus digits, optdigits, adult, auto-mpg, abalone, wine-quality,
+penguins-raw, gapminder, datasaurus-dozen, titanic-passengers, and the rest
+of R's `datasets` package (79 more sets: cars, co2, quakes, state, volcano, ...)
+in `datasets-r`, plus digits, optdigits, adult, auto-mpg, abalone, wine-quality,
 bank-marketing, heart-disease, mushroom, car-evaluation, spambase,
 banknote-authentication, seeds, concrete-strength, energy-efficiency,
 student-performance, bike-sharing-daily, and bike-sharing-hourly in
@@ -100,8 +101,8 @@ GPL-2 for [lars 1.3](https://CRAN.R-project.org/package=lars), and CC BY 4.0 for
 [Wine](https://archive.ics.uci.edu/dataset/109/wine), and
 [Breast Cancer Wisconsin (Diagnostic)](https://archive.ics.uci.edu/dataset/17/breast+cancer+wisconsin+diagnostic).
 The `datasets-r` sets are CC0 (palmerpenguins 0.1.1, gapminder 1.0.1,
-titanic 0.1.0) and MIT (datasauRus 0.1.9). The `datasets-uci` sets are CC BY 4.0
-per their UCI Machine Learning Repository pages.
+titanic 0.1.0), MIT (datasauRus 0.1.9), and GPL-2 or GPL-3 (R 4.3.3 `datasets`).
+The `datasets-uci` sets are CC BY 4.0 per their UCI Machine Learning Repository pages.
 This is a redistribution basis, not a claim of independent original-owner
 permission. The `datasets-islr` sets are GPL-2
 ([ISLR2 1.3-2](https://CRAN.R-project.org/package=ISLR2)). See [NOTICE](datasets-core/NOTICE) and
@@ -176,7 +177,8 @@ lars 1.3 archive; R's numeric export uses 17 significant digits for binary64
 round trips. ZIP sources are also hash-verified before use. End-user builds
 consume only the committed gzip-compressed `.rktd.gz` files under
 `datasets-core/datasets/core-data`; registry checksums cover the uncompressed
-text. `--package datasets-r` imports the CRAN teaching sets into
+text. `--package datasets-r` imports the CRAN teaching sets and R's `datasets`
+package (through `scripts/export-r-datasets.R`) into
 `datasets-r/datasets/r-data`, and `--package datasets-uci` the UCI sets into
 `datasets-uci/datasets/uci-data` (Python only, with xlrd for one `.xls`
 source); `--target DIR` writes elsewhere.

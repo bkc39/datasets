@@ -19,5 +19,6 @@ table API, see @other-doc['(lib "datasets/core-doc/datasets-core.scrbl")].
 
 @table-of-contents[]
 @include-section["guide.scrbl"]
+@include-section["r-datasets.scrbl"]
 @include-section["reference.scrbl"]
 @index-section[]

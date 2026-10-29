@@ -113,6 +113,7 @@
               export PLTUSERHOME=$(mktemp -d /tmp/datasets-dev.XXXXXXXX)
               cp -R ${self.packages.${system}.dev-home}/share/racket-home/. "$PLTUSERHOME/"
               chmod -R u+w "$PLTUSERHOME"
+              find "$PLTUSERHOME" -name docindex.sqlite -type f -delete
               raco pkg install --batch --deps fail --no-setup --link --scope user \
                 "$PWD/datasets-core" "$PWD/datasets-r" "$PWD/datasets-uci" "$PWD/datasets-islr" "$PWD/datasets"
               raco setup --no-docs --pkgs datasets-r datasets-uci datasets-islr

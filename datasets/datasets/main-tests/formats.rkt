@@ -19,8 +19,8 @@
          (only-in racket/list last))
 (module+ test
   (require (only-in rackunit check-= check-eq? check-equal? check-exn check-true test-case))
-  (define (check-formats)
-    (for ([id (in-list (dataset-names #:package "datasets-core"))])
+  (define (check-formats [package "datasets-core"])
+    (for ([id (in-list (dataset-names #:package package))])
       (define t (load-dataset id #:format 'table))
       (define names (reverse (dataset-table-names t)))
       (define p (load-dataset id #:columns names))
@@ -56,6 +56,7 @@
       (check-equal? (loader #:format 'table) (load-dataset name #:format 'table))
       (check-exn #rx"blaming: [^\n]*formats\\.rkt" (lambda () (loader #:format 'bad)))))
   (check-formats)
+  (check-formats "datasets-r")
   (check-loaders)
   (define air (load-airquality #:format 'data-frame))
   (check-eq? (df:df-na-value air "ozone") dataset-missing)
