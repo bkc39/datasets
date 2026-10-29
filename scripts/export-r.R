@@ -1,21 +1,15 @@
-args <- commandArgs(TRUE)
-root <- args[1]; out <- args[2]
+source(file.path(dirname(sub('^--file=', '', grep('^--file=', commandArgs(FALSE), value=TRUE))), 'r-export-common.R'))
 package <- if (length(args) > 2) args[3] else 'datasets-core'
-options(digits=17)
-precise <- function(d) {
-  d[] <- lapply(d, function(x) if (is.numeric(x)) ifelse(is.na(x), NA, sprintf('%.17g',x)) else x)
-  d
+nycflights13 <- function(tables) {
+  for (table in tables) {
+    e <- new.env()
+    load(file.path(root,'nycflights13/data',paste0(table,'.rda')),envir=e)
+    export(get(table,envir=e), paste0('nycflights13-',table))
+  }
 }
-export <- function(d, id) {
-  d <- as.data.frame(d)
-  d[] <- lapply(d, function(x) if (inherits(x, 'Date')) format(x) else x)
-  text <- vapply(d, function(x) is.character(x) || is.factor(x), TRUE)
-  stopifnot(!any(unlist(lapply(d[text], function(x) as.character(x) == 'NA')), na.rm=TRUE))
-  write.table(precise(d),file.path(out,paste0(id,'.csv')),sep=',',row.names=FALSE,na='NA',qmethod='double')
-  factors <- names(d)[vapply(d, is.factor, TRUE)]
-  levels <- do.call(rbind, c(list(data.frame(column=character(), level=character())),
-                             lapply(factors, function(n) data.frame(column=n, level=levels(d[[n]])))))
-  write.table(levels,file.path(out,paste0(id,'.levels')),sep=',',row.names=FALSE,qmethod='double')
+if (package == 'nycflights13') {
+  nycflights13(c('airlines','airports','flights','planes','weather'))
+  quit(save='no')
 }
 if (package == 'datasets-islr') {
   islr <- new.env()
@@ -52,6 +46,7 @@ if (package == 'datasets-r') {
   titanic_train$Cabin[titanic_train$Cabin == ''] <- NA
   titanic_train$Embarked[titanic_train$Embarked == ''] <- NA
   export(titanic_train, 'titanic-passengers')
+  nycflights13(c('airlines','airports','planes','weather'))
   quit(save='no')
 }
 names <- c(mtcars='mtcars', faithful='faithful', anscombe='anscombe', airquality='airquality', 'us-arrests'='USArrests', 'plant-growth'='PlantGrowth', 'tooth-growth'='ToothGrowth', titanic='Titanic', 'air-passengers'='AirPassengers')
@@ -63,9 +58,9 @@ for (id in names(names)) {
   if (id == 'air-passengers') d <- data.frame(year=rep(1949:1960,each=12), month=rep(1:12,12), passengers=as.numeric(d))
   if (id == 'mtcars') d <- cbind(model=rownames(d),d)
   if (id == 'us-arrests') d <- cbind(state=rownames(d),d)
-  write.table(precise(d),file.path(out,paste0(id,'.csv')),sep=',',row.names=FALSE,na='NA',qmethod='double')
+  export(d, id)
 }
 load(file.path(root,'lars/data/diabetes.RData'))
 d <- as.data.frame(diabetes$x)
 d$response <- diabetes$y
-write.table(precise(d),file.path(out,'diabetes.csv'),sep=',',row.names=FALSE,qmethod='double')
+export(d, 'diabetes')

@@ -4,9 +4,11 @@ Pass an archive directory (offline), or --fetch to download sources into it firs
 Writes TARGET/registry.rktd and TARGET/data/<id>.rktd.gz for one package; for datasets-r also the R object table
 datasets-r/datasets/r-private/objects.rkt, or TARGET/r-private/objects.rkt when --target is given.
 """
-import argparse, csv, gzip, hashlib, io, json, re, subprocess, sys, tarfile, tempfile, urllib.request, zipfile
+import argparse, csv, gzip, hashlib, io, json, re, shutil, subprocess, sys, tarfile, tempfile, urllib.request, zipfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
+sys.path.insert(0,str(Path(__file__).resolve().parent))
+from rtable import read_csv_rows, read_r_levels, read_r_table
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULTS = {'datasets-core': ('datasets-core/datasets/core-data', 'datasets-core/datasets/provenance'),
             'datasets-r': ('datasets-r/datasets/r-data', 'datasets-r/datasets/r-data/provenance'),
@@ -46,15 +48,21 @@ def number(s):
         try: return float(s)
         except ValueError: return s
 registry={}
-def add(id,original,rows,source,levels={},units={},descriptions={},identifiers=[],targets=[],notes='',series=None,names=None):
+def column_kind(name,values,kind,levels,identifiers):
+    if name in identifiers: return 'identifier'
+    if name in levels: return 'categorical'
+    if kind: return kind
+    if all(isinstance(v,int) for v in values): return 'integer'
+    if all(isinstance(v,(int,float)) for v in values): return 'real'
+    return 'string'
+def add(id,original,rows,source,levels={},units={},descriptions={},identifiers=[],targets=[],notes='',series=None,names=None,kinds=None):
     names=names or [re.sub('[^a-z0-9]+','-',s.lower()).strip('-') for s in original]
     aliases={'freq':'frequency','len':'length','supp':'supplement','solar-r':'solar-r','urbanpop':'urban-pop','sepal-length':'sepal-length'}
     names=[aliases.get(n,n) for n in names]
     if id=='diabetes': names=[n.removeprefix('x-') for n in names]
     columns=[]
-    for j,(name,orig) in enumerate(zip(names,original)):
-        values=[r[j] for r in rows if r[j] is not None]
-        kind='identifier' if name in identifiers else 'categorical' if name in levels else 'integer' if all(isinstance(v,int) for v in values) else 'real' if all(isinstance(v,(int,float)) for v in values) else 'string'
+    for j,(name,orig,kind) in enumerate(zip(names,original,kinds or [None]*len(names))):
+        kind=column_kind(name,[r[j] for r in rows if r[j] is not None],kind,levels,identifiers)
         columns.append({'name':name,'original-name':orig,'type':kind,'levels':levels.get(name,[]),'unit':units.get(name,False),'description':descriptions.get(name,orig),'missing-count':sum(r[j] is None for r in rows)})
     text='(\n'+'\n'.join('  '+sexp(r) for r in rows)+'\n)\n'
     (OUT/'data'/f'{id}.rktd.gz').write_bytes(gzip.compress(text.encode(),9,mtime=0))
@@ -87,6 +95,44 @@ R_RECIPES=[
         descriptions={'passenger-id':'Passenger ID','survived':'Survival: 0 = died, 1 = survived','pclass':'Ticket class: 1 = 1st, 2 = 2nd, 3 = 3rd','sib-sp':'Siblings and spouses aboard','parch':'Parents and children aboard','ticket':'Ticket number','fare':'Passenger fare','embarked':'Port of embarkation: C = Cherbourg, Q = Queenstown, S = Southampton'},
         notes='The 891-passenger Kaggle training set (titanic_train). The 418-passenger test set is not included: it has no survival labels. The 177 missing ages are retained as missing; empty cabin (687) and embarked (2) strings are rendered as missing. Ticket stays a string column. Not to be confused with titanic, the 32-cell R contingency table.')),
 ]
+NYCFLIGHTS13_CITATION=('Wickham, H. (2021). nycflights13: Flights that Departed NYC in 2013. R package version 1.0.2. '
+                       'https://CRAN.R-project.org/package=nycflights13. Data: ')
+NYCFLIGHTS13_NOTES=(' Columns keep their R types: integers stay integers, doubles are reals; names normalized to kebab-case;'
+                    ' R NA rendered as missing.')
+NYCFLIGHTS13_RECIPES=[
+    ('nycflights13-airlines','Bureau of Transportation Statistics, https://www.transtats.bts.gov/DL_SelectFields.asp?Table_ID=236',
+     dict(identifiers=['carrier'],
+          descriptions={'carrier':'Two-letter carrier abbreviation','name':'Full airline name'},
+          notes='Airline names for the carrier codes of nycflights13-flights.')),
+    ('nycflights13-airports','OpenFlights, https://openflights.org/data.html, downloaded 2014-06-27',
+     dict(identifiers=['faa'],units={'lat':'degrees','lon':'degrees','alt':'feet','tz':'hours'},
+          descriptions={'faa':'FAA airport code','name':'Usual name of the airport','lat':'Latitude','lon':'Longitude',
+                        'alt':'Altitude','tz':'Time zone offset from GMT',
+                        'dst':'Daylight saving time zone: A = standard US DST (second Sunday of March to first Sunday of November), '
+                              'U = unknown, N = no DST',
+                        'tzone':'IANA time zone, as determined by the GeoNames web service'},
+          notes='Metadata for 1,458 airports; faa joins the origin and dest columns of nycflights13-flights.')),
+    ('nycflights13-planes',
+     'FAA Aircraft Registry, '
+     'https://www.faa.gov/licenses_certificates/aircraft_certification/aircraft_registry/releasable_aircraft_download/',
+     dict(identifiers=['tailnum'],units={'speed':'mph'},
+          descriptions={'tailnum':'Tail number','year':'Year manufactured','type':'Type of plane','manufacturer':'Manufacturer',
+                        'model':'Model','engines':'Number of engines','seats':'Number of seats','speed':'Average cruising speed',
+                        'engine':'Type of engine'},
+          notes='Plane metadata for the tail numbers of nycflights13-flights found in the FAA aircraft registry. '
+                'American Airways (AA) and Envoy Air (MQ) report fleet numbers rather than tail numbers, so their flights do not match.')),
+    ('nycflights13-weather','ASOS download from the Iowa Environmental Mesonet, https://mesonet.agron.iastate.edu/request/download.phtml',
+     dict(units={'temp':'degrees Fahrenheit','dewp':'degrees Fahrenheit','humid':'percent','wind-dir':'degrees','wind-speed':'mph',
+                 'wind-gust':'mph','precip':'inches','pressure':'millibars','visib':'miles'},
+          descriptions={'origin':'Weather station: EWR, JFK or LGA','year':'Year of recording','month':'Month of recording',
+                        'day':'Day of recording','hour':'Hour of recording, local time','temp':'Temperature','dewp':'Dew point',
+                        'humid':'Relative humidity','wind-dir':'Wind direction','wind-speed':'Wind speed','wind-gust':'Wind gust speed',
+                        'precip':'Precipitation','pressure':'Sea level pressure','visib':'Visibility',
+                        'time-hour':'Date and hour of the recording, ISO 8601 UTC'},
+          notes='Hourly meteorological data for the three New York City airports in 2013; joins nycflights13-flights on origin and time-hour. '
+                'The R POSIXct time_hour (America/New_York) is rendered as an ISO 8601 UTC string, as in nycflights13-flights.')),
+]
+citations.update({id:NYCFLIGHTS13_CITATION+data for id,data,_ in NYCFLIGHTS13_RECIPES})
 CORE_RECIPES={
     'mtcars':dict(
         identifiers=['model'],
@@ -268,10 +314,6 @@ def import_islr():
             registry[id]['islr2-chapters']={k:[c+1 for c,used in enumerate(ISLR_CHAPTERS) if id in used[j]] for j,k in enumerate(['text','exercises'])}
 def import_r():
     def kebab(s): return re.sub('[^a-z0-9]+','-',re.sub('([a-z])([A-Z])',r'\1-\2',s).lower()).strip('-')
-    def typed(records,strings=()):
-        columns=list(zip(*records[1:]))
-        numeric=[h not in strings and all(v=='NA' or isinstance(number(v),(int,float)) for v in c) for h,c in zip(records[0],columns)]
-        return [[number(v) if n else None if v=='NA' else v for v,n in zip(r,numeric)] for r in records[1:]]
     with tempfile.TemporaryDirectory() as tmp:
         tmp=Path(tmp)
         for k,s in SOURCES.items():
@@ -283,39 +325,36 @@ def import_r():
             (PROVENANCE/f'{id}.Rd').write_bytes((tmp/rd).read_bytes())
         (PROVENANCE/'datasauRus-LICENSE').write_bytes((tmp/'datasauRus/LICENSE').read_bytes())
         for id,source,kw in R_RECIPES:
-            with (tmp/f'{id}.csv').open(encoding='utf-8') as f: records=list(csv.reader(f))
-            with (tmp/f'{id}.levels').open(encoding='utf-8') as f: factor_levels=list(csv.reader(f))[1:]
+            header,kinds,rows=read_r_table(tmp,id)
             aliases=kw.pop('aliases',{})
-            names=[aliases.get(kebab(o),kebab(o)) for o in records[0]]
-            levels={kebab(c):[] for c,_ in factor_levels}
-            for c,l in factor_levels: levels[kebab(c)].append(l)
-            levels.update(kw.pop('levels',{}))
-            rows=typed(records)
+            names=[aliases.get(kebab(o),kebab(o)) for o in header]
+            levels=read_r_levels(tmp,id,kebab)|kw.pop('levels',{})
             for j,n in enumerate(names):
                 if n in levels and not {r[j] for r in rows if r[j] is not None}<=set(levels[n]): raise ValueError(f'{id}: {n} value outside levels')
-            add(id,records[0],rows,source,names=names,levels=levels,**kw)
-        def table(name):
-            with (tmp/name).open(encoding='utf-8') as f: return list(csv.DictReader(f))
+            add(id,header,rows,source,names=names,levels=levels,kinds=kinds,**kw)
+        for id,_,kw in NYCFLIGHTS13_RECIPES:
+            shutil.copyfile(tmp/'nycflights13/man'/f"{id.removeprefix('nycflights13-')}.Rd",PROVENANCE/f'{id}.Rd')
+            header,kinds,rows=read_r_table(tmp,id)
+            add(id,header,rows,'nycflights13',names=[kebab(h) for h in header],kinds=kinds,**kw|{'notes':kw['notes']+NYCFLIGHTS13_NOTES})
         man=tmp/R_DATASETS/'man'
         pages={a:p for p in sorted(man.glob('*.Rd')) for a in re.findall(r'\\alias\{([^}]*)\}',p.read_text())}
-        manifest=table('r-datasets.csv')
+        manifest=read_csv_rows(tmp,'r-datasets.csv')
         for m in manifest:
             id,objects=m['id'],m['objects'].split('|')
             page=pages[objects[0]]
             (PROVENANCE/f'{id}.Rd').write_bytes(page.read_bytes())
             title=re.search(r'\\title\{((?:[^{}]|\{[^{}]*\})*)\}',page.read_text()).group(1)
             title=' '.join(re.sub(r'\\[A-Za-z]+\{([^{}]*)\}',r'\1',title).replace('--','–').split())
-            columns=table(f'{id}.columns')
-            with (tmp/f'{id}.csv').open(encoding='utf-8') as f: records=list(csv.reader(f))
-            levels={}
-            for l in table(f'{id}.levels'): levels.setdefault(l['column'],[]).append(l['level'])
+            columns=read_csv_rows(tmp,f'{id}.columns')
+            _,kinds,rows=read_r_table(tmp,id)
+            levels=read_r_levels(tmp,id)
             identifiers=[i for i in m['identifiers'].split('|') if i]
             series=m['frequency'] and {'frequency':number(m['frequency']),'start':[number(v) for v in m['start'].split('|')],
                                        'end':[number(v) for v in m['end'].split('|')],'index':m['index'].split('|')}
-            add(id,[c['original'] for c in columns],typed(records,set(levels)|set(identifiers)),'R',names=[c['name'] for c in columns],
+            add(id,[c['original'] for c in columns],rows,'R',names=[c['name'] for c in columns],kinds=kinds,
                 levels=levels,identifiers=identifiers,descriptions={c['name']:c['description'] for c in columns},series=series,
                 notes=f"{title}. R object{'s'[:len(objects)-1]} {', '.join(objects)}. {m['notes']}")
-        objects=sorted(table('r-objects.csv'),key=lambda r:(r['object'].lower(),r['object']))
+        objects=sorted(read_csv_rows(tmp,'r-objects.csv'),key=lambda r:(r['object'].lower(),r['object']))
         if {r['target'] for r in objects if r['disposition']=='dataset'}!={m['id'] for m in manifest}: raise ValueError('R objects and exported datasets disagree')
         def object_row(r):
             cell=sexp('Skipped. '+r['target']) if r['disposition']=='skipped' else f"(dataset {r['target']})"

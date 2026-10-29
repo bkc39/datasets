@@ -41,6 +41,14 @@
     "version": "gapminder 1.0.1",
     "license": "CC0-1.0"
   },
+  "nycflights13": {
+    "file": "datasets-nycflights13_1.0.2.tar.gz",
+    "url": "https://cran.r-project.org/src/contrib/nycflights13_1.0.2.tar.gz",
+    "sha256": "0e87c5a4e285f16750e91c75aeba33b1e4682cdabf4a3effe5a1de7398394a1d",
+    "package": "datasets-r",
+    "version": "nycflights13 1.0.2",
+    "license": "CC0-1.0"
+  },
   "datasauRus": {
     "file": "datasets-datasauRus_0.1.9.tar.gz",
     "url": "https://cran.r-project.org/src/contrib/datasauRus_0.1.9.tar.gz",

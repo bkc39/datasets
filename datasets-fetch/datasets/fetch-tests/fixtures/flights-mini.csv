@@ -1,0 +1,5 @@
+rownames,year,month,day,dep_time,sched_dep_time,dep_delay,arr_time,sched_arr_time,arr_delay,carrier,flight,tailnum,origin,dest,air_time,distance,hour,minute,time_hour
+1,2013,1,1,517,515,2,830,819,11,UA,1545,N14228,EWR,IAH,227,1400,5,15,2013-01-01T10:00:00Z
+472,2013,1,1,1525,1530,-5,1934,1805,,MQ,4525,N719MQ,LGA,XNA,,1147,15,30,2013-01-01T20:00:00Z
+839,2013,1,1,,1630,,,1815,,EV,4308,N18120,EWR,RDU,,416,16,30,2013-01-01T21:00:00Z
+1783,2013,1,2,,1545,,,1910,,AA,133,,JFK,LAX,,2475,15,45,2013-01-02T20:00:00Z

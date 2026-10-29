@@ -7,13 +7,15 @@ still being expanded.
 Bundled datasets for Racket 9.3+: mtcars, iris, faithful, anscombe,
 airquality, us-arrests, plant-growth, tooth-growth, titanic, air-passengers,
 diabetes, breast-cancer, and wine in `datasets-core`, plus penguins,
-penguins-raw, gapminder, datasaurus-dozen, titanic-passengers, and the rest
-of R's `datasets` package (79 more sets: cars, co2, quakes, state, volcano, ...)
-in `datasets-r`, plus digits, optdigits, adult, auto-mpg, abalone, wine-quality,
-bank-marketing, heart-disease, mushroom, car-evaluation, spambase,
-banknote-authentication, seeds, concrete-strength, energy-efficiency,
-student-performance, bike-sharing-daily, and bike-sharing-hourly in
-`datasets-uci`. These are bundled, so loading them downloads nothing.
+penguins-raw, gapminder, datasaurus-dozen, titanic-passengers,
+nycflights13-airlines, nycflights13-airports, nycflights13-planes,
+nycflights13-weather, and the rest of R's `datasets` package (79 more sets:
+cars, co2, quakes, state, volcano, ...) in `datasets-r`, plus digits,
+optdigits, adult, auto-mpg, abalone, wine-quality, bank-marketing,
+heart-disease, mushroom, car-evaluation, spambase, banknote-authentication,
+seeds, concrete-strength, energy-efficiency, student-performance,
+bike-sharing-daily, and bike-sharing-hourly in `datasets-uci`. These are
+bundled, so loading them downloads nothing.
 
 ```sh
 raco pkg install --auto datasets
@@ -93,6 +95,10 @@ columns yourself. Every dataframe load has independent storage.
 | gapminder | 1704 | 6 | 142 countries, 1952–2007 every five years |
 | datasaurus-dozen | 1846 | 3 | 13 datasets in long form, `dataset` column |
 | titanic-passengers | 891 | 12 | Kaggle training set, one row per passenger |
+| nycflights13-airlines | 16 | 2 | carrier codes and airline names |
+| nycflights13-airports | 1458 | 8 | FAA codes, location, altitude, time zone |
+| nycflights13-planes | 3322 | 9 | FAA registry metadata by tail number |
+| nycflights13-weather | 26115 | 15 | hourly weather at EWR, JFK, LGA; UTC `time-hour` |
 | diabetes | 442 | 11 | lars standardized predictors and response |
 | breast-cancer | 569 | 32 | measurements, M/B labels, source ID |
 | wine | 178 | 14 | measurements and cultivar labels |
@@ -104,7 +110,7 @@ GPL-2 for [lars 1.3](https://CRAN.R-project.org/package=lars), and CC BY 4.0 for
 [Wine](https://archive.ics.uci.edu/dataset/109/wine), and
 [Breast Cancer Wisconsin (Diagnostic)](https://archive.ics.uci.edu/dataset/17/breast+cancer+wisconsin+diagnostic).
 The `datasets-r` sets are CC0 (palmerpenguins 0.1.1, gapminder 1.0.1,
-titanic 0.1.0), MIT (datasauRus 0.1.9), and GPL-2 or GPL-3 (R 4.3.3 `datasets`).
+titanic 0.1.0, nycflights13 1.0.2), MIT (datasauRus 0.1.9), and GPL-2 or GPL-3 (R 4.3.3 `datasets`).
 The `datasets-uci` sets are CC BY 4.0 per their UCI Machine Learning Repository pages.
 This is a redistribution basis, not a claim of independent original-owner
 permission. The `datasets-islr` sets are GPL-2

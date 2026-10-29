@@ -23,9 +23,21 @@
   (define titanic-names
     '("passenger-id" "survived" "pclass" "name" "sex" "age" "sib-sp" "parch" "ticket" "fare" "cabin"
       "embarked"))
+  (define airlines-names '("carrier" "name"))
+  (define airports-names '("faa" "name" "lat" "lon" "alt" "tz" "dst" "tzone"))
+  (define planes-names
+    '("tailnum" "year" "type" "manufacturer" "model" "engines" "seats" "speed" "engine"))
+  (define weather-names
+    '("origin" "year" "month" "day" "hour" "temp" "dewp" "humid" "wind-dir" "wind-speed" "wind-gust"
+      "precip" "pressure" "visib" "time-hour"))
+  (define weather-keys '("origin" "month" "day" "hour" "time-hour"))
   (define shapes
     `((datasaurus-dozen 1846 ,datasaurus-names)
       (gapminder 1704 ,gapminder-names)
+      (nycflights13-airlines 16 ,airlines-names)
+      (nycflights13-airports 1458 ,airports-names)
+      (nycflights13-planes 3322 ,planes-names)
+      (nycflights13-weather 26115 ,weather-names)
       (penguins 344 ,penguins-names)
       (penguins-raw 344 ("study-name" "sample-number" "species" "region" "island" "stage"
                          "individual-id" "clutch-completion" "date-egg" "culmen-length-mm"
@@ -33,8 +45,12 @@
                          "delta-15-n" "delta-13-c" "comments"))
       (titanic-passengers 891 ,titanic-names)))
   (define licenses
-    (hash 'datasaurus-dozen "MIT" 'gapminder "CC0-1.0" 'penguins "CC0-1.0"
-          'penguins-raw "CC0-1.0" 'titanic-passengers "CC0-1.0"))
+    (hash-set (for/hash ([id (in-list '(gapminder nycflights13-airlines nycflights13-airports
+                                                  nycflights13-planes nycflights13-weather penguins
+                                                  penguins-raw titanic-passengers))])
+                (values id "CC0-1.0"))
+              'datasaurus-dozen
+              "MIT"))
   (define ids (sort (append (map car shapes) r-dataset-ids) symbol<?))
   (define (data-file id) (build-path r-data "data" (format "~a.rktd.gz" id)))
   (define (column-type name levels identifiers present)
@@ -42,7 +58,7 @@
       [(member name identifiers) "identifier"]
       [(pair? levels) "categorical"]
       [(andmap exact-integer? present) "integer"]
-      [(andmap real? present) "real"]
+      [(andmap flonum? present) "real"]
       [else "string"]))
   (define (key-values lines)
     (for*/hash ([line (in-list lines)]
@@ -77,6 +93,13 @@
       (identifiers penguins ())
       (identifiers penguins-raw ())
       (identifiers titanic-passengers ("passenger-id"))
+      (types penguins ("bill-length-mm" "real") ("bill-depth-mm" "real")
+             ("flipper-length-mm" "integer") ("body-mass-g" "integer") ("year" "integer"))
+      (types penguins-raw ("sample-number" "real") ("culmen-length-mm" "real")
+             ("flipper-length-mm" "real") ("body-mass-g" "real"))
+      (types titanic-passengers ("passenger-id" "identifier") ("survived" "integer")
+             ("pclass" "integer") ("age" "real") ("sib-sp" "integer") ("parch" "integer")
+             ("fare" "real"))
       (row penguins 0 ,penguins-names ("Adelie" "Torgersen" 39.1 18.7 181 3750 "male" 2007))
       (row penguins 3 ("bill-length-mm" "bill-depth-mm" "flipper-length-mm" "body-mass-g" "sex")
            ,(make-list 5 dataset-missing))
@@ -108,14 +131,43 @@
       (info-match datasaurus-dozen "citation"
                   #rx"^Gillespie, C\\., Locke, S\\., Davies, R\\. and D'Agostino McGowan, L\\. \\(2025\\)")
       (row titanic-passengers 0 ,titanic-names
-           (1 0 3 "Braund, Mr. Owen Harris" "male" 22 1 0 "A/5 21171" 7.25 ,dataset-missing "S"))
+           (1 0 3 "Braund, Mr. Owen Harris" "male" 22.0 1 0 "A/5 21171" 7.25 ,dataset-missing "S"))
       (row titanic-passengers 1 ("cabin" "fare") ("C85" 71.2833))
       (row titanic-passengers 890 ("name" "ticket") ("Dooley, Mr. Patrick" "370376"))
       (missing titanic-passengers ("age" "cabin" "embarked") (177 687 2))
       (sum titanic-passengers "survived" 342)
       (sum titanic-passengers "fare" 28693.9493 1e-6)
       (info titanic-passengers "suggested-targets" ("survived"))
-      (meta titanic-passengers "passenger-id" "original-name" "PassengerId")))
+      (meta titanic-passengers "passenger-id" "original-name" "PassengerId")
+      (identifiers nycflights13-airlines ("carrier"))
+      (identifiers nycflights13-airports ("faa"))
+      (identifiers nycflights13-planes ("tailnum"))
+      (identifiers nycflights13-weather ())
+      (row nycflights13-airlines 0 ,airlines-names ("9E" "Endeavor Air Inc."))
+      (row nycflights13-airlines 15 ,airlines-names ("YV" "Mesa Airlines Inc."))
+      (row nycflights13-airports 0 ,airports-names
+           ("04G" "Lansdowne Airport" 41.1304722 -80.6195833 1044.0 -5.0 "A" "America/New_York"))
+      (missing nycflights13-airports ("tzone") (3))
+      (sum nycflights13-airports "alt" 1460064.0)
+      (row nycflights13-planes 0 ("tailnum" "year" "engines" "seats" "speed" "engine")
+           ("N10156" 2004 2 55 ,dataset-missing "Turbo-fan"))
+      (missing nycflights13-planes ("year" "speed") (70 3299))
+      (sum nycflights13-planes "seats" 512639)
+      (row nycflights13-weather 0 ,weather-names
+           ("EWR" 2013 1 1 1 39.02 26.06 59.37 270.0 10.357019999999999 ,dataset-missing 0.0 1012.0 10.0
+                  "2013-01-01T06:00:00Z"))
+      (row nycflights13-weather 26114 ,weather-keys
+           ("LGA" 12 30 18 "2013-12-30T23:00:00Z"))
+      (row nycflights13-weather 4338 ,weather-keys
+           ("EWR" 7 1 0 "2013-07-01T04:00:00Z"))
+      (row nycflights13-weather 7318 ,weather-keys
+           ("EWR" 11 3 1 "2013-11-03T05:00:00Z"))
+      (row nycflights13-weather 7319 ,weather-keys
+           ("EWR" 11 3 1 "2013-11-03T06:00:00Z"))
+      (missing nycflights13-weather ("temp" "wind-dir" "wind-gust" "pressure") (1 460 20778 2729))
+      (sum nycflights13-weather "precip" 116.71 1e-9)
+      (meta nycflights13-weather "time-hour" "original-name" "time_hour")
+      (info nycflights13-weather "source-version" "nycflights13 1.0.2")))
 
   (check-equal? (dataset-names #:package "datasets-r") ids)
   (check-not-false (member "datasets-r" (dataset-packages)))

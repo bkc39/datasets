@@ -13,6 +13,13 @@ Bundled observations are distributed separately under the upstream terms:
 - titanic-passengers from titanic 0.1.0 (titanic_train): CC0-1.0. Paul
   Hendricks; data from Kaggle, https://www.kaggle.com/c/titanic/data.
   https://CRAN.R-project.org/package=titanic
+- nycflights13-airlines, nycflights13-airports, nycflights13-planes and
+  nycflights13-weather from nycflights13 1.0.2: CC0-1.0. Hadley Wickham; data
+  from the Bureau of Transportation Statistics, OpenFlights, the FAA Aircraft
+  Registry and the Iowa Environmental Mesonet.
+  https://CRAN.R-project.org/package=nycflights13
+  nycflights13-airports derives from OpenFlights, published under the Open
+  Database License (ODbL).
 - The datasets package of R 4.3.3 (every object not in datasets-core; see
   datasets/r-private/objects.rkt): GPL-2.0-only OR GPL-3.0-only. R Core Team
   and original dataset authors; see datasets/r-data/provenance/*.Rd for
@@ -26,9 +33,10 @@ the registry; R factors rendered as labels with levels in metadata; R NA
 rendered as the dedicated missing sentinel; penguins-raw Date Egg rendered as
 an ISO 8601 string and its delta columns renamed delta-15-n and delta-13-c;
 datasaurus-dozen kept in long form; titanic-passengers empty cabin and
-embarked strings rendered as missing, test set omitted; R datasets objects
-reshaped as described in the catalog (time series with index columns from
-R's time, calendar year and period except eu-stock-markets, whose year and
+embarked strings rendered as missing, test set omitted; nycflights13
+time_hour rendered as an ISO 8601 UTC string, R doubles kept as reals; R
+datasets objects reshaped as described in the catalog (time series with index
+columns from R's time, calendar year and period except eu-stock-markets, whose year and
 business-day follow R's nominal 260-day business year; tables and distance
 matrices in long form; matrices with row-name columns; named vectors with a
 name column; the state.* objects joined into one table). Source row order and

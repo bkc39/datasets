@@ -30,6 +30,7 @@
                 (fl/ 452600.0 100000.0))
           (list 8.3014 21.0 (fl/ 7099.0 1138.0) (fl/ 1106.0 1138.0) 2401.0 (fl/ 2401.0 1138.0) 37.86 -122.22
                 (fl/ 358500.0 100000.0))))
+  (define flights-expected (call-with-input-file (build-path fixtures "flights-mini.rktd") read))
   (define pixels 784)
   (define (pixel i k) (modulo (+ (* 31 k) (* 97 i)) 256))
   (define (image-bytes from count)
@@ -62,7 +63,10 @@
                           ,cal-expected)
       (mnist ,idx-image-rows ,(idx-upstream idx-contents) ,(dataset-info 'mnist) ,idx-expected)
       (fashion-mnist ,idx-image-rows ,(idx-upstream idx-contents) ,(dataset-info 'fashion-mnist)
-                     ,idx-expected)))
+                     ,idx-expected)
+      (nycflights13-flights ,csv-header-rows (("flights.csv" (plain ,(fixture "flights-mini.csv"))))
+                            ,(dataset-info 'nycflights13-flights)
+                            ,flights-expected)))
   (define converter-cases
     `(,@registry-cases
       (csv-header ,csv-header-rows (("data.csv" (plain ,(fixture "rdatasets-mini.csv")))) ,csv-info

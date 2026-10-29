@@ -47,7 +47,15 @@
                      "3552534a0a558bbed6aed32b30c495cca23d567ec52cac8be1a0730e8010255c"
                      "8d422c7b0a1c1c79245a5bcf07fe86e33eeafee792b84584aec276f5a2dbc4e6"
                      "f7ae60f92e00ec6debd23a6088c31dbd2371eca3ffa0defaefb259924204aec6"))
-       "idx-image-rows" "NOASSERTION")))
+       "idx-image-rows" "NOASSERTION")
+      (nycflights13-flights
+       336776 ("year" "month" "day" "dep-time" "sched-dep-time" "dep-delay" "arr-time" "sched-arr-time"
+               "arr-delay" "carrier" "flight" "tailnum" "origin" "dest" "air-time" "distance" "hour"
+               "minute" "time-hour")
+       (("flights.csv"
+         "https://raw.githubusercontent.com/vincentarelbundock/Rdatasets/cc03c29690889dbe83089f5206e2422db8c3f71f/csv/nycflights13/flights.csv"
+         "b791a2590c9167aa0bd3cb45af3f64101180878cf088c183eae4011e3a654f42"))
+       "csv-header-rows" "CC0-1.0")))
   (define (sha256-hex s) (~> s string->bytes/utf-8 sha256-bytes bytes->hex-string))
 
   (test-case "the datasets-fetch registry: shapes, pins, converters, terms"

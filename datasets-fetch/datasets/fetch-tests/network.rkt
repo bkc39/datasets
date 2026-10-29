@@ -3,17 +3,13 @@
          (only-in datasets/core dataset-cache-directory dataset-info dataset-missing? dataset-names
                   dataset-table-column dataset-table-names dataset-table-row-count fetch-dataset
                   load-dataset-table)
-         (only-in datasets/fetch-tests/digest column-digest)
+         (only-in datasets/fetch-tests/digest expect parity-problems)
          (only-in file/sha1 bytes->hex-string)
-         (only-in json read-json)
          (only-in net/url call/input-url get-pure-port string->url)
          (only-in racket/list append* append-map)
-         (only-in racket/runtime-path define-runtime-path)
          (only-in racket/string string-join)
          (only-in racket/vector vector-count)
          (only-in threading ~>))
-(define-runtime-path parity-file "fixtures/parity.json")
-
 (define gzip-isize-bytes 4)
 
 (define (gzip-isize path)
@@ -57,13 +53,10 @@
     (check-equal? (length ballast) 150)))
 
 (module+ network
-  (define parity (call-with-input-file parity-file read-json))
   (define (seconds thunk)
     (define start (current-inexact-milliseconds))
     (define result (thunk))
     (values result (/ (round (- (current-inexact-milliseconds) start)) 1000.0)))
-  (define (expect what actual expected)
-    (if (equal? actual expected) '() (list (format "~a: expected ~s, actual ~s" what expected actual))))
   (define (url-sha256 url)
     (call/input-url (string->url url) (lambda (u) (get-pure-port u #:redirections 10))
                     (lambda (in) (bytes->hex-string (sha256-bytes in)))))
@@ -84,12 +77,10 @@
           [("categorical") (and (member v (hash-ref c "levels")) #t)]
           [else (string? v)])))
 
-  (define (column-problems c column reference)
+  (define (column-problems c column)
     (define name (hash-ref c "name"))
     (append (expect (list name "missing") (vector-count dataset-missing? column) (hash-ref c "missing-count"))
-            (expect (list name "types") (for/and ([v (in-vector column)]) (value-ok? c v)) #t)
-            (expect (list name "parity digest") (column-digest column)
-                    (~> reference (hash-ref 'columns) (hash-ref (string->symbol name))))))
+            (expect (list name "types") (for/and ([v (in-vector column)]) (value-ok? c v)) #t)))
 
   (define (table-problems name)
     (define info (dataset-info name))
@@ -97,13 +88,12 @@
     (define-values (table load-time) (seconds (lambda () (load-dataset-table name #:download? #f))))
     (printf "~a fetch+convert ~as, load ~as, cached ~a bytes, peak ~a MB\n" name fetch-time load-time
             (file-size path) (quotient (current-memory-use 'peak) 1000000))
-    (define reference (hash-ref parity name))
     (append (expect (list name "rows") (dataset-table-row-count table) (hash-ref info "rows"))
-            (expect (list name "parity rows") (dataset-table-row-count table) (hash-ref reference 'rows))
+            (parity-problems name table)
             (expect (list name "names") (dataset-table-names table)
                     (map (lambda (c) (hash-ref c "name")) (hash-ref info "columns")))
             (append* (for/list ([c (in-list (hash-ref info "columns"))])
-                       (column-problems c (dataset-table-column table (hash-ref c "name")) reference)))))
+                       (column-problems c (dataset-table-column table (hash-ref c "name")))))))
 
   (define bytes-per-value 8)
   (define value-copies 2)

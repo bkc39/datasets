@@ -79,6 +79,7 @@
       (check-loaders)))
   (define (dtypes p)
     (map (lambda (c) (pl:series-dtype (pl:dataframe-column p c))) (pl:dataframe-column-names p)))
+  (check-equal? (dtypes (load-dataset 'cars)) '(float64 float64))
   (define untyped-rows (hash "nt" '((1 2.5) (2 3.5)) "nz" '()))
   (define untyped-text
     (for/hash ([(name rows) (in-hash untyped-rows)]) (values name (rows->rktd-bytes rows))))
