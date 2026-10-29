@@ -1,16 +1,20 @@
 #!/usr/bin/env python3
-"""Write fetch-tests/fixtures/parity.json, the column digests (digest.rkt) of scikit-learn's loaders.
-  SCIKIT_LEARN_DATA=$HOME/.cache/datasets-parity nix shell --impure --expr '(builtins.getFlake "github:NixOS/nixpkgs/07e1d92cdc0ed416cfa11ff3ca40d17e61cfba7a").legacyPackages.x86_64-linux.python3.withPackages (p: [p.scikit-learn p.pandas])' -c python3 -I scripts/fetch-parity.py
+"""Write fetch-tests/fixtures/parity.json: the column digests (digest.rkt) of scikit-learn's and torchvision's loaders
+and the library versions they ran with, which scripts/fetch-parity.sh pins.
+Run with scripts/fetch-parity.sh.
 """
 import hashlib
 import json
+import os
+import struct
 from pathlib import Path
 import numpy as np
 import sklearn
+import torchvision
 from sklearn import datasets
+from torchvision.datasets import MNIST, FashionMNIST
 
-VERSION = "1.8.0"
-assert sklearn.__version__ == VERSION, sklearn.__version__
+TORCHVISION_ROOT = os.environ["TORCHVISION_ROOT"]
 OUT = Path(__file__).resolve().parents[1] / "datasets-fetch/datasets/fetch-tests/fixtures/parity.json"
 
 CALIFORNIA = {"MedInc": "med-inc", "HouseAge": "house-age", "AveRooms": "ave-rooms",
@@ -35,6 +39,25 @@ def reals(values):
     return digest(b"f", "<f8", values.astype(np.float64))
 
 
+def strings(values):
+    out = hashlib.sha256()
+    for v in values:
+        b = v.encode("utf-8")
+        out.update(b"s" + struct.pack("<I", len(b)) + b)
+    return out.hexdigest()
+
+
+def images(loader):
+    splits = [loader(TORCHVISION_ROOT, train=train, download=True) for train in (True, False)]
+    pixels = np.concatenate([s.data.numpy().reshape(-1, 784) for s in splits])
+    labels = np.concatenate([s.targets.numpy() for s in splits])
+    split = ["train"] * len(splits[0].targets) + ["test"] * len(splits[1].targets)
+    columns = {f"pixel{k + 1}": integers(pixels[:, k]) for k in range(784)}
+    columns["label"] = integers(labels)
+    columns["split"] = strings(split)
+    return len(labels), columns
+
+
 def covtype():
     bunch = datasets.fetch_covtype()
     names = [n.lower().replace("_", "-") for n in bunch.feature_names + bunch.target_names]
@@ -47,8 +70,9 @@ def california_housing():
     return len(frame), {CALIFORNIA[n]: reals(frame[n].to_numpy()) for n in frame.columns}
 
 
-reference = {"versions": {"scikit-learn": VERSION}}
-for name, load in [("covtype", covtype), ("california-housing", california_housing)]:
+reference = {"versions": {"scikit-learn": sklearn.__version__, "torchvision": torchvision.__version__}}
+for name, load in [("covtype", covtype), ("california-housing", california_housing),
+                   ("mnist", lambda: images(MNIST)), ("fashion-mnist", lambda: images(FashionMNIST))]:
     rows, columns = load()
     reference[name] = {"rows": rows, "columns": columns}
 OUT.write_text(json.dumps(reference, indent=1) + "\n")

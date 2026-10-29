@@ -13,6 +13,49 @@
          (only-in racket/vector vector-count)
          (only-in threading ~>))
 (define-runtime-path parity-file "fixtures/parity.json")
+
+(define gzip-isize-bytes 4)
+
+(define (gzip-isize path)
+  (call-with-input-file path
+    (lambda (in)
+      (file-position in (- (file-size path) gzip-isize-bytes))
+      (integer-bytes->integer (read-bytes gzip-isize-bytes in) #f #f))))
+
+(define (raised->string v)
+  (if (exn? v) (exn-message v) (format "raised ~s" v)))
+
+(define (call-with-memory-limit limit thunk)
+  (collect-garbage)
+  (define custodian (make-custodian))
+  (custodian-limit-memory custodian limit custodian)
+  (define result (box 'killed-at-the-memory-limit))
+  (thread-wait (parameterize ([current-custodian custodian])
+                 (thread (lambda () (set-box! result (with-handlers ([(lambda (_) #t) raised->string]) (thunk)))))))
+  (custodian-shutdown-all custodian)
+  (unbox result))
+
+(module+ test
+  (require (only-in datasets/fetch-tests/fixture call-with-upstream-files)
+           (only-in rackunit check-equal? test-case))
+  (define small-limit (* 16 1000 1000))
+  (test-case "gzip-isize reads the uncompressed size from the gzip trailer"
+    (call-with-upstream-files '(("a.gz" (gz "plain text\n")))
+      (lambda (files) (check-equal? (gzip-isize (hash-ref files "a.gz")) 11))))
+  (test-case "call-with-memory-limit returns an error's message, and its sentinel only when the limit kills"
+    (check-equal? (call-with-memory-limit small-limit (lambda () (error 'x "boom"))) "x: boom")
+    (check-equal? (call-with-memory-limit small-limit (lambda () (raise 'oops))) "raised oops")
+    (check-equal? (call-with-memory-limit small-limit (lambda () 'done)) 'done))
+  (test-case "call-with-memory-limit kills an allocating thunk however large the caller's heap"
+    (define ballast (for/list ([_ (in-range 150)]) (make-bytes 1000000)))
+    (check-equal? (call-with-memory-limit small-limit
+                                          (lambda ()
+                                            (define kept (for/list ([_ (in-range 320)]) (make-bytes 100000)))
+                                            (collect-garbage)
+                                            (length kept)))
+                  'killed-at-the-memory-limit)
+    (check-equal? (length ballast) 150)))
+
 (module+ network
   (define parity (call-with-input-file parity-file read-json))
   (define (seconds thunk)
@@ -62,10 +105,34 @@
             (append* (for/list ([c (in-list (hash-ref info "columns"))])
                        (column-problems c (dataset-table-column table (hash-ref c "name")) reference)))))
 
+  (define bytes-per-value 8)
+  (define value-copies 2)
+  (define baseline-bytes (* 64 1000 1000))
+
+  (define (bounded-load-problems name)
+    (define info (dataset-info name))
+    (define text-size (gzip-isize (fetch-dataset name)))
+    (define (load-rows limit)
+      (define-values (rows elapsed)
+        (seconds (lambda ()
+                   (call-with-memory-limit
+                    limit (lambda () (dataset-table-row-count (load-dataset-table name #:download? #f)))))))
+      (printf "~a load under a ~a MB limit ~as: ~a\n" name (quotient limit 1000000) elapsed rows)
+      rows)
+    (define limit
+      (+ text-size (* value-copies (hash-ref info "rows") (hash-ref info "column-count") bytes-per-value)
+         baseline-bytes))
+    (append (expect (list name "rows loaded under a memory limit" limit) (load-rows limit)
+                    (hash-ref info "rows"))
+            (expect (list name "a limit below the text size stops the load")
+                    (load-rows (quotient text-size 2))
+                    'killed-at-the-memory-limit)))
+
   (printf "DATASETS_HOME ~a\n" (dataset-cache-directory))
   (define names (dataset-names #:package "datasets-fetch"))
   (define problems
-    (append (append-map pinned-bytes-problems names) (append-map table-problems names)))
+    (append (append-map pinned-bytes-problems names) (append-map table-problems names)
+            (bounded-load-problems 'fashion-mnist)))
   (if (null? problems)
       (printf "network checks hold for ~a\n" names)
       (error (string-join problems "\n" #:before-first "network checks failed:\n"))))
