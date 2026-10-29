@@ -17,10 +17,10 @@ Use Racket 9.3 or later. Install from the Racket catalog:
 @commandline{raco pkg install --auto datasets}
 
 This also installs @tt{datasets-core}, the data packages @tt{datasets-r},
-@tt{datasets-uci}, @tt{datasets-islr}, and the adapter dependencies. From a
+@tt{datasets-uci}, @tt{datasets-islr}, @tt{datasets-fetch}, and the adapter dependencies. From a
 checkout of the repository, install the packages from its root:
 
-@verbatim{raco pkg install ./datasets-core ./datasets-r ./datasets-uci ./datasets-islr
+@verbatim{raco pkg install ./datasets-core ./datasets-r ./datasets-uci ./datasets-islr ./datasets-fetch
 raco pkg install --auto ./datasets}
 
 The top-level directories are independently installable multi-collection
@@ -30,8 +30,10 @@ datasets from CRAN packages, and @tt{datasets-uci} datasets from the UCI Machine
 Learning Repository, to the core catalog; @tt{datasets} adds the
 convenient loaders and adapters to the same collection. The Polars package
 supplies its native library. With Nix, @tt{nix develop} prepares an isolated
-environment containing the five packages and that library.
+environment containing the six packages and that library.
 @tt{datasets-islr} adds the datasets of ISLR2; see @secref["datasets-islr-guide"].
+@tt{datasets-fetch} adds sets such as @tt{covtype} and @tt{california-housing}
+that are downloaded and converted on first load.
 
 @examples[#:eval ev
  (require datasets (prefix-in pl: polars))
@@ -42,7 +44,7 @@ environment containing the five packages and that library.
 The prefix keeps Polars operations distinct from Racket's arithmetic and other
 similarly named procedures. @racket[load-iris] returns 150 rows: four flower
 measurements and a species label. Each call creates an independent dataframe.
-Data is bundled with the package, so loading does not download anything.
+Iris is bundled with the package, so loading it does not download anything.
 
 @section[#:tag "datasets-discovery-guide"]{Discovering datasets and selecting columns}
 

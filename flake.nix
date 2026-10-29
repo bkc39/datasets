@@ -56,6 +56,7 @@
                 raco pkg install --batch --deps fail --copy --no-setup --scope user --name datasets-r ./datasets-r
                 raco pkg install --batch --deps fail --copy --no-setup --scope user --name datasets-uci ./datasets-uci
                 raco pkg install --batch --deps fail --copy --no-setup --scope user --name datasets-islr ./datasets-islr
+                raco pkg install --batch --deps fail --copy --no-setup --scope user --name datasets-fetch ./datasets-fetch
                 raco pkg install --batch --deps fail --copy --no-setup --scope user --name datasets ./datasets
               ''}
               runHook postBuild
@@ -115,8 +116,8 @@
               chmod -R u+w "$PLTUSERHOME"
               find "$PLTUSERHOME" -name docindex.sqlite -type f -delete
               raco pkg install --batch --deps fail --no-setup --link --scope user \
-                "$PWD/datasets-core" "$PWD/datasets-r" "$PWD/datasets-uci" "$PWD/datasets-islr" "$PWD/datasets"
-              raco setup --no-docs --pkgs datasets-r datasets-uci datasets-islr
+                "$PWD/datasets-core" "$PWD/datasets-r" "$PWD/datasets-uci" "$PWD/datasets-islr" "$PWD/datasets-fetch" "$PWD/datasets"
+              raco setup --no-docs --pkgs datasets-r datasets-uci datasets-islr datasets-fetch
               echo "Isolated Racket environment: $PLTUSERHOME"
             '';
           };

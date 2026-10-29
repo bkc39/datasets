@@ -20,6 +20,7 @@ if [[ "$mode" == full ]]; then
   raco pkg install --batch --deps fail --copy --no-setup --scope user --name datasets-r "$project_root/datasets-r"
   raco pkg install --batch --deps fail --copy --no-setup --scope user --name datasets-uci "$project_root/datasets-uci"
   raco pkg install --batch --deps fail --copy --no-setup --scope user --name datasets-islr "$project_root/datasets-islr"
+  raco pkg install --batch --deps fail --copy --no-setup --scope user --name datasets-fetch "$project_root/datasets-fetch"
   raco pkg install --batch --deps fail --copy --no-setup --scope user --name datasets "$project_root/datasets"
 fi
 bash scripts/check.sh "$mode"
