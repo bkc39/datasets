@@ -1,0 +1,6 @@
+datasets-core
+datasets-r
+datasets-uci
+datasets-islr
+datasets-fetch
+datasets

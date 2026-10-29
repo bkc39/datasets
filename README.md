@@ -52,6 +52,8 @@ nonmissing values: categories are not encoded, nor missing values imputed.
 The repository has six top-level, independently installable package directories:
 `datasets-core/`, `datasets-r/`, `datasets-uci/`, `datasets-islr/`, `datasets-fetch/`, and `datasets/`. Each declares
 `collection 'multi` and contributes distinct directories to the shared `datasets` collection.
+`scripts/packages.txt` lists them in install order for the flake, scripts and gates;
+`scripts/check-package-list.rkt` checks the copies that cannot read it.
 `datasets-r` contributes `datasets/r-data`, found through its registry, and its
 tests; it depends on `datasets-core`, and `datasets` depends on it. Its sets have
 no named loader: use `(load-dataset 'penguins)`. `datasets-uci` contributes

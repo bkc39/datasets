@@ -8,19 +8,21 @@ if [[ $EUID -eq 0 ]] && [[ $(ip link show lo 2>/dev/null || true) == *"state DOW
 fi
 sources=${1:?usage: install-check.sh PREFETCHED-SOURCES [core|full]}
 mode=${2:-full}
+packages=($(<scripts/packages.txt))
+install_package() {
+  raco pkg install --batch --deps fail --copy --no-setup --scope user --name "$1" "$project_root/$1"
+}
 export PLTUSERHOME=$(mktemp -d)
 export TMPDIR=${TMPDIR:-/tmp}
 if [[ "$mode" == full ]]; then
   raco pkg install --batch --deps fail --copy --no-setup --scope user "$sources"/*/
   raco setup --no-docs --pkgs tzdata polars data-frame
 fi
-raco pkg install --batch --deps fail --copy --no-setup --scope user --name datasets-core "$project_root/datasets-core"
+install_package "${packages[0]}"
 if [[ "$mode" == full ]]; then
   racket examples/core-with-polars.rkt
-  raco pkg install --batch --deps fail --copy --no-setup --scope user --name datasets-r "$project_root/datasets-r"
-  raco pkg install --batch --deps fail --copy --no-setup --scope user --name datasets-uci "$project_root/datasets-uci"
-  raco pkg install --batch --deps fail --copy --no-setup --scope user --name datasets-islr "$project_root/datasets-islr"
-  raco pkg install --batch --deps fail --copy --no-setup --scope user --name datasets-fetch "$project_root/datasets-fetch"
-  raco pkg install --batch --deps fail --copy --no-setup --scope user --name datasets "$project_root/datasets"
+  for package in "${packages[@]:1}"; do
+    install_package "$package"
+  done
 fi
 bash scripts/check.sh "$mode"

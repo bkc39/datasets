@@ -10,6 +10,13 @@
     let
       systems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
       each = nixpkgs.lib.genAttrs systems;
+      lib = nixpkgs.lib;
+      repoPackages = lib.remove "" (lib.splitString "\n" (builtins.readFile ./scripts/packages.txt));
+      corePackage = builtins.head repoPackages;
+      dependentPackages = builtins.tail repoPackages;
+      familyPackages = lib.init dependentPackages;
+      installPackage = name:
+        "raco pkg install --batch --deps fail --copy --no-setup --scope user --name ${name} ./${name}";
       # The Racket 9.3 pin no longer supports Intel macOS. Reuse Polars'
       # older pinned platform/toolchain there, with the newer Racket recipes.
       pkgsFor = system:
@@ -50,14 +57,10 @@
                 raco pkg install --batch --deps fail --copy --no-setup --scope user --name polars ${polars}/polars
                 raco setup --no-docs --pkgs tzdata polars data-frame
               ''}
-              raco pkg install --batch --deps fail --copy --no-setup --scope user --name datasets-core ./datasets-core
+              ${installPackage corePackage}
               ${pkgs.lib.optionalString full ''
                 racket examples/core-with-polars.rkt
-                raco pkg install --batch --deps fail --copy --no-setup --scope user --name datasets-r ./datasets-r
-                raco pkg install --batch --deps fail --copy --no-setup --scope user --name datasets-uci ./datasets-uci
-                raco pkg install --batch --deps fail --copy --no-setup --scope user --name datasets-islr ./datasets-islr
-                raco pkg install --batch --deps fail --copy --no-setup --scope user --name datasets-fetch ./datasets-fetch
-                raco pkg install --batch --deps fail --copy --no-setup --scope user --name datasets ./datasets
+                ${lib.concatMapStringsSep "\n" installPackage dependentPackages}
               ''}
               runHook postBuild
             '';
@@ -116,8 +119,8 @@
               chmod -R u+w "$PLTUSERHOME"
               find "$PLTUSERHOME" -name docindex.sqlite -type f -delete
               raco pkg install --batch --deps fail --no-setup --link --scope user \
-                "$PWD/datasets-core" "$PWD/datasets-r" "$PWD/datasets-uci" "$PWD/datasets-islr" "$PWD/datasets-fetch" "$PWD/datasets"
-              raco setup --no-docs --pkgs datasets-r datasets-uci datasets-islr datasets-fetch
+                ${lib.concatMapStringsSep " " (name: "\"$PWD/${name}\"") repoPackages}
+              raco setup --no-docs --pkgs ${toString familyPackages}
               echo "Isolated Racket environment: $PLTUSERHOME"
             '';
           };
