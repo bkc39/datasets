@@ -51,8 +51,9 @@ nonmissing values: categories are not encoded, nor missing values imputed.
 
 `scripts/packages.txt` lists the repository's top-level, independently installable
 package directories in dependency order: `datasets-core` first, the umbrella `datasets`
-last. The flake, scripts and gates read it; `scripts/check-package-list.rkt` checks it
-against the directories and the umbrella's `info.rkt` deps. Each package declares
+last. The flake, scripts and gates read it; `scripts/check-package-list.rkt` checks that
+it names every package directory, that each package's sibling deps are listed before it,
+and that the umbrella depends on all the others. Each package declares
 `collection 'multi` and contributes distinct directories to the shared `datasets` collection.
 `datasets-r` contributes `datasets/r-data`, found through its registry, and its
 tests; it depends on `datasets-core`, and `datasets` depends on it. Its sets have

@@ -2,7 +2,7 @@
 (require (for-syntax racket/base)
          (only-in racket/cmdline command-line)
          (only-in racket/file file->lines)
-         (only-in racket/list check-duplicates drop-right filter-map last)
+         (only-in racket/list check-duplicates drop-right filter-map last take)
          (only-in racket/match match)
          (only-in racket/runtime-path define-runtime-path)
          (only-in setup/getinfo get-info/full))
@@ -17,12 +17,13 @@
     [#f '()]
     [info (info 'deps (λ () '()))]))
 
+(define (dep-name dep)
+  (match dep
+    [(cons (? string? name) _) name]
+    [(? string? name) name]))
+
 (define (sibling-deps dir)
-  (filter-map (λ (dep)
-                (match dep
-                  [(or (cons (? string? name) _) (? string? name))
-                   (and (regexp-match? #rx"^datasets(-|$)" name) name)]))
-              (info-deps dir)))
+  (filter (λ (name) (regexp-match? #rx"^datasets(-|$)" name)) (map dep-name (info-deps dir))))
 
 (define (package-dirs root)
   (filter-map (λ (entry)
@@ -33,6 +34,12 @@
   (match check
     [(list _ same same) #f]
     [_ check]))
+
+(define (order-problems root packages)
+  (for*/list ([i (in-range (length packages))]
+              [dep (in-list (sibling-deps (build-path root (list-ref packages i))))]
+              #:unless (member dep (take packages i)))
+    `(order ,(list-ref packages i) ,dep)))
 
 (define (package-list-problems root)
   (define names (read-package-list root))
@@ -45,15 +52,19 @@
     [duplicate `((duplicate ,duplicate))]
     [(< (length names) 2) `((count ,(length names)))]
     [else
-     (filter-map mismatch
-                 `((deps ,(sibling-deps (build-path root (last names))) ,(drop-right names 1))
-                   (dirs ,(package-dirs root) ,(sort names string<?))))]))
+     (define packages (drop-right names 1))
+     (append (order-problems root packages)
+             (filter-map mismatch
+                         `((deps ,(sort (sibling-deps (build-path root (last names))) string<?)
+                                 ,(sort packages string<?))
+                           (dirs ,(package-dirs root) ,(sort names string<?)))))]))
 
 (define (describe problem)
   (match problem
     [(list 'line name) (format "~s is not a package name" name)]
     [(list 'duplicate name) (format "~a is listed twice" name)]
     [(list 'count n) (format "~a packages listed; a core and an umbrella are needed" n)]
+    [(list 'order name dep) (format "~a depends on ~a, which is not listed before it" name dep)]
     [(list 'deps found expected)
      (format "the umbrella's info.rkt sibling deps are ~s, not ~s" found expected)]
     [(list 'dirs found expected)
@@ -68,35 +79,57 @@
 
 (module+ test
   (require (only-in racket/file delete-directory/files make-directory* make-temporary-directory)
-           (only-in racket/list drop remove-duplicates take)
+           (only-in racket/list drop remove-duplicates)
            (only-in racket/match match-define)
+           (only-in racket/port with-output-to-string)
+           (only-in racket/system system*)
            rackunit)
 
   (struct tree (lines eol deps dirs))
 
-  (define base-lines (read-package-list repo-root))
-  (define umbrella (last base-lines))
-  (define base (tree base-lines "\n" (info-deps (build-path repo-root umbrella)) base-lines))
-  (define (nth i) (list-ref base-lines i))
+  (define fixture-lines '("datasets-core" "datasets-r" "datasets-fetch" "datasets"))
+  (define umbrella (last fixture-lines))
+  (define fixture
+    (tree fixture-lines
+          "\n"
+          (hash "datasets-core" '(("base" #:version "9.3"))
+                "datasets-r" '(("base" #:version "9.3") "datasets-core")
+                "datasets-fetch" '(("datasets-core" #:version "0.2") "threading-lib")
+                "datasets" '(("datasets-core" #:version "0.2")
+                             ("datasets-r" #:version "0.1")
+                             ("datasets-fetch" #:version "0.1")
+                             "polars"))
+          fixture-lines))
+  (define (nth i) (list-ref fixture-lines i))
 
-  (define (swap xs a b)
-    (map (λ (x) (cond [(equal? x a) b] [(equal? x b) a] [else x])) xs))
+  (define (swap xs a b [key values])
+    (define (pick k) (findf (λ (x) (equal? (key x) k)) xs))
+    (for/list ([x (in-list xs)])
+      (cond
+        [(equal? (key x) a) (pick b)]
+        [(equal? (key x) b) (pick a)]
+        [else x])))
 
   (define (insert xs i x)
     (append (take xs i) (list x) (drop xs i)))
 
+  (define (edit-deps t name proc)
+    (match-define (tree lines eol deps dirs) t)
+    (tree lines eol (hash-update deps name proc '()) dirs))
+
   (define (edit t change)
     (match-define (tree lines eol deps dirs) t)
     (match change
-      ['(none) t]
-      [`(swap-deps ,i ,j) (tree lines eol (swap deps (nth i) (nth j)) dirs)]
-      [`(remove-dep ,i) (tree lines eol (remove (nth i) deps) dirs)]
-      [`(add-dep ,name) (tree lines eol (append deps (list name)) dirs)]
-      [`(version-dep ,i) (tree lines eol (swap deps (nth i) `(,(nth i) #:version "0.1")) dirs)]
+      [`(swap-deps ,i ,j) (edit-deps t umbrella (λ (ds) (swap ds (nth i) (nth j) dep-name)))]
+      [`(remove-dep ,i)
+       (edit-deps t umbrella (λ (ds) (remove (nth i) ds (λ (name d) (equal? name (dep-name d))))))]
+      [`(add-dep ,name ,dep) (edit-deps t name (λ (ds) (append ds (list dep))))]
+      ['(sort-deps) (edit-deps t umbrella (λ (ds) (sort ds string<? #:key dep-name)))]
       [`(swap-lines ,i ,j) (tree (swap lines (nth i) (nth j)) eol deps dirs)]
       [`(add-dir ,name) (tree lines eol deps (cons name dirs))]
       [`(eol ,s) (tree lines s deps dirs)]
-      [`(suffix-line ,i ,s) (tree (swap lines (nth i) (string-append (nth i) s)) eol deps dirs)]
+      [`(suffix-line ,i ,s)
+       (tree (map (λ (x) (if (equal? x (nth i)) (string-append x s) x)) lines) eol deps dirs)]
       [`(insert-line ,i ,s) (tree (insert lines i s) eol deps dirs)]
       [`(duplicate-line ,i) (tree (insert lines i (nth i)) eol deps dirs)]
       [`(keep-lines ,n) (tree (take lines n) eol deps dirs)]))
@@ -111,7 +144,7 @@
       (call-with-output-file (build-path root name "info.rkt")
         (λ (out)
           (displayln "#lang info" out)
-          (write `(define deps ',(if (equal? name umbrella) deps '())) out)))))
+          (write `(define deps ',(hash-ref deps name '())) out)))))
 
   (define (call-with-tree t proc)
     (define root (make-temporary-directory))
@@ -120,23 +153,58 @@
                   (λ () (delete-directory/files root))))
 
   (define cases
-    '([(none) ()]
-      [(swap-deps 1 2) (deps)]
-      [(remove-dep 1) (deps)]
-      [(add-dep "datasets-extra") (deps)]
-      [(swap-lines 1 2) (deps)]
-      [(version-dep 1) ()]
-      [(add-dir "datasets-foo") (dirs)]
-      [(eol "\r\n") (line)]
-      [(suffix-line 0 " ") (line)]
-      [(insert-line 1 "") (line)]
-      [(duplicate-line 0) (duplicate)]
-      [(keep-lines 1) (count)]))
+    '([() ()]
+      [((swap-deps 1 2)) ()]
+      [((sort-deps)) ()]
+      [((swap-lines 1 2)) ()]
+      [((remove-dep 1)) (deps)]
+      [((add-dep "datasets" "datasets-extra")) (deps)]
+      [((swap-lines 0 1)) (order)]
+      [((swap-lines 0 1) (swap-deps 0 1)) (order)]
+      [((add-dep "datasets-core" "datasets-r")) (order)]
+      [((add-dep "datasets-r" ("datasets-extra" #:version "0.1"))) (order)]
+      [((add-dir "datasets-foo")) (dirs)]
+      [((eol "\r\n")) (line)]
+      [((suffix-line 0 " ")) (line)]
+      [((insert-line 1 "")) (line)]
+      [((duplicate-line 0)) (duplicate)]
+      [((keep-lines 1)) (count)]))
 
   (for ([c (in-list cases)])
-    (match-define (list change expected) c)
-    (call-with-tree (edit base change)
+    (match-define (list changes expected) c)
+    (call-with-tree (foldl (λ (change t) (edit t change)) fixture changes)
                     (λ (root)
                       (check-equal? (remove-duplicates (map car (package-list-problems root)))
                                     expected
-                                    (format "~s" change))))))
+                                    (format "~s" changes)))))
+
+  (define (install-check-calls-raco? t)
+    (call-with-tree
+     t
+     (λ (root)
+       (for ([file (in-list '("check-package-list.rkt" "install-check.sh" "packages.sh"))])
+         (copy-file (build-path repo-root "scripts" file) (build-path root "scripts" file)))
+       (define bin (build-path root "bin"))
+       (define marker (build-path root "raco-called"))
+       (make-directory* bin)
+       (call-with-output-file (build-path bin "raco")
+         (λ (out) (fprintf out "#!/bin/sh\ntouch ~s\n" (path->string marker))))
+       (file-or-directory-permissions (build-path bin "raco") #o755)
+       (define env (environment-variables-copy (current-environment-variables)))
+       (environment-variables-set! env
+                                   #"PATH"
+                                   (bytes-append (path->bytes bin)
+                                                 #":"
+                                                 (environment-variables-ref env #"PATH")))
+       (define output
+         (with-output-to-string
+          (λ ()
+            (parameterize ([current-error-port (current-output-port)]
+                           [current-environment-variables env])
+              (system* (find-executable-path "bash")
+                       (build-path root "scripts" "install-check.sh")
+                       (path->string root)
+                       "core")))))
+       (list (file-exists? marker) (regexp-match? #rx"check-package-list: " output)))))
+
+  (check-equal? (install-check-calls-raco? (edit fixture '(eol "\r\n"))) '(#f #t)))

@@ -8,6 +8,7 @@ if [[ $EUID -eq 0 ]] && [[ $(ip link show lo 2>/dev/null || true) == *"state DOW
 fi
 sources=${1:?usage: install-check.sh PREFETCHED-SOURCES [core|full]}
 mode=${2:-full}
+racket scripts/check-package-list.rkt
 source scripts/packages.sh
 install_package() {
   raco pkg install --batch --deps fail --copy --no-setup --scope user --name "$1" "$project_root/$1"
