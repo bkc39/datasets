@@ -2,7 +2,8 @@
 (require (for-syntax racket/base)
          (only-in datasets/core dataset-missing? dataset-table-columns dataset-table-names
                   dataset-table-row-count dataset-table?)
-         (only-in datasets/core-private/codec gunzip-file hex)
+         (only-in datasets/core-private/codec hex)
+         (only-in file/gunzip gunzip-through-ports)
          (only-in file/gzip gzip-through-ports)
          (only-in net/url path->url url->string)
          (only-in racket/contract/base -> ->* and/c any any/c contract-out hash/c list/c listof or/c)
@@ -104,6 +105,10 @@
 (define (rows->rktd-bytes rows)
   (string->bytes/utf-8
    (string-append "(\n" (apply string-append (map (lambda (row) (format "  ~s\n" row)) rows)) ")\n")))
+
+(define (gunzip-file path)
+  (call-with-input-file path
+    (lambda (in) (call-with-output-bytes (lambda (out) (gunzip-through-ports in out))))))
 
 (define (gzip-bytes bs [timestamp 0])
   (call-with-output-bytes

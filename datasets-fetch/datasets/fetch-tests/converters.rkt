@@ -17,7 +17,7 @@
          (only-in threading ~>))
 (define-runtime-path fixtures "fixtures")
 (module+ test
-  (require (only-in rackunit check-equal? check-exn test-case))
+  (require (only-in rackunit check-equal? check-exn check-true test-case))
   (define (fixture name) (file->string (build-path fixtures name)))
   (define (soil k) (append (make-list k 0) '(1) (make-list (- 39 k) 0)))
   (define covtype-lines (fixture "covtype-mini.data"))
@@ -121,6 +121,23 @@
           (check-exn (apply error-with? who needles)
                      (lambda () (sequence->list (idx-image-rows files (dataset-info 'mnist))))
                      name)))))
+
+  (test-case "idx-image-rows keeps no row it has produced"
+    (define n 20000)
+    (define upstream (idx-upstream (hash-set* idx-contents
+                                              "train-images-idx3-ubyte.gz" `(idx-gz (,n 28 28) ,(make-bytes (* n pixels) 0))
+                                              "train-labels-idx1-ubyte.gz" `(idx-gz (,n) ,(make-bytes n 0)))))
+    (call-with-upstream-files upstream
+      (lambda (files)
+        (collect-garbage)
+        (define base (current-memory-use))
+        (define growth
+          (for/fold ([peak 0]) ([row (idx-image-rows files (dataset-info 'mnist))]
+                                [i (in-naturals)]
+                                #:when (zero? (modulo i 2000)))
+            (collect-garbage)
+            (max peak (- (current-memory-use) base))))
+        (check-true (< growth (* 64 1024 1024)) (format "live growth ~a bytes" growth)))))
 
   (test-case "the converters run through core: loaded from the registry entry, cached converted"
     (for ([c (in-list registry-cases)])

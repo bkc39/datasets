@@ -1,11 +1,11 @@
 #lang racket/base
 (require (for-syntax racket/base (only-in syntax/parse ...+ expr id))
-         (only-in datasets/core-private/codec file-sha256 hex)
+         (only-in datasets/core-private/canonical write-canonical-row)
+         (only-in datasets/core-private/codec call-with-gzip-sha256 file-sha256)
          (only-in datasets/core-private/convert convert-fetch? converter/c row-value?)
          (only-in datasets/core-private/error raise-registry-error)
          (only-in datasets/core-private/log log-datasets-info)
          (only-in datasets/core-private/resource with-custodian with-resource)
-         (only-in file/gzip gzip-through-ports)
          (only-in net/url get-pure-port/headers string->url url->path url-scheme)
          (only-in racket/contract/base contract)
          (only-in racket/contract/combinator exn:fail:contract:blame?)
@@ -119,26 +119,41 @@
 (define (convert-set who name info final converter idle)
   (let loop ([files (hash-ref (hash-ref info "fetch") "files")] [paths (hash)])
     (match files
-      ['() (write-converted who name info final (converted-text who name info converter paths))]
+      ['() (write-converted who name info final converter paths)]
       [(cons file more)
        (define file-name (hash-ref file "name"))
        (with-part-file [part who name final (string-append (hash-ref file "sha256") ".raw")]
          (download-file who name file-name file part idle)
          (loop more (hash-set paths file-name part)))])))
 
-(define (converted-text who name info converter files)
+(define (write-converted who name info final converter files)
   (define fields (converter-fields name info))
-  (define width (hash-ref info "column-count"))
-  (define out (open-output-bytes))
+  (define expected (hash-ref info "sha256"))
   (log-datasets-info "converting ~a with ~a from ~a" name (converter-ref info "binding")
                      (converter-ref info "module"))
+  (write-cache-file
+   who name final
+   (lambda (part)
+     (define-values (_ actual)
+       (call-with-gzip-sha256
+        part
+        (lambda (out) (write-converted-rows who fields info converter files out))
+        (lambda (e)
+          (raise-registry-error who "cannot write the dataset cache" "dataset" name "file" final
+                                "error" (exn-message e)))))
+     (unless (equal? actual expected)
+       (apply raise-registry-error who "converted data sha256 mismatch"
+              (append fields (list "expected" expected "actual" actual)))))))
+
+(define (write-converted-rows who fields info converter files out)
+  (define width (hash-ref info "column-count"))
   (write-string "(\n" out)
   (match (with-converter-failure [who "converter failed" fields]
            (for/or ([row (converter files info)] [index (in-naturals)])
              (cond
-               [(well-formed? row width) (write-string "  " out) (write row out) (newline out) #f]
+               [(well-formed? row width) (write-canonical-row row out) #f]
                [else (list index row)])))
-    [#f (write-string ")\n" out) (get-output-bytes out #t)]
+    [#f (write-string ")\n" out)]
     [(list index row)
      (apply raise-registry-error who "converter produced a malformed row"
             (append fields
@@ -149,19 +164,6 @@
 
 (define (well-formed? row width)
   (and (list? row) (= (length row) width) (andmap row-value? row)))
-
-(define (write-converted who name info final text)
-  (define expected (hash-ref info "sha256"))
-  (define actual (hex (sha256-bytes text)))
-  (cond
-    [(equal? actual expected)
-     (write-cache-file who name final
-                       (lambda (part)
-                         (with-cache-failure [who "cannot write the dataset cache" "dataset" name "file" final]
-                           (call-with-output-file part #:exists 'truncate
-                             (lambda (out) (gzip-through-ports (open-input-bytes text) out #f 0))))))]
-    [else (apply raise-registry-error who "converted data sha256 mismatch"
-                 (append (converter-fields name info) (list "expected" expected "actual" actual)))]))
 
 (define (download-url url part idle)
   (with-custodian

@@ -4,8 +4,8 @@
          (only-in racket/match match-lambda)
          (only-in racket/sequence sequence-map))
 (provide concat-rows reversed-rows edge-rows failing-rows lazy-failing-rows raising-rows malformed-rows
-         non-sequence-rows stalling-rows wrong-arity not-a-procedure
-         converter-recorder malformed-row edge-table-rows)
+         non-sequence-rows stalling-rows wrong-arity not-a-procedure long-rows
+         converter-recorder malformed-row edge-table-rows long-row-count long-row-text)
 
 (define converter-recorder (make-parameter void))
 (define malformed-row (make-parameter #f))
@@ -31,5 +31,9 @@
 (define (malformed-rows files info) (record! files info) (list '(1 "a" 0.5) (malformed-row)))
 (define (non-sequence-rows files info) (record! files info) 'rows)
 (define (stalling-rows files info) (record! files info) (semaphore-wait (make-semaphore 0)) '())
+(define long-row-count 250000)
+(define long-row-text (make-string 200 #\a))
+(define (long-rows files info)
+  (sequence-map (lambda (i) (list i long-row-text 0.5)) (in-range long-row-count)))
 (define (wrong-arity files) '())
 (define not-a-procedure 'rows)
