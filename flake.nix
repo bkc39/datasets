@@ -10,13 +10,7 @@
     let
       systems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
       each = nixpkgs.lib.genAttrs systems;
-      lib = nixpkgs.lib;
-      repoPackages = lib.remove "" (lib.splitString "\n" (builtins.readFile ./scripts/packages.txt));
-      corePackage = builtins.head repoPackages;
-      dependentPackages = builtins.tail repoPackages;
-      familyPackages = lib.init dependentPackages;
-      installPackage = name:
-        "raco pkg install --batch --deps fail --copy --no-setup --scope user --name ${name} ./${name}";
+      repoPackages = nixpkgs.lib.remove "" (nixpkgs.lib.splitString "\n" (builtins.readFile ./scripts/packages.txt));
       # The Racket 9.3 pin no longer supports Intel macOS. Reuse Polars'
       # older pinned platform/toolchain there, with the newer Racket recipes.
       pkgsFor = system:
@@ -40,6 +34,8 @@
           pkgs = pkgsFor system;
           native = polars.packages.${system}.rust;
           deps = polars.packages.${system}.racket-deps;
+          installPackage = name:
+            "raco pkg install --batch --deps fail --copy --no-setup --scope user --name ${pkgs.lib.escapeShellArg name} ${pkgs.lib.escapeShellArg "./${name}"}";
           build = full: pkgs.stdenvNoCC.mkDerivation {
             pname = if full then "datasets" else "datasets-core";
             version = "0.1";
@@ -57,10 +53,10 @@
                 raco pkg install --batch --deps fail --copy --no-setup --scope user --name polars ${polars}/polars
                 raco setup --no-docs --pkgs tzdata polars data-frame
               ''}
-              ${installPackage corePackage}
+              ${installPackage (builtins.head repoPackages)}
               ${pkgs.lib.optionalString full ''
                 racket examples/core-with-polars.rkt
-                ${lib.concatMapStringsSep "\n" installPackage dependentPackages}
+                ${pkgs.lib.concatMapStringsSep "\n" installPackage (builtins.tail repoPackages)}
               ''}
               runHook postBuild
             '';
@@ -119,8 +115,8 @@
               chmod -R u+w "$PLTUSERHOME"
               find "$PLTUSERHOME" -name docindex.sqlite -type f -delete
               raco pkg install --batch --deps fail --no-setup --link --scope user \
-                ${lib.concatMapStringsSep " " (name: "\"$PWD/${name}\"") repoPackages}
-              raco setup --no-docs --pkgs ${toString familyPackages}
+                ${pkgs.lib.concatMapStringsSep " " (name: ''"$PWD"/${pkgs.lib.escapeShellArg name}'') repoPackages}
+              raco setup --no-docs --pkgs ${pkgs.lib.escapeShellArgs (pkgs.lib.init (builtins.tail repoPackages))}
               echo "Isolated Racket environment: $PLTUSERHOME"
             '';
           };

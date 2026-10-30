@@ -8,7 +8,7 @@ if [[ $EUID -eq 0 ]] && [[ $(ip link show lo 2>/dev/null || true) == *"state DOW
 fi
 sources=${1:?usage: install-check.sh PREFETCHED-SOURCES [core|full]}
 mode=${2:-full}
-packages=($(<scripts/packages.txt))
+source scripts/packages.sh
 install_package() {
   raco pkg install --batch --deps fail --copy --no-setup --scope user --name "$1" "$project_root/$1"
 }
@@ -18,10 +18,10 @@ if [[ "$mode" == full ]]; then
   raco pkg install --batch --deps fail --copy --no-setup --scope user "$sources"/*/
   raco setup --no-docs --pkgs tzdata polars data-frame
 fi
-install_package "${packages[0]}"
+install_package "$core"
 if [[ "$mode" == full ]]; then
   racket examples/core-with-polars.rkt
-  for package in "${packages[@]:1}"; do
+  for package in "${dependents[@]}"; do
     install_package "$package"
   done
 fi

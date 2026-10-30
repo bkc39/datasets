@@ -25,11 +25,11 @@ The 20 datasets of ISLR2 (auto, boston, hitters, smarket, wage, ...) are in
 `datasets-islr`. `datasets-fetch` lists larger sets such as covtype and mnist
 that are downloaded from upstream and converted on first load; it ships no
 data. For the lightweight table API alone, install `datasets-core` instead.
-From a checkout, install the six packages with:
+From a checkout, install the packages listed in `scripts/packages.txt` from the
+repository root with:
 
 ```sh
-raco pkg install ./datasets-core ./datasets-r ./datasets-uci ./datasets-islr ./datasets-fetch
-raco pkg install --auto ./datasets
+raco pkg install --auto $(sed 's|^|./|' scripts/packages.txt)
 ```
 
 ```racket
@@ -49,11 +49,11 @@ source abbreviations such as `mpg` remain. Selection preserves requested order.
 Empty selections and duplicate names are rejected. Matrices require numeric,
 nonmissing values: categories are not encoded, nor missing values imputed.
 
-The repository has six top-level, independently installable package directories:
-`datasets-core/`, `datasets-r/`, `datasets-uci/`, `datasets-islr/`, `datasets-fetch/`, and `datasets/`. Each declares
+`scripts/packages.txt` lists the repository's top-level, independently installable
+package directories in dependency order: `datasets-core` first, the umbrella `datasets`
+last. The flake, scripts and gates read it; `scripts/check-package-list.rkt` checks it
+against the directories and the umbrella's `info.rkt` deps. Each package declares
 `collection 'multi` and contributes distinct directories to the shared `datasets` collection.
-`scripts/packages.txt` lists them in install order for the flake, scripts and gates;
-`scripts/check-package-list.rkt` checks the copies that cannot read it.
 `datasets-r` contributes `datasets/r-data`, found through its registry, and its
 tests; it depends on `datasets-core`, and `datasets` depends on it. Its sets have
 no named loader: use `(load-dataset 'penguins)`. `datasets-uci` contributes
