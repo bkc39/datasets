@@ -136,12 +136,12 @@ nix flake check
 nix develop                # isolated environment, no R tooling
 ```
 
-Outputs cover x86-64/AArch64 Linux and macOS. CI runs Nix on Linux x86-64 and
-macOS AArch64, plus ordinary Racket 9.3/stable installation checks. The flake
-pins sources and reuses Polars' native derivation and prefetched dependency
-closure. Intel macOS uses Polars' older pinned platform packages with the
-Racket 9.3 recipes, since the newer nixpkgs pin has dropped that platform.
-Installation, examples, tests, and documentation run offline.
+Outputs cover x86-64/AArch64 Linux and AArch64 macOS; the pinned nixpkgs has
+dropped Intel macOS. CI evaluates every output system and runs Nix on Linux
+x86-64 and macOS AArch64, plus ordinary Racket 9.3/stable installation checks.
+The flake pins sources and reuses Polars' native derivation and prefetched
+dependency closure. Installation, examples, tests, and documentation run
+offline.
 
 For ordinary Racket, separate dependency fetching from validation:
 
