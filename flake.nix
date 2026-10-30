@@ -2,7 +2,7 @@
   description = "Bundled datasets for Racket: immutable core and dataframe adapters";
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/07e1d92cdc0ed416cfa11ff3ca40d17e61cfba7a";
-    polars.url = "github:bkc39/rkt-polars/dfe17e1d94356f192fd4a547714324e81b465a7e";
+    polars.url = "github:bkc39/rkt-polars/2b0c382dcac42452be8af14a1a6ab4f085ab67ca";
     data-frame = { url = "github:alex-hhh/data-frame/ab3980c4da5a99d2b79172a32b9cb86b2c2b63b4"; flake = false; };
     al2-test-runner = { url = "github:alex-hhh/al2-test-runner/b6757271932151dff6507ee6f1b690d0268da808"; flake = false; };
   };
