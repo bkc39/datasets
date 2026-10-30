@@ -151,8 +151,8 @@
         (check-false (dataset-cached? 'toy-set)))))
 
   (test-case "a malformed row names its index; nothing cached"
-    (for ([bad (in-list '((2 "c") (2 "c" 1.5 4) (2 "c" 1/2) (2 c 1.5) (2 "c" #t) #(2 "c" 1.5)
-                          (2 "c" (1.5)) 2))])
+    (for ([bad (in-list `((2 "c") (2 "c" 1.5 4) (2 "c" 1/2) (2 c 1.5) (2 "c" #t) #(2 "c" 1.5)
+                          (2 "c" (1.5)) 2 (,(expt 10 1000) "c" 1.5) (,(- (expt 10 1000)) "c" 1.5)))])
       (with-server routes (set-with "malformed-rows")
         (lambda (srv root registry)
           (check-exn (converter-error? #rx"^fetch-dataset: converter produced a malformed row\n"
@@ -338,16 +338,22 @@
       (check-equal? (load-wide-text text rows) '(3 (1 3 5) (2 4 6)))))
 
   (test-case "canonical cells and framing load as written"
-    (for ([c (in-list '((#"(\n  (1 2)\n)" (1 (1) (2)))
+    (for ([c (in-list `((#"(\n  (1 2)\n)" (1 (1) (2)))
                         (#"(\n  (+inf.0 -inf.0)\n  (+nan.0 -0.0)\n)\n" (2 (+inf.0 +nan.0) (-inf.0 -0.0)))
                         (#"(\n  (123456789012345678901 -1234567890123456789)\n)\n"
                          (1 (123456789012345678901) (-1234567890123456789)))
-                        (#"(\n  (2.9e-05 1e+21)\n  (0.5 -1e-7)\n)\n" (2 (2.9e-05 0.5) (1e+21 -1e-7)))))])
+                        (#"(\n  (2.9e-05 1e+21)\n  (0.5 -1e-7)\n)\n" (2 (2.9e-05 0.5) (1e+21 -1e-7)))
+                        (,(bytes-append #"(\n  (" (make-bytes 1000 57) #" -" (make-bytes 21 57) #"."
+                                        (make-bytes 21 57) #"e-999)\n)\n")
+                         (1 (,(sub1 (expt 10 1000))) (-0.0)))))])
       (match-define (list text expected) c)
       (check-equal? (load-wide-text text (car expected)) expected (format "~s" text))))
 
+  (define (second-cell token)
+    (bytes-append #"(\n  (1 " token #")\n)\n"))
+
   (test-case "data that is not the canonical written form cannot be parsed"
-    (for ([c (in-list '((#"; written by hand\n(\n  (1 2)\n)\n" "expected an opening parenthesis")
+    (for ([c (in-list `((#"; written by hand\n(\n  (1 2)\n)\n" "expected an opening parenthesis")
                         (#"(\n  (1 2)\n  (3)\n)\n" "row 1 has 1 values")
                         (#"(\n  (1 2)\n  3\n)\n" "row 1 is not a list")
                         (#"(\n  (1 2)\n" "unexpected end of data after row 1")
@@ -368,7 +374,15 @@
                         (#"(\n  (1 nan)\n)\n" "row 0: unexpected value nan")
                         (#"(\n  (1 (2))\n)\n" "row 0: unexpected value (2)")
                         (#"(\n  (1 \"\\q\")\n)\n" "row 0: string::1: read: unknown escape sequence `\\q` in string")
-                        (#"(\n  (1 \"\377\")\n)\n" "row 0: invalid UTF-8 in a string")))])
+                        (#"(\n  (1 \"\377\")\n)\n" "row 0: invalid UTF-8 in a string")
+                        (#"(\n  (1 #x10)\n)\n" "row 0: unexpected value #x10")
+                        (#"(\n  (1 #e1e5)\n)\n" "row 0: unexpected value #e1e5")
+                        (#"(\n  (1 4.)\n)\n" "row 0: unexpected value 4.")
+                        (#"(\n  (1 1e1000)\n)\n" "row 0: unexpected value 1e1000")
+                        (#"(\n  (1 -nan.0)\n)\n" "row 0: unexpected value -nan.0")
+                        (,(second-cell (make-bytes 1001 49)) "row 0: unexpected value 1111")
+                        (,(second-cell (bytes-append #"0." (make-bytes 22 49))) "row 0: unexpected value 0.1111")
+                        (,(second-cell (bytes-append (make-bytes 22 49) #".5")) "row 0: unexpected value 1111")))])
       (match-define (list text detail) c)
       (define message (load-wide-text text 1))
       (check-pred string? message)

@@ -2,8 +2,9 @@
 (require (only-in compiler/find-exe find-exe)
          (only-in datasets/core dataset-info dataset-missing dataset-names dataset-table-columns
                   dataset-table-row-count fetch-dataset load-dataset-table)
+         (only-in datasets/core-private/canonical read-canonical-columns)
          (only-in datasets/core-tests/convert-fixture long-row-count long-row-text)
-         (only-in racket/list first index-of last remove-duplicates)
+         (only-in racket/list append-map first index-of last remove-duplicates)
          (only-in racket/match match match-define)
          (only-in racket/system system*/exit-code)
          (only-in racket/vector vector-copy vector-extend)
@@ -59,6 +60,7 @@
       (trailing-text ,(gzip-bytes (bytes-append toy-text #"  (4 \"d\" 2.5)\n")) mismatch)
       (truncated-gzip ,(subbytes toy-artifact 0 30) mismatch)
       (huge-exponent ,(gzip-bytes #"(\n  (#e1e100000000 #e1e100000000 #e1e100000000)\n)\n") mismatch)
+      (long-decimal ,(gzip-bytes (bytes-append #"(\n  (0." (make-bytes 6400000 49) #" 1 2)\n)\n")) mismatch)
       (cut-header ,(subbytes toy-artifact 0 10) unreadable)))
   (define tier-errors
     '((bundled "data sha256 mismatch" "cannot read dataset data" #f)
@@ -121,8 +123,27 @@
         #:registries (hash "registry.rktd" (hash "gen" (hash-set entry "sha256" (hex (sha256-bytes text))))))
        (proc dir))))
 
+  (test-case "rows beyond the cell budget grow the columns, whatever the registry row count"
+    (define budget 16)
+    (for* ([n (in-list '(15 16 17 40))]
+           [stated (in-list (list 0 (sub1 n) n (add1 n) (* 4 n)))]
+           [indices (in-list '((1) (0 1)))])
+      (define text (rows->rktd-bytes (for/list ([i (in-range n)]) (list i (- i)))))
+      (check-equal? (read-canonical-columns (open-input-bytes text) indices 2 stated budget)
+                    (cons (read-reference text indices stated) n)
+                    (format "~a rows, ~a stated, columns ~a" n stated indices))))
+
   (define linux? (eq? (system-type 'os*) 'linux))
-  (define (open-fds) (length (directory-list "/proc/self/fd")))
+  (define (open-fds) (directory-list "/proc/self/fd" #:build? #t))
+  (define (data-fds)
+    (filter (lambda (fd) (regexp-match? #rx"[.]rktd[.]gz$" (path->string (resolve-path fd)))) (open-fds)))
+  (define (live-threads custodian)
+    (append-map (lambda (v)
+                  (cond
+                    [(custodian? v) (live-threads v)]
+                    [(and (thread? v) (not (thread-dead? v))) (list v)]
+                    [else '()]))
+                (custodian-managed-list custodian (current-custodian))))
 
   (test-case "killing a load closes its file and stops its workers"
     (define n 1000000)
@@ -133,11 +154,17 @@
           (call-with-registry-fixtures (list dir)
             (lambda ()
               (dataset-info 'gen)
-              (define before (open-fds))
-              (define t (thread (lambda () (load-dataset-table 'gen))))
-              (check-true (wait-until load-seconds (lambda () (> (open-fds) before))))
+              (define before (length (open-fds)))
+              (define loads (make-custodian))
+              (define finished? (box #f))
+              (define t (parameterize ([current-custodian loads])
+                          (thread (lambda () (load-dataset-table 'gen) (set-box! finished? #t)))))
+              (check-true (wait-until load-seconds (lambda () (pair? (data-fds)))))
               (kill-thread t)
-              (check-true (wait-until load-seconds (lambda () (= (open-fds) before))))))))))
+              (check-false (unbox finished?))
+              (check-true (wait-until load-seconds
+                                      (lambda () (and (null? (data-fds)) (null? (live-threads loads))))))
+              (check-equal? (length (open-fds)) before)))))))
 
   (define subprocess-memory-kb (* 3 1024 1024))
   (test-case "a registry row count far beyond the data neither aborts nor preallocates it"

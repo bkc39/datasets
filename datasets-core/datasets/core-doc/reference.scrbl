@@ -218,11 +218,11 @@ takes effect only with a registry update that pins the new content.
 The protocol a converter binding follows. @racket[files] maps each file's
 @tt{name} to its verified download and @racket[info] is the dataset's
 @racket[dataset-info]. The result is a sequence, possibly lazy, of rows in source
-order, each a list of @tt{column-count} exact integers, flonums, strings or
-@racket['missing]. A contract violation raised while loading the converter or
-producing rows, such as a binding that is not a procedure of two arguments or a
-result that is not a sequence, propagates unchanged; any other @racket[exn:fail]
-is reported as described for @racket[fetch-dataset].}
+order, each a list of @tt{column-count} exact integers of at most 1000 digits,
+flonums, strings or @racket['missing]. A contract violation raised while loading
+the converter or producing rows, such as a binding that is not a procedure of two
+arguments or a result that is not a sequence, propagates unchanged; any other
+@racket[exn:fail] is reported as described for @racket[fetch-dataset].}
 
 @subsection[#:tag "datasets-core-offline-reference"]{Disabling downloads}
 

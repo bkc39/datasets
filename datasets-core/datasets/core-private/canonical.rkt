@@ -19,7 +19,9 @@
 (define digit-9 (char->integer #\9))
 (define close-paren (char->integer #\)))
 (define row-prefix #"  (")
-(define number-rx #px#"^(?:-?[0-9]+(?:\\.[0-9]+)?(?:e[+-]?[0-9]{1,3})?|[+-]inf\\.0|\\+nan\\.0)$")
+(define number-rx
+  #px#"^(?:-?[0-9]{1,1000}|-?[0-9]{1,21}(?:\\.[0-9]{1,21})?(?:e[+-]?[0-9]{1,3})?|[+-]inf\\.0|\\+nan\\.0)$")
+(define integer-bound (expt 10 1000))
 (define cell-budget (expt 2 26))
 
 (define (write-canonical-rows rows width out)
@@ -33,7 +35,10 @@
     [else (write-string ")\n" out) #f]))
 
 (define (canonical-row? row width)
-  (and (list? row) (= (length row) width) (andmap row-value? row)))
+  (and (list? row) (= (length row) width) (andmap canonical-value? row)))
+
+(define (canonical-value? v)
+  (and (row-value? v) (or (not (exact-integer? v)) (< (abs v) integer-bound))))
 
 (define (write-canonical-row row out)
   (match-define (cons first more) row)
@@ -44,11 +49,11 @@
     (write v out))
   (write-string ")\n" out))
 
-(define (read-canonical-columns in indices width rows)
+(define (read-canonical-columns in indices width rows [budget cell-budget])
   (cond
     [(not (equal? (read-bytes-line in 'linefeed) #"(")) (fail "expected an opening parenthesis")]
     [else
-     (define capacity (min rows (quotient cell-budget (max 1 (length indices)))))
+     (define capacity (min rows (quotient budget (max 1 (length indices)))))
      (define columns (for/vector ([_ (in-list indices)]) (make-vector capacity)))
      (let loop ([columns columns] [slots (column-slots columns indices width)] [capacity capacity] [count 0])
        (define line (read-bytes-line in 'linefeed))
