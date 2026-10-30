@@ -7,13 +7,16 @@
          (only-in racket/flonum fl/)
          (only-in racket/match match match* match-define)
          (only-in racket/sequence sequence-map)
+         (only-in racket/string string-split)
          (only-in threading ~>))
 (provide (contract-out
           [covtype-rows converter/c]
           [california-housing-rows converter/c]
           [idx-file-names (listof string?)]
           [idx-image-rows converter/c]
-          [csv-header-rows converter/c]))
+          [csv-header-rows converter/c]
+          [esl-zip-file-names (listof string?)]
+          [esl-zip-rows converter/c]))
 
 (define converter-files/c
   (flat-named-contract 'converter-files (hash/c string? complete-path? #:immutable #t)))
@@ -85,3 +88,37 @@
   (match (hash-values files)
     [(list path) (~> path file->bytes open-input-bytes (csv-rows (info->column-specs info)))]
     [paths (error 'csv-header-rows "expected one file\n  given: ~a" (length paths))]))
+
+(define esl-zip-file-names '("zip.train.gz" "zip.test.gz"))
+
+(define decimal-rx #px"^[-+]?([0-9]+[.]?[0-9]*|[.][0-9]+)([eE][-+]?[0-9]+)?$")
+
+(define (esl-zip-rows files info)
+  (match-define (list train test) esl-zip-file-names)
+  (define width (sub1 (hash-ref info "column-count")))
+  (in-sequences (esl-zip-split-rows files train "train" width)
+                (esl-zip-split-rows files test "test" width)))
+
+(define (esl-zip-split-rows files name split width)
+  (sequence-map (lambda (line number) (esl-zip-row (string-split line) name number split width))
+                (in-parallel (~> (hash-ref files name) gunzip-file open-input-bytes in-lines)
+                             (in-naturals 1))))
+
+(define (esl-zip-row tokens name number split width)
+  (define (fail message details . args)
+    (apply error 'esl-zip-rows (string-append "~a\n  file: ~a\n  line: ~a" details) message name number args))
+  (define (decimal token)
+    (cond
+      [(regexp-match? decimal-rx token) token]
+      [else (fail "not a number" "\n  token: ~a" token)]))
+  (match tokens
+    [(cons digit pixels) #:when (= (length tokens) width)
+     (cons (esl-zip-digit (decimal digit) fail)
+           (append (map (lambda (token) (string->number (string-append "#i" (decimal token)) 10)) pixels)
+                   (list split)))]
+    [_ (fail "wrong number of tokens" "\n  expected: ~a\n  given: ~a" width (length tokens))]))
+
+(define (esl-zip-digit token fail)
+  (match (string->number token 10 'number-or-false 'decimal-as-exact)
+    [(? exact-integer? digit) #:when (<= 0 digit 9) digit]
+    [_ (fail "digit is not a whole number from 0 to 9" "\n  token: ~a" token)]))

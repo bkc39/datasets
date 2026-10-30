@@ -21,8 +21,8 @@ bundled, so loading them downloads nothing.
 raco pkg install --auto datasets
 ```
 
-The 20 datasets of ISLR2 (auto, boston, hitters, smarket, wage, ...) are in
-`datasets-islr`. `datasets-fetch` lists larger sets such as covtype and mnist
+The 20 datasets of ISLR2 (auto, boston, hitters, smarket, wage, ...) and four of
+ESL (prostate, sa-heart, vowel, ozone) are in `datasets-islr`. `datasets-fetch` lists larger sets such as covtype and mnist
 that are downloaded from upstream and converted on first load; it ships no
 data. For the lightweight table API alone, install `datasets-core` instead.
 From a checkout, install the six packages with:
@@ -114,7 +114,8 @@ titanic 0.1.0, nycflights13 1.0.2), MIT (datasauRus 0.1.9), and GPL-2 or GPL-3 (
 The `datasets-uci` sets are CC BY 4.0 per their UCI Machine Learning Repository pages.
 This is a redistribution basis, not a claim of independent original-owner
 permission. The `datasets-islr` sets are GPL-2
-([ISLR2 1.3-2](https://CRAN.R-project.org/package=ISLR2)). `datasets-fetch`
+([ISLR2 1.3-2](https://CRAN.R-project.org/package=ISLR2)) and GPL-2 or later
+([ElemStatLearn 2015.6.26.2](https://cran.r-project.org/src/contrib/Archive/ElemStatLearn/)). `datasets-fetch`
 redistributes no data; each entry names the upstream terms of use. See [NOTICE](datasets-core/NOTICE) and
 [datasets-r/NOTICE](datasets-r/NOTICE), [datasets-uci/NOTICE](datasets-uci/NOTICE),
 [datasets-islr/NOTICE](datasets-islr/NOTICE), bundled license texts, and upstream documentation under

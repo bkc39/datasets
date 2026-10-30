@@ -32,6 +32,31 @@ if (package == 'datasets-islr') {
       smarket=Smarket, wage=Wage, weekly=Weekly)
     for (id in names(sets)) export(sets[[id]], id)
   })
+  esl <- new.env()
+  for (f in list.files(file.path(root,'ElemStatLearn/data'),pattern='[.]RData$',full.names=TRUE)) load(f,envir=esl)
+  with(esl, {
+    train.test <- function(n.train, n.test) factor(rep(c('train','test'), c(n.train, n.test)), levels=c('train','test'))
+    prostate$train <- factor(ifelse(prostate$train, 'train', 'test'), levels=c('train','test'))
+    names(prostate)[names(prostate) == 'train'] <- 'split'
+    export(prostate, 'prostate')
+    export(SAheart, 'sa-heart')
+    export(cbind(rbind(vowel.train, vowel.test), split=train.test(nrow(vowel.train), nrow(vowel.test))), 'vowel')
+    export(ozone, 'ozone')
+    export(spam, 'esl-spam')
+  })
+  quit(save='no')
+}
+if (package == 'esl-zip') {
+  esl <- new.env()
+  for (f in c('zip.train','zip.test')) load(file.path(root,'ElemStatLearn/data',paste0(f,'.RData')),envir=esl)
+  book <- lapply(c('zip.train','zip.test'), function(f) as.matrix(read.table(gzfile(file.path(args[4],paste0(f,'.gz'))))))
+  stopifnot(all(book[[1]] == esl$zip.train), all(book[[2]] == esl$zip.test))
+  pixels <- rbind(book[[1]], book[[2]])
+  stopifnot(all(pixels[,1] == round(pixels[,1])))
+  d <- data.frame(digit=as.integer(pixels[,1]), pixels[,-1])
+  names(d) <- c('digit', paste0('pixel', seq_len(ncol(pixels)-1)))
+  d$split <- factor(rep(c('train','test'), c(nrow(book[[1]]), nrow(book[[2]]))), levels=c('train','test'))
+  export(d, 'zip')
   quit(save='no')
 }
 if (package == 'datasets-r') {

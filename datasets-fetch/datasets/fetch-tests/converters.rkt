@@ -4,13 +4,13 @@
                   load-dataset-table)
          (only-in datasets/core-tests/fixture cache-files call-with-fetch-fixture rows->rktd-bytes)
          (only-in datasets/fetch-private/convert california-housing-rows covtype-rows csv-header-rows
-                  idx-file-names idx-image-rows)
+                  esl-zip-file-names esl-zip-rows idx-file-names idx-image-rows)
          (only-in datasets/fetch-tests/fixture call-with-upstream-files error-with?)
          (only-in file/sha1 bytes->hex-string)
          (only-in net/url path->url url->string)
          (only-in racket/file file->string)
          (only-in racket/flonum fl/)
-         (only-in racket/list make-list)
+         (only-in racket/list last make-list take)
          (only-in racket/match == match match-define match-lambda)
          (only-in racket/runtime-path define-runtime-path)
          (only-in racket/sequence sequence->list)
@@ -45,11 +45,29 @@
   (define idx-expected
     (for/list ([i (in-range 3)] [label (in-list '(7 2 9))] [split (in-list '("train" "train" "test"))])
       (append (for/list ([k (in-range pixels)]) (pixel i k)) (list label split))))
+  (define zip-info
+    (let ([info (dataset-info 'zip)])
+      (define columns (hash-ref info "columns"))
+      (hash-set* info "column-count" 6 "columns" (append (take columns 5) (list (last columns))))))
+  (define (zip-upstream train test)
+    (map list esl-zip-file-names `((gz ,train) (gz ,test))))
+  (define zip-train "6.0000 -1.0000 -0.6310 0.8620 -0.0000 \n5.0000 1.0000 0.0000 -1.0000 -1.0000 \n")
+  (define zip-test "9 -1 0 -0 1\n")
+  (define zip-expected
+    '((6 -1.0 -0.631 0.862 -0.0 "train") (5 1.0 0.0 -1.0 -1.0 "train") (9 -1.0 0.0 -0.0 1.0 "test")))
   (define (file-entry files file)
     (define path (hash-ref files file))
     (hash "name" file
           "urls" (list (~> path path->url url->string))
           "sha256" (~> path (call-with-input-file sha256-bytes) bytes->hex-string)))
+  (define (mini-name name) (string->symbol (format "~a-mini" name)))
+  (define (mini-entry name info upstream expected files)
+    (hash-set* info
+               "name" (symbol->string (mini-name name)) "rows" (length expected)
+               "package" "datasets-fetch-fixture"
+               "sha256" (~> expected rows->rktd-bytes sha256-bytes bytes->hex-string)
+               "fetch" (hash-set (hash-ref info "fetch") "files"
+                                 (map (match-lambda [(list file _) (file-entry files file)]) upstream))))
   (define csv-info
     (hash "columns" (map (match-lambda [(list name type) (hash "name" name "original-name" name "type" type)])
                          '(("y" "real") ("name" "string") ("x" "integer")))))
@@ -64,6 +82,7 @@
       (mnist ,idx-image-rows ,(idx-upstream idx-contents) ,(dataset-info 'mnist) ,idx-expected)
       (fashion-mnist ,idx-image-rows ,(idx-upstream idx-contents) ,(dataset-info 'fashion-mnist)
                      ,idx-expected)
+      (zip ,esl-zip-rows ,(zip-upstream zip-train zip-test) ,zip-info ,zip-expected)
       (nycflights13-flights ,csv-header-rows (("flights.csv" (plain ,(fixture "flights-mini.csv"))))
                             ,(dataset-info 'nycflights13-flights)
                             ,flights-expected)))
@@ -103,6 +122,33 @@
         (lambda (files)
           (check-exn (error-with? who needle) (lambda () (sequence->list (converter files info))))))))
 
+  (test-case "esl-zip-rows reads digits as exact integers and pixels as R's read.table does, -0 included"
+    (call-with-upstream-files (zip-upstream zip-train zip-test)
+      (lambda (files)
+        (define rows (sequence->list (esl-zip-rows files zip-info)))
+        (check-equal? (map (lambda (row) (exact-integer? (car row))) rows) '(#t #t #t))
+        (check-equal? (map (lambda (row) (andmap flonum? (take (cdr row) 4))) rows) '(#t #t #t))
+        (check-equal? (map (lambda (row) (eqv? (list-ref row 4) -0.0)) rows) '(#t #f #f)))))
+
+  (test-case "esl-zip-rows names the file and line of a malformed line"
+    (for ([c (in-list `((,zip-train "9 -1 0 -0 1\n7 1 0 1\n" "wrong number of tokens" "file: zip.test.gz"
+                                    "line: 2" "expected: 5" "given: 4")
+                        ("6 -1 0 0 1 0 0\n" ,zip-test "wrong number of tokens" "file: zip.train.gz" "line: 1"
+                                             "expected: 5" "given: 7")
+                        (,zip-train "9 -1 abc -0 1\n" "not a number" "file: zip.test.gz" "line: 1" "token: abc")
+                        ("6.5 -1 0 0 1\n" ,zip-test "digit is not a whole number from 0 to 9" "file: zip.train.gz"
+                                           "line: 1" "token: 6.5")
+                        (,zip-train "9 -1 0 -0 1\n10 -1 0 -0 1\n" "digit is not a whole number from 0 to 9"
+                                    "file: zip.test.gz" "line: 2" "token: 10")
+                        (,zip-train "-1 -1 0 -0 1\n" "digit is not a whole number from 0 to 9" "file: zip.test.gz"
+                                    "line: 1" "token: -1")))])
+      (match-define (list* train test needles) c)
+      (call-with-upstream-files (zip-upstream train test)
+        (lambda (files)
+          (check-exn (apply error-with? 'esl-zip-rows needles)
+                     (lambda () (sequence->list (esl-zip-rows files zip-info)))
+                     (car needles))))))
+
   (test-case "idx-image-rows rejects files that disagree with each other or with the registry"
     (for ([c (in-list `(("train-labels-idx1-ubyte.gz" (idx-gz (3) ,(bytes 7 2 1)) idx-image-rows
                          "image and label counts differ" "split: train" "images: 2" "labels: 3")
@@ -127,16 +173,8 @@
       (match-define (list name _ upstream info expected) c)
       (call-with-upstream-files upstream
         (lambda (files)
-          (define mini (string->symbol (format "~a-mini" name)))
-          (define fetch (hash-ref info "fetch"))
-          (define entry
-            (hash-set* info
-                       "name" (symbol->string mini) "rows" (length expected)
-                       "package" "datasets-fetch-fixture"
-                       "sha256" (~> expected rows->rktd-bytes sha256-bytes bytes->hex-string)
-                       "fetch" (hash-set fetch "files"
-                                         (map (match-lambda [(list file _) (file-entry files file)])
-                                              upstream))))
+          (define mini (mini-name name))
+          (define entry (mini-entry name info upstream expected files))
           (call-with-fetch-fixture (list entry)
             (lambda (root _registry)
               (define table (load-dataset-table mini))
@@ -148,4 +186,17 @@
                             expected)
               (check-equal? (cache-files root)
                             (list (format "~a/~a.rktd.gz" mini (hash-ref entry "sha256"))))
-              (check-equal? (fetch-dataset mini) (build-path root (car (cache-files root)))))))))))
+              (check-equal? (fetch-dataset mini) (build-path root (car (cache-files root))))))))))
+
+  (test-case "core names the zip file that cannot be downloaded"
+    (for ([missing (in-list esl-zip-file-names)])
+      (define upstream (zip-upstream zip-train zip-test))
+      (call-with-upstream-files upstream
+        (lambda (files)
+          (define entry (mini-entry 'zip zip-info upstream zip-expected files))
+          (delete-file (hash-ref files missing))
+          (call-with-fetch-fixture (list entry)
+            (lambda (_root _registry)
+              (check-exn (error-with? 'load-dataset-table "cannot download dataset" (format "file: ~a" missing))
+                         (lambda () (load-dataset-table 'zip-mini))
+                         missing))))))))

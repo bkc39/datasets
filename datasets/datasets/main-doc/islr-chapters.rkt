@@ -14,7 +14,10 @@
     "Unsupervised Learning" "Multiple Testing"))
 
 (define (islr-chapter-rows)
-  (define ids (dataset-names #:package "datasets-islr"))
+  (define ids
+    (for/list ([id (in-list (dataset-names #:package "datasets-islr"))]
+               #:when (hash-has-key? (dataset-info id) "islr2-chapters"))
+      id))
   (define uses (for/list ([id (in-list ids)]) (hash-ref (dataset-info id) "islr2-chapters")))
   (for/list ([title (in-list chapters)] [chapter (in-naturals 1)])
     (define (using part)

@@ -118,11 +118,36 @@
                     (load-rows (quotient text-size 2))
                     'killed-at-the-memory-limit)))
 
+  (define (zip-problems)
+    (define table (load-dataset-table 'zip #:download? #f))
+    (define (column name) (dataset-table-column table name))
+    (define (cells i names) (for/list ([name (in-list names)]) (vector-ref (column name) i)))
+    (define digits (column "digit"))
+    (define split (column "split"))
+    (define negative-zero-rows
+      (for*/list ([name (in-list (dataset-table-names table))]
+                  [(v i) (in-parallel (column name) (in-naturals))]
+                  #:when (eqv? v -0.0))
+        i))
+    (append (expect '(zip "row 0") (cells 0 '("digit" "pixel8" "pixel9" "pixel10")) '(6 -0.631 0.862 -0.167))
+            (expect '(zip "row 9297") (cells 9297 '("digit" "split")) '(1 "test"))
+            (expect '(zip "digit counts")
+                    (for/list ([d (in-range 10)]) (vector-count (lambda (v) (= v d)) digits))
+                    '(1553 1269 929 824 852 716 834 792 708 821))
+            (expect '(zip "digit sum") (for/sum ([v (in-vector digits)]) v) 36188)
+            (expect '(zip "pixel1 sum within 1e-6")
+                    (< (abs (- (for/sum ([v (in-vector (column "pixel1"))]) v) -9265.046)) 1e-6)
+                    #t)
+            (expect '(zip "negative zeros") (length negative-zero-rows) 170)
+            (expect '(zip "negative zeros only in train rows")
+                    (for/and ([i (in-list negative-zero-rows)]) (equal? (vector-ref split i) "train"))
+                    #t)))
+
   (printf "DATASETS_HOME ~a\n" (dataset-cache-directory))
   (define names (dataset-names #:package "datasets-fetch"))
   (define problems
     (append (append-map pinned-bytes-problems names) (append-map table-problems names)
-            (bounded-load-problems 'fashion-mnist)))
+            (bounded-load-problems 'fashion-mnist) (zip-problems)))
   (if (null? problems)
       (printf "network checks hold for ~a\n" names)
       (error (string-join problems "\n" #:before-first "network checks failed:\n"))))

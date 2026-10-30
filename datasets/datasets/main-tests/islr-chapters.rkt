@@ -1,5 +1,5 @@
 #lang racket/base
-(require (only-in datasets dataset-names)
+(require (only-in datasets dataset-info dataset-names)
          (only-in datasets/main-doc/islr-chapters islr-chapter-cells islr-chapter-rows)
          (only-in racket/list append-map remove-duplicates)
          (only-in racket/match match-lambda))
@@ -25,4 +25,7 @@
                   ("13 Multiple Testing" (fund khan) (carseats))))
   (check-equal? (list-ref (islr-chapter-cells symbol->string) 8)
                 '("9 Support Vector Machines" ("khan") ("auto" ", " "oj")))
-  (check-equal? (sort (remove-duplicates used) symbol<?) (dataset-names #:package "datasets-islr")))
+  (check-equal? (sort (remove-duplicates used) symbol<?)
+                (for/list ([id (in-list (dataset-names #:package "datasets-islr"))]
+                           #:when (equal? (hash-ref (dataset-info id) "source-version") "ISLR2 1.3-2"))
+                  id)))

@@ -31,7 +31,8 @@ Learning Repository, to the core catalog; @tt{datasets} adds the
 convenient loaders and adapters to the same collection. The Polars package
 supplies its native library. With Nix, @tt{nix develop} prepares an isolated
 environment containing the six packages and that library.
-@tt{datasets-islr} adds the datasets of ISLR2; see @secref["datasets-islr-guide"].
+@tt{datasets-islr} adds the datasets of ISLR2 and four of ESL; see
+@secref["datasets-islr-guide"] and @secref["datasets-esl-guide"].
 @tt{datasets-fetch} adds sets such as @tt{covtype} and @tt{mnist} that are
 downloaded and converted on first load.
 
@@ -164,6 +165,29 @@ describes the columns and provenance of each dataset.
 @(tabular #:sep (hspace 2)
   (cons (list "Chapter" "Text and labs" "Exercises")
         (islr-chapter-cells (lambda (id) (racketvalfont (format "'~a" id))))))
+
+@section[#:tag "datasets-esl-guide"]{Datasets from ESL}
+
+@tt{datasets-islr} also bundles four datasets of
+@hyperlink["https://hastie.su.domains/ElemStatLearn/"]{The Elements of Statistical
+Learning}, from the R package ElemStatLearn 2015.6.26.2: @racket['prostate],
+@racket['sa-heart], @racket['vowel] and @racket['ozone]. The ZIP code digits,
+@racket['zip], are in @tt{datasets-fetch} and are downloaded from the book's data
+page on first use. A train/test partition is a final @tt{split} column, with the
+training rows first where the book has two files:
+
+@examples[#:eval ev
+ (define prostate (load-dataset 'prostate #:format 'table))
+ (for/sum ([s (in-vector (dataset-table-column prostate "split"))])
+   (if (equal? s "train") 1 0))
+ (hash-ref (dataset-info 'vowel) "suggested-targets")
+ (hash-ref (dataset-info 'zip) "tier")]
+
+ESL's spam data is @racket['spambase] from @tt{datasets-uci}: the same 4,601 rows
+and 57 attributes in the same order, with @tt{spam} 1 for ESL's @tt{spam} and 0
+for @tt{email}. The book's training and test indicator is not included.
+@racket['ozone] holds the 111 complete days of @racket['airquality] without month
+and day; two values differ from it.
 
 @section[#:tag "datasets-matrices-guide"]{Preparing a numeric matrix}
 

@@ -2,6 +2,7 @@
 """
 scripts/fetch-parity.sh
 nix develop .#maintainer -c python3 -I scripts/fetch-parity.py nycflights13 ARCHIVE_DIR
+nix develop .#maintainer -c python3 -I scripts/fetch-parity.py esl-zip ARCHIVE_DIR
 """
 import hashlib
 import json
@@ -120,11 +121,41 @@ def nycflights13_references(archive_dir):
     return {"nycflights13": version}, tables
 
 
+def verified(path, sha256):
+    assert hashlib.sha256(path.read_bytes()).hexdigest() == sha256, path
+    return path
+
+
+def registry_files(name):
+    text = (ROOT / "datasets-fetch/datasets/fetch-data/registry.rktd").read_text()
+    start = text.index(f'\n ("{name}"\n')
+    end = text.find('\n ("', start + 1)
+    entry = text[start:end if end >= 0 else None]
+    return dict(re.findall(r'#hash\(\("name" \. "([^"]+)"\) \("sha256" \. "([0-9a-f]{64})"\)', entry))
+
+
+def esl_zip_references(archive_dir):
+    source = json.loads((ROOT / "scripts/sources.json").read_text())["ElemStatLearn"]
+    archive_dir = Path(archive_dir)
+    archive = verified(archive_dir / source["file"], source["sha256"])
+    for file, sha256 in registry_files("zip").items():
+        verified(archive_dir / file, sha256)
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
+        with tarfile.open(archive) as a:
+            a.extractall(tmp, filter="data")
+        subprocess.run(["Rscript", str(ROOT / "scripts/export-r.R"), str(tmp), str(tmp), "esl-zip", str(archive_dir)],
+                       check=True)
+        return {"ElemStatLearn": description_version(tmp / "ElemStatLearn")}, {"zip": r_table(tmp, "zip")}
+
+
 match sys.argv[1:]:
     case []:
         versions, tables = loader_references()
     case ["nycflights13", archive_dir]:
         versions, tables = nycflights13_references(archive_dir)
+    case ["esl-zip", archive_dir]:
+        versions, tables = esl_zip_references(archive_dir)
     case _:
         sys.exit(__doc__)
 reference = json.loads(OUT.read_text()) if OUT.exists() else {"versions": {}}

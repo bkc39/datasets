@@ -204,6 +204,26 @@ def import_core():
             measures=['radius','texture','perimeter','area','smoothness','compactness','concavity','concave points','symmetry','fractal dimension']
             names=[m+' '+s for s in ['mean','standard error','worst'] for m in measures]+['diagnosis','id']
             add(id,names,[r[2:]+[r[1],str(r[0])] for r in rows],id,levels={'diagnosis':['M','B']},identifiers=['id'],targets=['diagnosis'],notes='UCI diagnostic dataset. Source ID and M/B diagnosis moved after 30 measurements. Worst means mean of the three largest values; source IDs retained as strings.')
+def groups(text,i,n):
+    out=[]
+    for _ in range(n):
+        start=i=text.index('{',i); depth=0
+        while True:
+            depth+={'{':1,'}':-1}.get(text[i],0); i+=1
+            if depth==0: break
+        out.append(text[start+1:i-1])
+    return out,i
+def plain(s):
+    s=re.sub(r'%%.*','',s)
+    while (t:=re.sub(r'\\[a-z]+\{([^{}]*)\}',r'\1',s))!=s: s=t
+    return ' '.join(re.sub(r'\\([%{}\\])',r'\1',s).split())
+def rd_items(text):
+    items={}; i=0
+    while (i:=text.find('\\item{',i))>=0:
+        (name,description),i=groups(text,i,2)
+        items[plain(name)]=plain(description)
+    return items
+def rd_field(text,field): return plain(groups(text,text.index('\\'+field+'{'),1)[0][0])
 ISLR_CITATION='James, G., Witten, D., Hastie, T. and Tibshirani, R. (2022). ISLR2: Introduction to Statistical Learning, Second Edition. R package version 1.3-2. Book: An Introduction to Statistical Learning with Applications in R, Second Edition (2021), Springer, https://www.statlearning.com. Original sources in the bundled upstream documentation.'
 ISLR_RECIPES=[
     ('auto','Auto',dict(targets=['mpg'],units={'mpg':'miles per gallon','weight':'lbs'},
@@ -261,29 +281,10 @@ def import_islr():
     def kebab(s):
         s=re.sub('([A-Z])(?=[A-Z][a-z])',r'\1-',re.sub('([a-z0-9])([A-Z])',r'\1-\2',s))
         return re.sub('[^a-z0-9]+','-',s.lower()).strip('-')
-    def groups(text,i,n):
-        out=[]
-        for _ in range(n):
-            start=i=text.index('{',i); depth=0
-            while True:
-                depth+={'{':1,'}':-1}.get(text[i],0); i+=1
-                if depth==0: break
-            out.append(text[start+1:i-1])
-        return out,i
-    def plain(s):
-        s=re.sub(r'%%.*','',s)
-        while (t:=re.sub(r'\\[a-z]+\{([^{}]*)\}',r'\1',s))!=s: s=t
-        return ' '.join(re.sub(r'\\([%{}\\])',r'\1',s).split())
-    def rd_items(text):
-        items={}; i=0
-        while (i:=text.find('\\item{',i))>=0:
-            (name,description),i=groups(text,i,2)
-            items[plain(name)]=plain(description)
-        return items
-    def rd_field(text,field): return plain(groups(text,text.index('\\'+field+'{'),1)[0][0])
     with tempfile.TemporaryDirectory() as tmp:
         tmp=Path(tmp)
-        with tarfile.open(cache/SOURCES['ISLR2']['file']) as a: a.extractall(tmp,filter='data')
+        for source in ['ISLR2','ElemStatLearn']:
+            with tarfile.open(cache/SOURCES[source]['file']) as a: a.extractall(tmp,filter='data')
         subprocess.run(['Rscript',str(ROOT/'scripts/export-r.R'),str(tmp),str(tmp),PACKAGE],check=True)
         for id,obj,kw in ISLR_RECIPES:
             rd=(tmp/f'ISLR2/man/{obj}.Rd').read_text(encoding='utf-8')
@@ -312,6 +313,58 @@ def import_islr():
             notes=' '.join(filter(None,[summary,kw.get('notes'),factors+'names normalized to kebab-case.']))
             add(id,[originals.get(n,o) for n,o in zip(names,original)],rows,'ISLR2',names=names,levels=levels,identifiers=identifiers,targets=kw.get('targets',[]),units=kw.get('units',{}),descriptions=descriptions,notes=notes)
             registry[id]['islr2-chapters']={k:[c+1 for c,used in enumerate(ISLR_CHAPTERS) if id in used[j]] for j,k in enumerate(['text','exercises'])}
+        import_esl(tmp)
+ESL_CITATION=('Halvorsen, K. B. (2019). ElemStatLearn: Data Sets, Functions and Examples from the Book "The Elements of Statistical Learning, '
+              'Data Mining, Inference, and Prediction" by Trevor Hastie, Robert Tibshirani and Jerome Friedman. R package version 2015.6.26.2. '
+              'Book: Hastie, T., Tibshirani, R. and Friedman, J. (2009). The Elements of Statistical Learning, Second Edition. Springer. '
+              'https://hastie.su.domains/ElemStatLearn/. Original sources in the bundled upstream documentation.')
+ESL_RECIPES=[
+    ('prostate',['prostate'],dict(targets=['lpsa'],units={'age':'years'},originals={'split':'train'},
+        descriptions={'age':'Age','gleason':'Gleason score','lpsa':'Log of prostate-specific antigen, the response',
+                      'split':'train: the 67 training observations; test: the 30 test observations'},
+        notes='split is R\'s logical train: 67 training and 30 test observations, as on page 49 of the book. '
+              'lweight for subject 32 has the second-edition correction. The numeric row names are not kept.')),
+    ('sa-heart',['SAheart'],dict(targets=['chd'],units={'tobacco':'kg'},
+        descriptions={'tobacco':'Cumulative tobacco','adiposity':'Adiposity','famhist':'Family history of heart disease','obesity':'Obesity',
+                      'chd':'Coronary heart disease, the response'},
+        notes='The numeric row names (1 to 463, without 262) are not kept. famhist is categorical.')),
+    ('vowel',['vowel.train','vowel.test'],dict(targets=['y'],renames={f'x-{k}':f'x{k}' for k in range(1,11)},originals={'split':'vowel.train or vowel.test'},
+        descriptions={'y':'Vowel class, 1-11'}|{f'x{k}':'Log area parameter from linear predictive analysis of the frame' for k in range(1,11)}
+                     |{'split':'train: the 528 vowel.train rows (8 speakers); test: the 462 vowel.test rows (7 other speakers)'},
+        notes='The 528 vowel.train rows, then the 462 vowel.test rows, told apart by split. '
+              'The speakers of the two splits do not overlap (8 train, 7 test). x1 to x10 are R\'s x.1 to x.10.')),
+    ('ozone',['ozone'],dict(targets=['ozone'],units={'ozone':'ppb','radiation':'langleys','temperature':'degrees Fahrenheit','wind':'mph'},
+        descriptions={'ozone':'Daily ozone concentration','radiation':'Solar radiation','temperature':'Daily maximum temperature','wind':'Wind speed'},
+        notes='The 111 complete days of airquality, renamed and without month and day. Two cells differ: wind on 1973-07-01 (4 vs 4.1) '
+              'and ozone on 1973-09-01 (95.9999999999999 vs 96). Values are as in the source.')),
+]
+citations.update({id:ESL_CITATION for id,_,_ in ESL_RECIPES})
+SPAMBASE=ROOT/'datasets-uci/datasets/uci-data/data/spambase.rktd.gz'
+def check_esl_spam(tmp):
+    _,_,rows=read_r_table(tmp,'esl-spam')
+    lines=gzip.decompress(SPAMBASE.read_bytes()).decode().splitlines()[1:-1]
+    spambase=[[float(v) for v in l.strip().strip('()').split()] for l in lines]
+    same=len(rows)==len(spambase) and all(len(r)==len(s) and [float(v) for v in r[:-1]]==s[:-1] and (r[-1]=='spam')==(s[-1]==1)
+                                          for r,s in zip(rows,spambase))
+    if not same: raise ValueError(f'ElemStatLearn spam is not cell-equal to {SPAMBASE.relative_to(ROOT)}')
+def import_esl(tmp):
+    check_esl_spam(tmp)
+    for id,objects,kw in ESL_RECIPES:
+        rds=[(tmp/f'ElemStatLearn/man/{o}.Rd').read_text(encoding='utf-8') for o in objects]
+        for suffix,rd in zip(['','-test'],rds): (PROVENANCE/f'{id}{suffix}.Rd').write_text(rd,encoding='utf-8')
+        header,kinds,rows=read_r_table(tmp,id)
+        renames=kw.get('renames',{})
+        names=[renames.get(kebab(h),kebab(h)) for h in header]
+        levels=read_r_levels(tmp,id,dict(zip(header,names)).get)
+        for j,n in enumerate(names):
+            if n in levels and not {r[j] for r in rows}<=set(levels[n]): raise ValueError(f'{id}: {n} value outside levels')
+        items=rd_items(rds[0])
+        originals=kw.get('originals',{})
+        descriptions={n:items[o] for n,o in zip(names,header) if o in items}|kw['descriptions']
+        summary=rd_field(rds[0],'description').removesuffix('.')+'.'
+        factors='R factors rendered as labels with levels in metadata; ' if levels else ''
+        add(id,[originals.get(n,h) for n,h in zip(names,header)],rows,'ElemStatLearn',names=names,kinds=kinds,levels=levels,
+            targets=kw['targets'],units=kw.get('units',{}),descriptions=descriptions,notes=' '.join([summary,kw['notes'],factors+'names normalized to kebab-case.']))
 def import_r():
     def kebab(s): return re.sub('[^a-z0-9]+','-',re.sub('([a-z])([A-Z])',r'\1-\2',s).lower()).strip('-')
     with tempfile.TemporaryDirectory() as tmp:

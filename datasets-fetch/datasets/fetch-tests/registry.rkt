@@ -55,7 +55,14 @@
        (("flights.csv"
          "https://raw.githubusercontent.com/vincentarelbundock/Rdatasets/cc03c29690889dbe83089f5206e2422db8c3f71f/csv/nycflights13/flights.csv"
          "b791a2590c9167aa0bd3cb45af3f64101180878cf088c183eae4011e3a654f42"))
-       "csv-header-rows" "CC0-1.0")))
+       "csv-header-rows" "CC0-1.0")
+      (zip
+       9298 ,(append '("digit") (for/list ([k (in-range 1 257)]) (format "pixel~a" k)) '("split"))
+       (("zip.train.gz" "https://hastie.su.domains/ElemStatLearn/datasets/zip.train.gz"
+                        "66ebf231ab51f2cf6ac1a892d0f98ccffee1079d7a5db638c1f11f366046ca16")
+        ("zip.test.gz" "https://hastie.su.domains/ElemStatLearn/datasets/zip.test.gz"
+                       "8dacc3c6e136af6c3488de9e5113a7daf140c8c2f1f0b61c54ee02f03f1a962f"))
+       "esl-zip-rows" "NOASSERTION")))
   (define (sha256-hex s) (~> s string->bytes/utf-8 sha256-bytes bytes->hex-string))
 
   (test-case "the datasets-fetch registry: shapes, pins, converters, terms"
@@ -82,9 +89,11 @@
       (check-regexp-match #px"Downloads [0-9.]+ MB" (hash-ref info "notes"))))
 
   (test-case "the catalog shows the pixel columns of the image sets as one row"
-    (for ([name (in-list '(mnist fashion-mnist))])
-      (check-equal? (map car (catalog-column-rows (hash-ref (dataset-info name) "columns")))
-                    '("pixel1 … pixel784" "label" "split")
+    (for ([c (in-list '((mnist ("pixel1 … pixel784" "label" "split"))
+                        (fashion-mnist ("pixel1 … pixel784" "label" "split"))
+                        (zip ("digit" "pixel1 … pixel256" "split"))))])
+      (match-define (list name rows) c)
+      (check-equal? (map car (catalog-column-rows (hash-ref (dataset-info name) "columns"))) rows
                     (symbol->string name))))
 
   (test-case "queries load no converter"
@@ -97,6 +106,8 @@
              (for ([form (in-list '((dataset-names)
                                     (dataset-info 'covtype)
                                     (dataset-cached? 'covtype)
+                                    (dataset-info 'zip)
+                                    (dataset-cached? 'zip)
                                     (with-handlers ([exn:fail? exn-message])
                                       (load-dataset-table 'covtype #:download? #f))))])
                (eval form))
