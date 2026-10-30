@@ -58,7 +58,7 @@ no named loader: use `(load-dataset 'penguins)`. `datasets-uci` contributes
 `datasets/uci-data` the same way; `(load-dataset 'digits)`. `datasets-islr`
 contributes `datasets/islr-data` the same way. `datasets-fetch` contributes
 `datasets/fetch-data`, a registry of converted fetch-tier sets, and their
-private converters; it requires `datasets-core` 0.2.
+private converters; it requires `datasets-core` 0.3.
 
 `datasets-core` contributes `datasets/core` and depends only on `base` at runtime.
 It provides `load-dataset-table`, `dataset-names`, `dataset-info`, the

@@ -10,9 +10,10 @@
          (only-in datasets/core-private/error raise-registry-error)
          (only-in datasets/core-private/log log-datasets-warning)
          (only-in datasets/core-private/table
-                  columns/c dataset-info/c dataset-missing dataset-missing? dataset-table
+                  dataset-column/c dataset-info/c dataset-missing dataset-missing? dataset-table
                   dataset-table-columns dataset-table-info dataset-table-names
-                  dataset-table-row-count dataset-table? freeze unchecked-dataset-table)
+                  dataset-table-row-count dataset-table? equal-lengths? freeze
+                  unchecked-dataset-table)
          (only-in racket/contract/base -> ->* ->i and/c contract-out listof non-empty-listof or/c)
          (only-in racket/format ~e ~s)
          (only-in racket/list append-map check-duplicates index-of remove-duplicates take)
@@ -34,9 +35,12 @@
           [clear-dataset-cache (->* () ((or/c #f symbol?)) void?)]
           [dataset-table
            (->i ([names (non-empty-listof string?)]
-                 [columns (names) (columns/c names)])
+                 ;; columns depends on names so ->i does not re-apply its contract for the #:pre/name views
+                 [columns (names) (non-empty-listof dataset-column/c)])
                 (#:info [info dataset-info/c])
                 #:pre/name (names) "duplicate column" (not (check-duplicates names))
+                #:pre/name (names columns) "one column per name" (= (length names) (length columns))
+                #:pre/name (columns) "every column the same length" (equal-lengths? columns)
                 [result dataset-table?])])
          dataset-info
          dataset-missing dataset-missing?

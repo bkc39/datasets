@@ -118,6 +118,18 @@
     (string-set! (car (hash-ref info "levels")) 0 #\z)
     (check-equal? u (snapshot)))
 
+  (test-case "T6 exact: a chaperone armed after construction does not reach the table"
+    (define armed? (box #f))
+    (define column
+      (chaperone-vector (vector-immutable 1 2 3)
+                        (λ (_ i x)
+                          (when (unbox armed?) (error 'chaperone "read ~a" i))
+                          x)
+                        (λ (_ _i x) x)))
+    (define u (dataset-table '("a") (list column)))
+    (set-box! armed? #t)
+    (check-equal? (for/list ([x (in-vector (dataset-table-column u "a"))]) x) '(1 2 3)))
+
   (test-case "T7 exact: rebuilding a loaded or generated table gives an equal table"
     (define loaded
       (append-map (λ (name)
@@ -129,10 +141,11 @@
       (check-equal? (rebuild (rebuild t)) t)))
 
   (for ([row (in-list
-              `(((dataset-table '("a" "a") '((1) (2))) "duplicate column")
-                ((dataset-table '("a" "b") '((1))) "one column per name")
-                ((dataset-table '("a") '((1) (2))) "one column per name")
-                ((dataset-table '("a" "b") '((1 2) (3))) "every column the same length")
+              `(((dataset-table '("a" "a") '((1) (2))) "contract violation;\n duplicate column\n")
+                ((dataset-table '("a" "b") '((1))) "contract violation;\n one column per name\n")
+                ((dataset-table '("a") '((1) (2))) "contract violation;\n one column per name\n")
+                ((dataset-table '("a" "b") '((1 2) (3)))
+                 "contract violation;\n every column the same length\n")
                 ((dataset-table '() '()) "the names argument")
                 ((dataset-table '(a) '((1))) "expected: string[?]")
                 ((dataset-table '("a") '(5)) "expected: dataset-column/c")
@@ -178,6 +191,14 @@
                  accepted)
                 ((dataset-table '("a") '((1))
                                 #:info (let ([shared (list "v")]) (hash "notes" (list shared shared))))
+                 accepted)
+                ((dataset-table '("a") '((1))
+                                #:info (hash "notes" (for/fold ([v "leaf"]) ([_ (in-range 40)])
+                                                       (list v v))))
+                 accepted)
+                ((dataset-table '("a") '((1))
+                                #:info (hash "notes" (for/fold ([v "leaf"]) ([_ (in-range 40)])
+                                                       (hash "l" v "r" v))))
                  accepted)))])
     (match-define (list form expected) row)
     (test-case (format "T9 exact: ~s gives ~s" form expected)

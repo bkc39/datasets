@@ -1,13 +1,13 @@
 #lang racket/base
 (require (for-syntax racket/base (only-in syntax/parse ...+ expr id))
-         (only-in racket/contract/base and/c flat-named-contract non-empty-listof)
-         (only-in racket/vector vector-map)
+         (only-in racket/contract/base flat-named-contract)
+         (only-in racket/vector vector-copy vector-map)
          (only-in syntax/parse/define define-syntax-parse-rule))
 (provide (struct-out dataset-table-struct)
          unchecked-dataset-table
          dataset-table
          dataset-missing dataset-missing?
-         columns/c dataset-info/c
+         dataset-column/c dataset-info/c equal-lengths?
          freeze column-info)
 
 (struct missing-value ())
@@ -53,38 +53,52 @@
   (define n (column-length (car columns)))
   (andmap (λ (c) (= (column-length c) n)) columns))
 
-(define (columns/c names)
-  (and/c (non-empty-listof (flat-named-contract 'dataset-column/c dataset-column?))
-         (flat-named-contract "one column per name" (λ (cs) (= (length cs) (length names))))
-         (flat-named-contract "every column the same length" equal-lengths?)))
+(define dataset-column/c (flat-named-contract 'dataset-column/c dataset-column?))
 
-(define (info-value? v ancestors)
+(define (remember! checked v ok?)
+  (when ok? (hash-set! checked v #t))
+  ok?)
+
+(define (info-value? v ancestors checked)
   (cond [(or (string? v) (number? v) (boolean? v) (symbol? v) (null? v)) #t]
+        [(hash-ref checked v #f) #t]
         [(hash-ref ancestors v #f) #f]
-        [(list? v) (andmap (λ (x) (info-value? x (hash-set ancestors v #t))) v)]
-        [(hash? v) (info-hash? v (hash-set ancestors v #t))]
+        [(list? v)
+         (remember! checked v (andmap (λ (x) (info-value? x (hash-set ancestors v #t) checked)) v))]
+        [(hash? v) (remember! checked v (info-hash? v (hash-set ancestors v #t) checked))]
         [else #f]))
 
-(define (info-hash? v ancestors)
+(define (info-hash? v ancestors checked)
   (and (hash-equal? v)
-       (for/and ([(k x) (in-hash v)]) (and (string? k) (info-value? x ancestors)))))
+       (for/and ([(k x) (in-hash v)]) (and (string? k) (info-value? x ancestors checked)))))
 
 (define (column-description? v)
   (and (hash? v) (string? (hash-ref v "name" #f))))
 
 (define (dataset-info? v)
   (and (hash? v)
-       (info-hash? v (hasheq v #t))
+       (info-hash? v (hasheq v #t) (make-hasheq))
        (let ([columns (hash-ref v "columns" '())])
          (and (list? columns) (andmap column-description? columns)))))
 
 (define dataset-info/c (flat-named-contract 'dataset-info/c dataset-info?))
 
 (define (freeze v)
+  (freeze/shared v #f))
+
+(define (freeze/shared v memo)
   (cond [(string? v) (string->immutable-string v)]
-        [(pair? v) (cons (freeze (car v)) (freeze (cdr v)))]
-        [(hash? v) (for/hash ([(k x) (in-hash v)]) (values (freeze k) (freeze x)))]
-        [else v]))
+        [(not (or (pair? v) (hash? v))) v]
+        [(not memo) (freeze/shared v (make-hasheq))]
+        [(hash-ref memo v #f) => values]
+        [else
+         (define frozen
+           (if (pair? v)
+               (cons (freeze/shared (car v) memo) (freeze/shared (cdr v) memo))
+               (for/hash ([(k x) (in-hash v)])
+                 (values (freeze/shared k memo) (freeze/shared x memo)))))
+         (hash-set! memo v frozen)
+         frozen]))
 
 (define (column-info name original-name type description missing-count)
   (hash "name" name "original-name" original-name "type" type "levels" '() "unit" #f
@@ -98,7 +112,9 @@
 
 (define (freeze-column column)
   (define cells (if (vector? column) column (list->vector column)))
-  (vector->immutable-vector (if (string-column? cells) (vector-map freeze-cell cells) cells)))
+  (cond [(string-column? cells) (vector->immutable-vector (vector-map freeze-cell cells))]
+        [(and (immutable? cells) (chaperone? cells)) (vector->immutable-vector (vector-copy cells))]
+        [else (vector->immutable-vector cells)]))
 
 (define (describe name column)
   (define-values (kind missing) (column-summary column))
