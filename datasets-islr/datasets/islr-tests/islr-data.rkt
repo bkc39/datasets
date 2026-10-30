@@ -3,27 +3,39 @@
          (only-in datasets/core dataset-info dataset-missing dataset-missing? dataset-names
                   dataset-packages dataset-table-column dataset-table-columns dataset-table-names
                   dataset-table-row-count load-dataset-table)
-         (only-in datasets/core-tests/fixture gunzip-file hex)
+         (only-in datasets/core-doc/catalog-rows catalog-column-rows)
+         (only-in datasets/core-tests/fixture conjuncts gunzip-file hex license-ids)
          (only-in datasets/islr-tests/columns column-meta column-names)
-         (only-in racket/match match match-define)
+         (only-in racket/list append-map remove-duplicates)
+         (only-in racket/match == match match-define)
          (only-in racket/runtime-path define-runtime-path)
          (only-in racket/vector vector-count)
          (only-in setup/getinfo get-info/full))
 (define-runtime-path islr-data "../islr-data")
 (define-runtime-path package-root "../..")
 (module+ test
-  (require (only-in rackunit check-= check-equal? check-false check-not-false check-true))
-  (define shapes
+  (require (only-in rackunit check-= check-equal? check-false check-not-false check-true test-case))
+  (define islr-shapes
     '((auto 392 9) (bikeshare 8645 15) (boston 506 13) (brain-cancer 88 8) (caravan 5822 86)
       (carseats 400 11) (college 777 19) (credit 400 11) (default 10000 4) (fund 50 2000)
       (hitters 322 21) (khan 83 2310) (nci60 64 6831) (nyse 6051 6) (oj 1070 18)
       (portfolio 100 2) (publication 244 9) (smarket 1250 9) (wage 3000 11) (weekly 1089 9)))
-  (define ids (map car shapes))
+  (define esl-shapes '((prostate 97 10) (sa-heart 462 10) (vowel 990 12) (ozone 111 4)))
+  (define sources
+    `((,islr-shapes "GPL-2.0-only" "ISLR2 1.3-2" #t)
+      (,esl-shapes "GPL-2.0-or-later" "ElemStatLearn 2015.6.26.2" #f)))
+  (define ids (sort (map car (append islr-shapes esl-shapes)) symbol<?))
+  (define vowel-features (for/list ([k (in-range 1 11)]) (format "x~a" k)))
   (define (data-file id) (build-path islr-data "data" (format "~a.rktd.gz" id)))
   (define (column id name) (dataset-table-column (load-dataset-table id) name))
   (define (column-count id name keep?) (vector-count keep? (column id name)))
   (define (value-counts id name values)
     (for/list ([value (in-list values)]) (column-count id name (lambda (v) (equal? v value)))))
+  (define (runs values)
+    (reverse (for/fold ([acc '()]) ([v (in-vector values)])
+               (match acc
+                 [(cons (list (== v) n) rest) (cons (list v (add1 n)) rest)]
+                 [_ (cons (list v 1) acc)]))))
   (define (column-sum id name)
     (for/sum ([v (in-vector (column id name))] #:unless (dataset-missing? v)) v))
   (define ((has-type type) meta) (equal? (hash-ref meta "type") type))
@@ -37,6 +49,14 @@
     (define name (hash-ref meta "name"))
     (and (regexp-match? #px"(^|-)[a-z](-|$)" name) (not (member name '("x" "y")))))
   (define (escaped-description? meta) (regexp-match? #rx"\\\\" (hash-ref meta "description")))
+  (define (check-chapters info where)
+    (check-false (regexp-match? #rx"ISLR2 use" (hash-ref info "notes")) where)
+    (define chapters (hash-ref info "islr2-chapters"))
+    (for ([part (in-list '("text" "exercises"))])
+      (define used (hash-ref chapters part))
+      (check-true (andmap (lambda (c) (<= 1 c 13)) used) where)
+      (check-equal? used (sort used <) where))
+    (check-true (pair? (append (hash-ref chapters "text") (hash-ref chapters "exercises"))) where))
   (define spot-checks
     `((names auto ("mpg" "cylinders" "displacement" "horsepower" "weight" "acceleration" "year"
                    "origin" "name"))
@@ -154,11 +174,70 @@
       (types wage "categorical" ("integer" "year" "age") ("real" "logwage" "wage"))
       (level-counts weekly "direction" (484 605))
       (types weekly "real" ("integer" "year") ("categorical" "direction"))
-      (row weekly 1088 ("today") (0.069))))
+      (row weekly 1088 ("today") (0.069))
+      (types prostate "real" ("integer" "age" "svi" "gleason" "pgg45") ("categorical" "split"))
+      (meta prostate "split" "original-name" "train")
+      (meta prostate "split" "levels" ("train" "test"))
+      (level-counts prostate "split" (67 30))
+      (row prostate 0 ("split") ("train"))
+      (row prostate 6 ("split") ("test"))
+      (row prostate 0 ("lcavol" "lweight" "age" "lbph" "svi" "gleason" "pgg45" "lpsa")
+           (-0.579818495 2.769459 50 -1.38629436 0 6 0 -0.4307829))
+      (row prostate 96 ("lcavol" "lpsa" "split") (3.471966453 5.5829322 "test"))
+      (row prostate 31 ("lweight") (3.8044377947482086))
+      (sum prostate "lpsa" 240.4035272 1e-9)
+      (sum prostate "age" 6195)
+      (sum prostate "gleason" 655)
+      (sum prostate "svi" 21)
+      (sum prostate "pgg45" 2365)
+      (info prostate "suggested-targets" ("lpsa"))
+      (info prostate "identifiers" ())
+      (info prostate "notes"
+            ,(string-append "Data to examine the correlation between the level of prostate-specific antigen and a number"
+                            " of clinical measures in men who were about to receive a radical prostatectomy. split is"
+                            " R's logical train: the 67 training and 30 test observations of the book's §3.2.1. lweight"
+                            " for subject 32 has the second-edition correction."))
+      (types sa-heart "real" ("integer" "sbp" "typea" "age" "chd") ("categorical" "famhist"))
+      (meta sa-heart "famhist" "levels" ("Absent" "Present"))
+      (row sa-heart 0 ("sbp" "tobacco" "ldl" "famhist" "typea" "alcohol" "age" "chd")
+           (160 12.0 5.73 "Present" 49 97.2 52 1))
+      (row sa-heart 461 ("tobacco" "alcohol" "chd") (0.0 0.0 1))
+      (level-counts sa-heart "famhist" (270 192))
+      (sum sa-heart "chd" 160)
+      (sum sa-heart "sbp" 63907)
+      (sum sa-heart "tobacco" 1679.67 1e-9)
+      (info sa-heart "suggested-targets" ("chd"))
+      (info sa-heart "identifiers" ())
+      (names vowel ("y" ,@vowel-features "split"))
+      (types vowel "real" ("integer" "y") ("categorical" "split"))
+      (meta vowel "x10" "original-name" "x.10")
+      (level-counts vowel "split" (528 462))
+      (runs vowel "split" (("train" 528) ("test" 462)))
+      (row vowel 527 ("y" "x1") (11 -4.261))
+      (value-counts vowel "y" (1 2 3 4 5 6 7 8 9 10 11) (90 90 90 90 90 90 90 90 90 90 90))
+      (row vowel 0 ("y" "x1" "x10") (1 -3.639 -0.814))
+      (row vowel 528 ("y" "x1") (1 -1.149))
+      (row vowel 989 ("y" "x10") (11 0.697))
+      (sum vowel "y" 5940)
+      (sum vowel "x1" -3171.703 1e-9)
+      (info vowel "suggested-targets" ("y"))
+      (info vowel "identifiers" ())
+      (types ozone "real" ("integer" "radiation" "temperature"))
+      (row ozone 0 ("ozone" "radiation" "temperature" "wind") (41.0 190 67 7.4))
+      (row ozone 110 ("ozone" "wind") (20.0 11.5))
+      (row ozone 82 ("ozone") (95.9999999999999))
+      (row ozone 33 ("wind") (4.0))
+      (sum ozone "radiation" 20513)
+      (sum ozone "temperature" 8635)
+      (sum ozone "wind" 1103.2 1e-9)
+      (info ozone "suggested-targets" ("ozone"))
+      (info ozone "identifiers" ())))
 
   (check-equal? (dataset-names #:package "datasets-islr") ids)
   (check-not-false (member "datasets-islr" (dataset-packages)))
-  (for ([shape (in-list shapes)])
+  (for* ([source (in-list sources)]
+         #:do [(match-define (list shapes license version chapters?) source)]
+         [shape (in-list shapes)])
     (match-define (list id rows cols) shape)
     (define t (load-dataset-table id))
     (define info (dataset-info id))
@@ -169,16 +248,12 @@
     (check-equal? (hash-ref info "tier") "bundled")
     (check-equal? (hash-ref info "package") "datasets-islr")
     (check-false (hash-ref info "fetch"))
-    (check-equal? (hash-ref info "license") "GPL-2.0-only")
-    (check-equal? (hash-ref info "source-version") "ISLR2 1.3-2")
     (define where (symbol->string id))
-    (check-false (regexp-match? #rx"ISLR2 use" (hash-ref info "notes")))
-    (define chapters (hash-ref info "islr2-chapters"))
-    (for ([part (in-list '("text" "exercises"))])
-      (define used (hash-ref chapters part))
-      (check-true (andmap (lambda (c) (<= 1 c 13)) used) where)
-      (check-equal? used (sort used <) where))
-    (check-true (pair? (append (hash-ref chapters "text") (hash-ref chapters "exercises"))) where)
+    (check-equal? (hash-ref info "license") license where)
+    (check-equal? (hash-ref info "source-version") version where)
+    (if chapters?
+        (check-chapters info where)
+        (check-false (hash-has-key? info "islr2-chapters") where))
     (check-equal? (column-names id single-letter-segment?) '() where)
     (check-equal? (column-names id escaped-description?) '() where)
     (check-equal? (hex (sha256-bytes (gunzip-file (data-file id)))) (hash-ref info "sha256"))
@@ -201,8 +276,43 @@
   (check-equal? (map path->string (directory-list (build-path islr-data "data")))
                 (for/list ([id (in-list ids)]) (format "~a.rktd.gz" id)))
   (match-define (list _ 'AND data-license) ((get-info/full package-root) 'license))
-  (check-equal? data-license 'GPL-2.0-only)
-  (check-true (file-exists? (build-path islr-data "licenses" "GPL-2.0-only.txt")))
+  (define license-files (directory-list (build-path islr-data "licenses")))
+  (define registry-licenses
+    (remove-duplicates (for/list ([id (in-list ids)]) (hash-ref (dataset-info id) "license"))))
+  (check-equal? (sort registry-licenses string<?) (sort (conjuncts data-license) string<?))
+  (for ([license (in-list (remove-duplicates (append-map license-ids registry-licenses)))])
+    (define file-name (pregexp (string-append "^" (regexp-quote license) "[-.]")))
+    (check-not-false (for/or ([file (in-list license-files)])
+                       (regexp-match? file-name (path->string file)))
+                     license))
+  (check-equal? (map car (catalog-column-rows (hash-ref (dataset-info 'vowel) "columns")))
+                '("y" "x1 … x10" "split"))
+
+  (check-true (file-exists? (build-path islr-data "provenance" "vowel-test.Rd")))
+
+  (test-case "an ESL note mentions kebab-case only when a column is renamed"
+    (for ([id (in-list (map car esl-shapes))])
+      (define info (dataset-info id))
+      (define renamed?
+        (for/or ([meta (in-list (hash-ref info "columns"))])
+          (not (equal? (hash-ref meta "name") (hash-ref meta "original-name")))))
+      (check-false (and (regexp-match? #rx"kebab-case" (hash-ref info "notes")) (not renamed?)) (symbol->string id))))
+
+  (test-case "ozone is airquality's complete days, renamed, two cells apart"
+    (define airquality (load-dataset-table 'airquality))
+    (define complete-days
+      (for/list ([i (in-range (dataset-table-row-count airquality))]
+                 #:unless (for/or ([c (in-vector (dataset-table-columns airquality))])
+                            (dataset-missing? (vector-ref c i))))
+        i))
+    (check-equal? (length complete-days) 111)
+    (check-equal? (for*/list ([(esl aq) (in-parallel '("ozone" "radiation" "temperature" "wind")
+                                                     '("ozone" "solar-r" "temp" "wind"))]
+                              #:do [(define days (dataset-table-column airquality aq))]
+                              [(value day k) (in-parallel (column 'ozone esl) complete-days (in-naturals))]
+                              #:unless (= value (vector-ref days day)))
+                    (list k esl value (vector-ref days day)))
+                  '((82 "ozone" 95.9999999999999 96) (33 "wind" 4.0 4.1))))
 
   (for ([spot (in-list spot-checks)])
     (match spot
@@ -216,6 +326,7 @@
                      expected)]
       [(list 'sum id name expected) (check-equal? (column-sum id name) expected)]
       [(list 'sum id name expected epsilon) (check-= (column-sum id name) expected epsilon)]
+      [(list 'runs id name expected) (check-equal? (runs (column id name)) expected)]
       [(list 'level-counts id name expected)
        (check-equal? (value-counts id name (column-meta id name "levels")) expected)]
       [(list 'value-counts id name values expected)

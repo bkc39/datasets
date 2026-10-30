@@ -232,5 +232,13 @@
     "package": "datasets-islr",
     "version": "ISLR2 1.3-2",
     "license": "GPL-2.0-only"
+  },
+  "ElemStatLearn": {
+    "file": "datasets-ElemStatLearn_2015.6.26.2.tar.gz",
+    "url": "https://cran.r-project.org/src/contrib/Archive/ElemStatLearn/ElemStatLearn_2015.6.26.2.tar.gz",
+    "sha256": "a0f94a72f6188a0a5c855e3362b6b849bf7fd14efc2d824a8d2581f8bb1bd7fa",
+    "package": "datasets-islr",
+    "version": "ElemStatLearn 2015.6.26.2",
+    "license": "GPL-2.0-or-later"
   }
 }

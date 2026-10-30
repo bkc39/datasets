@@ -109,7 +109,7 @@
               echo "Isolated Racket environment: $PLTUSERHOME"
             '';
           };
-          maintainer = pkgs.mkShell { packages = [ pkgs.R (pkgs.python3.withPackages (ps: [ ps.xlrd ])) ]; };
+          maintainer = pkgs.mkShell { packages = [ pkgs.R pkgs.racket (pkgs.python3.withPackages (ps: [ ps.xlrd ])) ]; };
         });
     };
 }
