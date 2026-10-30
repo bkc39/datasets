@@ -2,7 +2,8 @@
 (require (for-syntax racket/base)
          (only-in datasets/core dataset-info dataset-missing dataset-table-columns fetch-dataset
                   load-dataset-table)
-         (only-in datasets/core-tests/fixture cache-files call-with-fetch-fixture rows->rktd-bytes)
+         (only-in datasets/core-tests/fixture cache-files call-with-fetch-fixture rebuild
+                  rows->rktd-bytes)
          (only-in datasets/fetch-private/convert california-housing-rows covtype-rows csv-header-rows
                   idx-file-names idx-image-rows)
          (only-in datasets/fetch-tests/fixture call-with-upstream-files error-with?)
@@ -140,7 +141,7 @@
         (define growth (peak-growth (idx-image-rows files (dataset-info 'mnist)) 2000))
         (check-true (< growth (* 64 1024 1024)) (format "live growth ~a bytes" growth)))))
 
-  (test-case "the converters run through core: loaded from the registry entry, cached converted"
+  (test-case "the converters run through core: loaded from the registry entry, cached converted, rebuildable"
     (for ([c (in-list registry-cases)])
       (match-define (list name _ upstream info expected) c)
       (call-with-upstream-files upstream
@@ -160,6 +161,7 @@
               (define table (load-dataset-table mini))
               (define columns (map vector->list (vector->list (dataset-table-columns table))))
               (check-equal? (apply map (lambda row (map written row)) columns) expected)
+              (check-equal? (rebuild table) table)
               (check-equal? (cache-files root)
                             (list (format "~a/~a.rktd.gz" mini (hash-ref entry "sha256"))))
               (check-equal? (fetch-dataset mini) (build-path root (car (cache-files root)))))))))))

@@ -11,9 +11,11 @@
          (only-in datasets/core-private/error raise-registry-error)
          (only-in datasets/core-private/log log-datasets-warning)
          (only-in datasets/core-private/table
-                  dataset-missing dataset-missing? dataset-table dataset-table-columns
-                  dataset-table-info dataset-table-names dataset-table-row-count dataset-table?)
-         (only-in racket/contract/base -> ->* and/c contract-out listof non-empty-listof or/c)
+                  dataset-column/c dataset-info/c dataset-missing dataset-missing? dataset-table
+                  dataset-table-columns dataset-table-info dataset-table-names
+                  dataset-table-row-count dataset-table? equal-lengths? freeze
+                  unchecked-dataset-table)
+         (only-in racket/contract/base -> ->* ->i and/c contract-out listof non-empty-listof or/c)
          (only-in racket/format ~e ~s)
          (only-in racket/list append-map check-duplicates index-of remove-duplicates take)
          (only-in racket/match == match match*)
@@ -30,7 +32,15 @@
           [fetch-dataset (->* (symbol?) (#:idle-timeout (and/c real? positive?)) complete-path?)]
           [dataset-cached? (-> symbol? boolean?)]
           [dataset-cache-directory (-> complete-path?)]
-          [clear-dataset-cache (->* () ((or/c #f symbol?)) void?)])
+          [clear-dataset-cache (->* () ((or/c #f symbol?)) void?)]
+          [dataset-table
+           (->i ([names (non-empty-listof string?)]
+                 [columns (names) (non-empty-listof dataset-column/c)])
+                (#:info [info dataset-info/c])
+                #:pre/name (names) "duplicate column" (not (check-duplicates names))
+                #:pre/name (names columns) "one column per name" (= (length names) (length columns))
+                #:pre/name (columns) "every column the same length" (equal-lengths? columns)
+                [result dataset-table?])])
          dataset-info
          dataset-missing dataset-missing?
          dataset-table? dataset-table-names dataset-table-columns
@@ -50,12 +60,6 @@
      #'(quote names)]))
 
 (define core-registry-names (declared-core-registries))
-
-(define (freeze v)
-  (cond [(string? v) (string->immutable-string v)]
-        [(pair? v) (cons (freeze (car v)) (freeze (cdr v)))]
-        [(hash? v) (for/hash ([(k x) (in-hash v)]) (values (freeze k) (freeze x)))]
-        [else v]))
 
 (define (registry-path-string? v)
   (and (string? v) (relative-path? v) (andmap path? (explode-path v))))
@@ -379,7 +383,7 @@
           [else (download-dataset 'load-dataset-table (symbol->string name) info final
                                   #:download? download? #:idle-timeout 60)]))
   (define-values (columns row-count) (read-columns name file info indices))
-  (dataset-table (map string->immutable-string names) columns row-count info))
+  (unchecked-dataset-table (map string->immutable-string names) columns row-count info))
 
 (define (fetch-dataset name #:idle-timeout [idle 60])
   (define-values (info data-dir) (dataset-entry 'fetch-dataset name))
