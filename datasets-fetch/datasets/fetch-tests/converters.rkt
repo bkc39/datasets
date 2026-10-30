@@ -12,13 +12,13 @@
          (only-in racket/file file->string)
          (only-in racket/flonum fl/)
          (only-in racket/list make-list)
-         (only-in racket/match == match match-define match-lambda)
+         (only-in racket/match match-define match-lambda)
          (only-in racket/runtime-path define-runtime-path)
          (only-in racket/sequence sequence->list)
          (only-in threading ~>))
 (define-runtime-path fixtures "fixtures")
 (module+ test
-  (require (only-in rackunit check-equal? check-exn test-case))
+  (require (only-in rackunit check-equal? check-exn check-true test-case))
   (define (fixture name) (file->string (build-path fixtures name)))
   (define (soil k) (append (make-list k 0) '(1) (make-list (- 39 k) 0)))
   (define covtype-lines (fixture "covtype-mini.data"))
@@ -123,6 +123,24 @@
                      (lambda () (sequence->list (idx-image-rows files (dataset-info 'mnist))))
                      name)))))
 
+  (define (written v) (if (eq? v dataset-missing) 'missing v))
+  (define (peak-growth rows every)
+    (collect-garbage)
+    (define base (current-memory-use))
+    (for/fold ([peak 0]) ([_ rows] [i (in-naturals)] #:when (zero? (modulo i every)))
+      (collect-garbage)
+      (max peak (- (current-memory-use) base))))
+
+  (test-case "idx-image-rows keeps no row it has produced"
+    (define n 20000)
+    (define upstream (idx-upstream (hash-set* idx-contents
+                                              "train-images-idx3-ubyte.gz" `(idx-gz (,n 28 28) ,(make-bytes (* n pixels) 0))
+                                              "train-labels-idx1-ubyte.gz" `(idx-gz (,n) ,(make-bytes n 0)))))
+    (call-with-upstream-files upstream
+      (lambda (files)
+        (define growth (peak-growth (idx-image-rows files (dataset-info 'mnist)) 2000))
+        (check-true (< growth (* 64 1024 1024)) (format "live growth ~a bytes" growth)))))
+
   (test-case "the converters run through core: loaded from the registry entry, cached converted, rebuildable"
     (for ([c (in-list registry-cases)])
       (match-define (list name _ upstream info expected) c)
@@ -141,12 +159,8 @@
           (call-with-fetch-fixture (list entry)
             (lambda (root _registry)
               (define table (load-dataset-table mini))
-              (check-equal? (for/list ([i (in-range (length expected))])
-                              (for/list ([column (in-vector (dataset-table-columns table))])
-                                (match (vector-ref column i)
-                                  [(== dataset-missing eq?) 'missing]
-                                  [v v])))
-                            expected)
+              (define columns (map vector->list (vector->list (dataset-table-columns table))))
+              (check-equal? (apply map (lambda row (map written row)) columns) expected)
               (check-equal? (rebuild table) table)
               (check-equal? (cache-files root)
                             (list (format "~a/~a.rktd.gz" mini (hash-ref entry "sha256"))))
