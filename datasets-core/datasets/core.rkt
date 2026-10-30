@@ -35,7 +35,6 @@
           [clear-dataset-cache (->* () ((or/c #f symbol?)) void?)]
           [dataset-table
            (->i ([names (non-empty-listof string?)]
-                 ;; columns depends on names so ->i does not re-apply its contract for the #:pre/name views
                  [columns (names) (non-empty-listof dataset-column/c)])
                 (#:info [info dataset-info/c])
                 #:pre/name (names) "duplicate column" (not (check-duplicates names))

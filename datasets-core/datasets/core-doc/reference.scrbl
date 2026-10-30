@@ -259,7 +259,9 @@ whose @tt{type} is @racket["integer"] when every nonmissing cell is an exact int
 strings, numbers, booleans, symbols, lists and such hash tables, without cycles; its
 @tt{columns}, if present, is a list of hash tables each with a string @tt{name}.
 
-The table is a copy: later changes to the arguments do not reach it. Rebuilding a
+The table is a copy: later changes to the arguments do not reach it. A copy taken
+through an impersonator is checked again, and one that no longer passes raises
+@racket[exn:fail:contract]. Rebuilding a
 loaded or generated table from its names, columns and metadata gives an
 @racket[equal?] table.}
 

@@ -130,6 +130,58 @@
     (set-box! armed? #t)
     (check-equal? (for/list ([x (in-vector (dataset-table-column u "a"))]) x) '(1 2 3)))
 
+  (define (counted-column cells)
+    (define reads (box 0))
+    (values reads
+            (chaperone-vector cells
+                              (λ (_ _i x) (set-box! reads (add1 (unbox reads))) x)
+                              (λ (_ _i x) x))))
+
+  (test-case "T6 exact: a chaperoned column of n cells is read 2n+1 times (check, probe, copy)"
+    (for* ([n (in-list '(1 5 40))]
+           [cells (in-list (list (make-vector n 1) (vector->immutable-vector (make-vector n 1))))])
+      (define-values (reads column) (counted-column cells))
+      (dataset-table '("a") (list column))
+      (check-equal? (unbox reads) (add1 (* 2 n)) (format "n = ~a" n))))
+
+  (define (vector-turning after cells value)
+    (define reads 0)
+    (impersonate-vector cells
+                        (λ (_ _i x) (set! reads (add1 reads)) (if (> reads after) value x))
+                        (λ (_ _i x) x)))
+
+  (define (hash-turning after table value)
+    (define reads 0)
+    (impersonate-hash table
+                      (λ (_ key)
+                        (values key
+                                (λ (_ _key x) (set! reads (add1 reads)) (if (> reads after) value x))))
+                      (λ (_ key x) (values key x))
+                      (λ (_ key) key)
+                      (λ (_ key) key)))
+
+  (for ([probe (in-list
+                (list (list "a column" "dataset-column/c"
+                            (λ () (dataset-table '("a") (list (vector-turning 3 (vector 1 2 3) 'oops)))))
+                      (list "an info hash" "dataset-info/c"
+                            (λ () (dataset-table '("a") '((1))
+                                                 #:info (hash-turning 1 (make-hash '(("notes" . "n")))
+                                                                      (vector 1)))))
+                      (list "a nested info hash" "dataset-info/c"
+                            (λ () (dataset-table '("a") '((1))
+                                                 #:info (hash "notes"
+                                                              (hash-turning 1 (make-hash '(("l" . "n")))
+                                                                            (vector 1))))))))])
+    (match-define (list what expected build) probe)
+    (test-case (format "T6 exact: ~a that changes after the check violates ~a" what expected)
+      (check-exn (λ (e)
+                   (and (exn:fail:contract? e)
+                        (not (exn:fail:contract:blame? e))
+                        (regexp-match? (regexp (format "^dataset-table: contract violation\n  expected: ~a"
+                                                       expected))
+                                       (exn-message e))))
+                 build)))
+
   (test-case "T7 exact: rebuilding a loaded or generated table gives an equal table"
     (define loaded
       (append-map (λ (name)

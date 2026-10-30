@@ -116,13 +116,21 @@
         [(and (immutable? cells) (chaperone? cells)) (vector->immutable-vector (vector-copy cells))]
         [else (vector->immutable-vector cells)]))
 
+(define (recheck impersonated? ok? expected given copy)
+  (when (and impersonated? (not (ok? copy)))
+    (raise-argument-error 'dataset-table expected given))
+  copy)
+
 (define (describe name column)
   (define-values (kind missing) (column-summary column))
   (column-info name name (if (eq? kind 'empty) "integer" (symbol->string kind)) "" missing))
 
 (define (dataset-table names columns #:info [info (hash)])
   (define frozen-names (map string->immutable-string names))
-  (define frozen-columns (map freeze-column columns))
+  (define frozen-columns
+    (for/list ([column (in-list columns)])
+      (recheck (impersonator? column) dataset-column? "dataset-column/c" column
+               (freeze-column column))))
   (define rows (vector-length (car frozen-columns)))
   (define defaults
     (hash "name" #f "rows" rows "column-count" (length names)
@@ -130,8 +138,13 @@
           "identifiers" '() "suggested-targets" '()
           "source-url" #f "source-version" #f "source-sha256" #f "sha256" #f
           "license" #f "citation" #f "notes" #f "time-series" #f))
+  (define memo (make-hasheq))
+  (define frozen-info
+    (freeze/shared (for/fold ([merged defaults]) ([(k v) (in-hash info)]) (hash-set merged k v))
+                   memo))
   (unchecked-dataset-table
    frozen-names
    (apply vector-immutable frozen-columns)
    rows
-   (freeze (for/fold ([merged defaults]) ([(k v) (in-hash info)]) (hash-set merged k v)))))
+   (recheck (or (impersonator? info) (for/or ([v (in-hash-keys memo)]) (impersonator? v)))
+            dataset-info? "dataset-info/c" info frozen-info)))
