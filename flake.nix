@@ -10,6 +10,7 @@
     let
       systems = [ "x86_64-linux" "aarch64-linux" "aarch64-darwin" ];
       each = nixpkgs.lib.genAttrs systems;
+      repoPackages = nixpkgs.lib.remove "" (nixpkgs.lib.splitString "\n" (builtins.readFile ./scripts/packages.txt));
       pkgsFor = system: import nixpkgs { inherit system; };
       source = pkgs: pkgs.lib.cleanSourceWith {
         src = ./.;
@@ -22,6 +23,8 @@
           pkgs = pkgsFor system;
           native = polars.packages.${system}.rust;
           deps = polars.packages.${system}.racket-deps;
+          installPackage = name:
+            "raco pkg install --batch --deps fail --copy --no-setup --scope user --name ${pkgs.lib.escapeShellArg name} ${pkgs.lib.escapeShellArg "./${name}"}";
           build = full: pkgs.stdenvNoCC.mkDerivation {
             pname = if full then "datasets" else "datasets-core";
             version = "0.1";
@@ -39,14 +42,10 @@
                 raco pkg install --batch --deps fail --copy --no-setup --scope user --name polars ${polars}/polars
                 raco setup --no-docs --pkgs tzdata polars data-frame
               ''}
-              raco pkg install --batch --deps fail --copy --no-setup --scope user --name datasets-core ./datasets-core
+              ${installPackage (builtins.head repoPackages)}
               ${pkgs.lib.optionalString full ''
                 racket examples/core-with-polars.rkt
-                raco pkg install --batch --deps fail --copy --no-setup --scope user --name datasets-r ./datasets-r
-                raco pkg install --batch --deps fail --copy --no-setup --scope user --name datasets-uci ./datasets-uci
-                raco pkg install --batch --deps fail --copy --no-setup --scope user --name datasets-islr ./datasets-islr
-                raco pkg install --batch --deps fail --copy --no-setup --scope user --name datasets-fetch ./datasets-fetch
-                raco pkg install --batch --deps fail --copy --no-setup --scope user --name datasets ./datasets
+                ${pkgs.lib.concatMapStringsSep "\n" installPackage (builtins.tail repoPackages)}
               ''}
               runHook postBuild
             '';
@@ -105,8 +104,8 @@
               chmod -R u+w "$PLTUSERHOME"
               find "$PLTUSERHOME" -name docindex.sqlite -type f -delete
               raco pkg install --batch --deps fail --no-setup --link --scope user \
-                "$PWD/datasets-core" "$PWD/datasets-r" "$PWD/datasets-uci" "$PWD/datasets-islr" "$PWD/datasets-fetch" "$PWD/datasets"
-              raco setup --no-docs --pkgs datasets-r datasets-uci datasets-islr datasets-fetch
+                ${pkgs.lib.concatMapStringsSep " " (name: ''"$PWD"/${pkgs.lib.escapeShellArg name}'') repoPackages}
+              raco setup --no-docs --pkgs ${pkgs.lib.escapeShellArgs (pkgs.lib.init (builtins.tail repoPackages))}
               echo "Isolated Racket environment: $PLTUSERHOME"
             '';
           };
