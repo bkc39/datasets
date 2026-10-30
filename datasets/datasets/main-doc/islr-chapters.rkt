@@ -4,6 +4,7 @@
          (only-in racket/list add-between)
          (only-in racket/match match-define))
 (provide (contract-out
+          [islr2-dataset? (-> symbol? boolean?)]
           [islr-chapter-rows (-> (listof (list/c string? (listof symbol?) (listof symbol?))))]
           [islr-chapter-cells (-> (-> symbol? any/c) (listof (list/c string? list? list?)))]))
 
@@ -13,11 +14,11 @@
     "Tree-Based Methods" "Support Vector Machines" "Deep Learning" "Survival Analysis"
     "Unsupervised Learning" "Multiple Testing"))
 
+(define (islr2-dataset? id)
+  (equal? (hash-ref (dataset-info id) "source-version") "ISLR2 1.3-2"))
+
 (define (islr-chapter-rows)
-  (define ids
-    (for/list ([id (in-list (dataset-names #:package "datasets-islr"))]
-               #:when (hash-has-key? (dataset-info id) "islr2-chapters"))
-      id))
+  (define ids (filter islr2-dataset? (dataset-names #:package "datasets-islr")))
   (define uses (for/list ([id (in-list ids)]) (hash-ref (dataset-info id) "islr2-chapters")))
   (for/list ([title (in-list chapters)] [chapter (in-naturals 1)])
     (define (using part)

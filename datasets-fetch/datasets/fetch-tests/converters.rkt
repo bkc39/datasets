@@ -51,8 +51,8 @@
       (hash-set* info "column-count" 6 "columns" (append (take columns 5) (list (last columns))))))
   (define (zip-upstream train test)
     (map list esl-zip-file-names `((gz ,train) (gz ,test))))
-  (define zip-train "6.0000 -1.0000 -0.6310 0.8620 -0.0000 \n5.0000 1.0000 0.0000 -1.0000 -1.0000 \n")
-  (define zip-test "9 -1 0 -0 1\n")
+  (define zip-train (fixture "zip-mini.train"))
+  (define zip-test (fixture "zip-mini.test"))
   (define zip-expected
     '((6 -1.0 -0.631 0.862 -0.0 "train") (5 1.0 0.0 -1.0 -1.0 "train") (9 -1.0 0.0 -0.0 1.0 "test")))
   (define (file-entry files file)
@@ -122,32 +122,25 @@
         (lambda (files)
           (check-exn (error-with? who needle) (lambda () (sequence->list (converter files info))))))))
 
-  (test-case "esl-zip-rows reads digits as exact integers and pixels as R's read.table does, -0 included"
-    (call-with-upstream-files (zip-upstream zip-train zip-test)
-      (lambda (files)
-        (define rows (sequence->list (esl-zip-rows files zip-info)))
-        (check-equal? (map (lambda (row) (exact-integer? (car row))) rows) '(#t #t #t))
-        (check-equal? (map (lambda (row) (andmap flonum? (take (cdr row) 4))) rows) '(#t #t #t))
-        (check-equal? (map (lambda (row) (eqv? (list-ref row 4) -0.0)) rows) '(#t #f #f)))))
-
   (test-case "esl-zip-rows names the file and line of a malformed line"
-    (for ([c (in-list `((,zip-train "9 -1 0 -0 1\n7 1 0 1\n" "wrong number of tokens" "file: zip.test.gz"
-                                    "line: 2" "expected: 5" "given: 4")
-                        ("6 -1 0 0 1 0 0\n" ,zip-test "wrong number of tokens" "file: zip.train.gz" "line: 1"
-                                             "expected: 5" "given: 7")
-                        (,zip-train "9 -1 abc -0 1\n" "not a number" "file: zip.test.gz" "line: 1" "token: abc")
-                        ("6.5 -1 0 0 1\n" ,zip-test "digit is not a whole number from 0 to 9" "file: zip.train.gz"
-                                           "line: 1" "token: 6.5")
-                        (,zip-train "9 -1 0 -0 1\n10 -1 0 -0 1\n" "digit is not a whole number from 0 to 9"
-                                    "file: zip.test.gz" "line: 2" "token: 10")
-                        (,zip-train "-1 -1 0 -0 1\n" "digit is not a whole number from 0 to 9" "file: zip.test.gz"
-                                    "line: 1" "token: -1")))])
-      (match-define (list* train test needles) c)
+    (for ([c (in-list `((,zip-train "9 -1 0 -0 1\n7 1 0 1\n"
+                         "wrong number of tokens\n  file: zip.test.gz\n  line: 2\n  expected: 5\n  given: 4")
+                        ("6 -1 0 0 1 0 0\n" ,zip-test
+                         "wrong number of tokens\n  file: zip.train.gz\n  line: 1\n  expected: 5\n  given: 7")
+                        (,zip-train "9 -1 abc -0 1\n"
+                         "not a number\n  file: zip.test.gz\n  line: 1\n  token: abc")
+                        ("6.5 -1 0 0 1\n" ,zip-test
+                         "digit is not a whole number from 0 to 9\n  file: zip.train.gz\n  line: 1\n  token: 6.5")
+                        (,zip-train "9 -1 0 -0 1\n10 -1 0 -0 1\n"
+                         "digit is not a whole number from 0 to 9\n  file: zip.test.gz\n  line: 2\n  token: 10")
+                        (,zip-train "-1 -1 0 -0 1\n"
+                         "digit is not a whole number from 0 to 9\n  file: zip.test.gz\n  line: 1\n  token: -1")))])
+      (match-define (list train test message) c)
       (call-with-upstream-files (zip-upstream train test)
         (lambda (files)
-          (check-exn (apply error-with? 'esl-zip-rows needles)
+          (check-exn (lambda (e) (and (exn:fail? e) (equal? (exn-message e) (format "esl-zip-rows: ~a" message))))
                      (lambda () (sequence->list (esl-zip-rows files zip-info)))
-                     (car needles))))))
+                     message)))))
 
   (test-case "idx-image-rows rejects files that disagree with each other or with the registry"
     (for ([c (in-list `(("train-labels-idx1-ubyte.gz" (idx-gz (3) ,(bytes 7 2 1)) idx-image-rows

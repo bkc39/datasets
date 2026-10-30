@@ -3,7 +3,7 @@
          (only-in datasets/core dataset-info dataset-missing dataset-missing? dataset-names
                   dataset-packages dataset-table-columns dataset-table-names
                   dataset-table-row-count load-dataset-table)
-         (only-in datasets/core-tests/fixture gunzip-file hex)
+         (only-in datasets/core-tests/fixture conjuncts gunzip-file hex license-ids)
          (only-in racket/file file->lines)
          (only-in racket/list append-map check-duplicates make-list remove-duplicates take)
          (only-in racket/match match match-define)
@@ -66,21 +66,6 @@
                 #:when pair)
       (match-define (list _ key value) pair)
       (values key value)))
-  (define (license-ids license)
-    (regexp-split #px" (?:AND|OR) " (regexp-replace* #rx"[()]" license "")))
-  (define (conjuncts expression)
-    (match expression
-      [(list left 'AND right) (append (conjuncts left) (conjuncts right))]
-      [_ (list (expression->string expression))]))
-  (define (expression->string expression)
-    (match expression
-      [(list left operator right)
-       (format "~a ~a ~a" (operand->string left) operator (operand->string right))]
-      [(? symbol?) (symbol->string expression)]))
-  (define (operand->string expression)
-    (match expression
-      [(? pair?) (format "(~a)" (expression->string expression))]
-      [_ (expression->string expression)]))
   (define spot-checks
     `((categorical datasaurus-dozen ("dataset"))
       (categorical gapminder ("country" "continent"))

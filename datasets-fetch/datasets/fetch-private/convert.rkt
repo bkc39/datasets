@@ -2,11 +2,12 @@
 (require (only-in datasets/fetch-private/archive gunzip-file tar-gz-member)
          (only-in datasets/fetch-private/csv csv-rows info->column-specs)
          (only-in datasets/fetch-private/idx read-idx)
-         (only-in racket/contract/base -> and/c contract-out flat-named-contract hash/c listof)
+         (only-in racket/contract/base -> and/c contract-out flat-named-contract hash/c integer-in listof)
          (only-in racket/file file->bytes)
          (only-in racket/flonum fl/)
          (only-in racket/match match match* match-define)
          (only-in racket/sequence sequence-map)
+         (only-in racket/stream for/stream)
          (only-in racket/string string-split)
          (only-in threading ~>))
 (provide (contract-out
@@ -100,25 +101,19 @@
                 (esl-zip-split-rows files test "test" width)))
 
 (define (esl-zip-split-rows files name split width)
-  (sequence-map (lambda (line number) (esl-zip-row (string-split line) name number split width))
-                (in-parallel (~> (hash-ref files name) gunzip-file open-input-bytes in-lines)
-                             (in-naturals 1))))
-
-(define (esl-zip-row tokens name number split width)
-  (define (fail message details . args)
-    (apply error 'esl-zip-rows (string-append "~a\n  file: ~a\n  line: ~a" details) message name number args))
-  (define (decimal token)
-    (cond
-      [(regexp-match? decimal-rx token) token]
-      [else (fail "not a number" "\n  token: ~a" token)]))
-  (match tokens
-    [(cons digit pixels) #:when (= (length tokens) width)
-     (cons (esl-zip-digit (decimal digit) fail)
-           (append (map (lambda (token) (string->number (string-append "#i" (decimal token)) 10)) pixels)
-                   (list split)))]
-    [_ (fail "wrong number of tokens" "\n  expected: ~a\n  given: ~a" width (length tokens))]))
-
-(define (esl-zip-digit token fail)
-  (match (string->number token 10 'number-or-false 'decimal-as-exact)
-    [(? exact-integer? digit) #:when (<= 0 digit 9) digit]
-    [_ (fail "digit is not a whole number from 0 to 9" "\n  token: ~a" token)]))
+  (for/stream ([line (in-lines (~> (hash-ref files name) gunzip-file open-input-bytes))]
+               [number (in-naturals 1)])
+    (match (string-split line)
+      [tokens #:when (not (= (length tokens) width))
+       (error 'esl-zip-rows "wrong number of tokens\n  file: ~a\n  line: ~a\n  expected: ~a\n  given: ~a"
+              name number width (length tokens))]
+      [(list _ ... (and (not (regexp decimal-rx)) token) _ ...)
+       (error 'esl-zip-rows "not a number\n  file: ~a\n  line: ~a\n  token: ~a" name number token)]
+      [(cons (app (lambda (token) (string->number token 10 'number-or-false 'decimal-as-exact))
+                  (? (integer-in 0 9) digit))
+             pixels)
+       (cons digit
+             (append (map (lambda (pixel) (string->number (string-append "#i" pixel) 10)) pixels) (list split)))]
+      [(cons token _)
+       (error 'esl-zip-rows "digit is not a whole number from 0 to 9\n  file: ~a\n  line: ~a\n  token: ~a"
+              name number token)])))

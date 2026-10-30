@@ -3,12 +3,13 @@
 Pass an archive directory (offline), or --fetch to download sources into it first.
 Writes TARGET/registry.rktd and TARGET/data/<id>.rktd.gz for one package; for datasets-r also the R object table
 datasets-r/datasets/r-private/objects.rkt, or TARGET/r-private/objects.rkt when --target is given.
+--package datasets-islr imports both ISLR2 and ElemStatLearn, so the archive directory needs both archives.
 """
 import argparse, csv, gzip, hashlib, io, json, re, shutil, subprocess, sys, tarfile, tempfile, urllib.request, zipfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parent))
-from rtable import read_csv_rows, read_r_levels, read_r_table
+from rtable import kebab, read_csv_rows, read_r_levels, read_r_table, read_rktd
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULTS = {'datasets-core': ('datasets-core/datasets/core-data', 'datasets-core/datasets/provenance'),
             'datasets-r': ('datasets-r/datasets/r-data', 'datasets-r/datasets/r-data/provenance'),
@@ -283,8 +284,7 @@ def import_islr():
         return re.sub('[^a-z0-9]+','-',s.lower()).strip('-')
     with tempfile.TemporaryDirectory() as tmp:
         tmp=Path(tmp)
-        for source in ['ISLR2','ElemStatLearn']:
-            with tarfile.open(cache/SOURCES[source]['file']) as a: a.extractall(tmp,filter='data')
+        with tarfile.open(cache/SOURCES['ISLR2']['file']) as a: a.extractall(tmp,filter='data')
         subprocess.run(['Rscript',str(ROOT/'scripts/export-r.R'),str(tmp),str(tmp),PACKAGE],check=True)
         for id,obj,kw in ISLR_RECIPES:
             rd=(tmp/f'ISLR2/man/{obj}.Rd').read_text(encoding='utf-8')
@@ -313,58 +313,59 @@ def import_islr():
             notes=' '.join(filter(None,[summary,kw.get('notes'),factors+'names normalized to kebab-case.']))
             add(id,[originals.get(n,o) for n,o in zip(names,original)],rows,'ISLR2',names=names,levels=levels,identifiers=identifiers,targets=kw.get('targets',[]),units=kw.get('units',{}),descriptions=descriptions,notes=notes)
             registry[id]['islr2-chapters']={k:[c+1 for c,used in enumerate(ISLR_CHAPTERS) if id in used[j]] for j,k in enumerate(['text','exercises'])}
-        import_esl(tmp)
 ESL_CITATION=('Halvorsen, K. B. (2019). ElemStatLearn: Data Sets, Functions and Examples from the Book "The Elements of Statistical Learning, '
               'Data Mining, Inference, and Prediction" by Trevor Hastie, Robert Tibshirani and Jerome Friedman. R package version 2015.6.26.2. '
               'Book: Hastie, T., Tibshirani, R. and Friedman, J. (2009). The Elements of Statistical Learning, Second Edition. Springer. '
               'https://hastie.su.domains/ElemStatLearn/. Original sources in the bundled upstream documentation.')
 ESL_RECIPES=[
-    ('prostate',['prostate'],dict(targets=['lpsa'],units={'age':'years'},originals={'split':'train'},
+    ('prostate',{'prostate.Rd':'prostate.Rd'},dict(targets=['lpsa'],units={'age':'years'},originals={'split':'train'},
         descriptions={'age':'Age','gleason':'Gleason score','lpsa':'Log of prostate-specific antigen, the response',
                       'split':'train: the 67 training observations; test: the 30 test observations'},
-        notes='split is R\'s logical train: 67 training and 30 test observations, as on page 49 of the book. '
-              'lweight for subject 32 has the second-edition correction. The numeric row names are not kept.')),
-    ('sa-heart',['SAheart'],dict(targets=['chd'],units={'tobacco':'kg'},
+        notes='split is R\'s logical train: the 67 training and 30 test observations of the book\'s §3.2.1. '
+              'lweight for subject 32 has the second-edition correction.')),
+    ('sa-heart',{'sa-heart.Rd':'SAheart.Rd'},dict(targets=['chd'],units={'tobacco':'kg'},
         descriptions={'tobacco':'Cumulative tobacco','adiposity':'Adiposity','famhist':'Family history of heart disease','obesity':'Obesity',
                       'chd':'Coronary heart disease, the response'},
-        notes='The numeric row names (1 to 463, without 262) are not kept. famhist is categorical.')),
-    ('vowel',['vowel.train','vowel.test'],dict(targets=['y'],renames={f'x-{k}':f'x{k}' for k in range(1,11)},originals={'split':'vowel.train or vowel.test'},
+        notes='famhist is R\'s factor, levels in metadata.')),
+    ('vowel',{'vowel.Rd':'vowel.train.Rd','vowel-test.Rd':'vowel.test.Rd'},dict(targets=['y'],renames={f'x-{k}':f'x{k}' for k in range(1,11)},originals={'split':'vowel.train or vowel.test'},
         descriptions={'y':'Vowel class, 1-11'}|{f'x{k}':'Log area parameter from linear predictive analysis of the frame' for k in range(1,11)}
                      |{'split':'train: the 528 vowel.train rows (8 speakers); test: the 462 vowel.test rows (7 other speakers)'},
-        notes='The 528 vowel.train rows, then the 462 vowel.test rows, told apart by split. '
-              'The speakers of the two splits do not overlap (8 train, 7 test). x1 to x10 are R\'s x.1 to x.10.')),
-    ('ozone',['ozone'],dict(targets=['ozone'],units={'ozone':'ppb','radiation':'langleys','temperature':'degrees Fahrenheit','wind':'mph'},
+        notes='The 528 vowel.train rows, then the 462 vowel.test rows, told apart by split; x1 to x10 are R\'s x.1 to x.10.')),
+    ('ozone',{'ozone.Rd':'ozone.Rd'},dict(targets=['ozone'],units={'ozone':'ppb','radiation':'langleys','temperature':'degrees Fahrenheit','wind':'mph'},
         descriptions={'ozone':'Daily ozone concentration','radiation':'Solar radiation','temperature':'Daily maximum temperature','wind':'Wind speed'},
-        notes='The 111 complete days of airquality, renamed and without month and day. Two cells differ: wind on 1973-07-01 (4 vs 4.1) '
-              'and ozone on 1973-09-01 (95.9999999999999 vs 96). Values are as in the source.')),
+        notes='The 111 complete days of airquality without month and day. Two cells differ: wind on 1973-07-01 (4 vs 4.1) '
+              'and ozone on 1973-09-01 (95.9999999999999 vs 96).')),
 ]
 citations.update({id:ESL_CITATION for id,_,_ in ESL_RECIPES})
 SPAMBASE=ROOT/'datasets-uci/datasets/uci-data/data/spambase.rktd.gz'
 def check_esl_spam(tmp):
     _,_,rows=read_r_table(tmp,'esl-spam')
-    lines=gzip.decompress(SPAMBASE.read_bytes()).decode().splitlines()[1:-1]
-    spambase=[[float(v) for v in l.strip().strip('()').split()] for l in lines]
-    same=len(rows)==len(spambase) and all(len(r)==len(s) and [float(v) for v in r[:-1]]==s[:-1] and (r[-1]=='spam')==(s[-1]==1)
+    spambase=read_rktd(SPAMBASE)
+    same=len(rows)==len(spambase) and all(len(r)==len(s) and [float(v) for v in r[:-1]]==[float(v) for v in s[:-1]] and (r[-1]=='spam')==(s[-1]==1)
                                           for r,s in zip(rows,spambase))
     if not same: raise ValueError(f'ElemStatLearn spam is not cell-equal to {SPAMBASE.relative_to(ROOT)}')
-def import_esl(tmp):
-    check_esl_spam(tmp)
-    for id,objects,kw in ESL_RECIPES:
-        rds=[(tmp/f'ElemStatLearn/man/{o}.Rd').read_text(encoding='utf-8') for o in objects]
-        for suffix,rd in zip(['','-test'],rds): (PROVENANCE/f'{id}{suffix}.Rd').write_text(rd,encoding='utf-8')
-        header,kinds,rows=read_r_table(tmp,id)
-        renames=kw.get('renames',{})
-        names=[renames.get(kebab(h),kebab(h)) for h in header]
-        levels=read_r_levels(tmp,id,dict(zip(header,names)).get)
-        for j,n in enumerate(names):
-            if n in levels and not {r[j] for r in rows}<=set(levels[n]): raise ValueError(f'{id}: {n} value outside levels')
-        items=rd_items(rds[0])
-        originals=kw.get('originals',{})
-        descriptions={n:items[o] for n,o in zip(names,header) if o in items}|kw['descriptions']
-        summary=rd_field(rds[0],'description').removesuffix('.')+'.'
-        factors='R factors rendered as labels with levels in metadata; ' if levels else ''
-        add(id,[originals.get(n,h) for n,h in zip(names,header)],rows,'ElemStatLearn',names=names,kinds=kinds,levels=levels,
-            targets=kw['targets'],units=kw.get('units',{}),descriptions=descriptions,notes=' '.join([summary,kw['notes'],factors+'names normalized to kebab-case.']))
+def import_esl():
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp=Path(tmp)
+        with tarfile.open(cache/SOURCES['ElemStatLearn']['file']) as a: a.extractall(tmp,filter='data')
+        subprocess.run(['Rscript',str(ROOT/'scripts/export-r.R'),str(tmp),str(tmp),'esl'],check=True)
+        check_esl_spam(tmp)
+        for id,rds,kw in ESL_RECIPES:
+            for provenance,man in rds.items(): shutil.copyfile(tmp/'ElemStatLearn/man'/man,PROVENANCE/provenance)
+            rd=(PROVENANCE/next(iter(rds))).read_text(encoding='utf-8')
+            header,kinds,rows=read_r_table(tmp,id)
+            renames=kw.get('renames',{})
+            def rename(h): return renames.get(kebab(h),kebab(h))
+            names=[rename(h) for h in header]
+            levels=read_r_levels(tmp,id,rename)
+            for j,n in enumerate(names):
+                if n in levels and not {r[j] for r in rows}<=set(levels[n]): raise ValueError(f'{id}: {n} value outside levels')
+            items=rd_items(rd)
+            originals=kw.get('originals',{})
+            descriptions={n:items[o] for n,o in zip(names,header) if o in items}|kw['descriptions']
+            summary=rd_field(rd,'description').removesuffix('.')+'.'
+            add(id,[originals.get(n,h) for n,h in zip(names,header)],rows,'ElemStatLearn',names=names,kinds=kinds,levels=levels,
+                targets=kw['targets'],units=kw.get('units',{}),descriptions=descriptions,notes=summary+' '+kw['notes'])
 def import_r():
     def kebab(s): return re.sub('[^a-z0-9]+','-',re.sub('([a-z])([A-Z])',r'\1-\2',s).lower()).strip('-')
     with tempfile.TemporaryDirectory() as tmp:
@@ -417,7 +418,6 @@ def import_r():
                                      +'\n    '.join(object_row(r) for r in objects)+'))\n')
 PIXELS=[f'pixel_{i}_{j}' for i in range(8) for j in range(8)]
 NUMERIC=re.compile(r'[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?')
-def kebab(s): return re.sub('[^a-z0-9]+','-',s.lower()).strip('-')
 def members(source,*names,inner=None):
     with zipfile.ZipFile(cache/SOURCES[source]['file']) as a:
         if inner is None: return [a.read(n) for n in names]
@@ -600,7 +600,7 @@ def import_uci():
             if not present<=set(levels[n]): raise ValueError(f'{id}: {n} values {present-set(levels[n])} outside levels')
             levels[n]=[l for l in levels[n] if l in present]
         add(id,original,rows,source,names=names,levels=levels,**kw)
-{'datasets-core':import_core,'datasets-r':import_r,'datasets-uci':import_uci,'datasets-islr':import_islr}[PACKAGE]()
+for step in {'datasets-core':[import_core],'datasets-r':[import_r],'datasets-uci':[import_uci],'datasets-islr':[import_islr,import_esl]}[PACKAGE]: step()
 (OUT/'registry.rktd').write_text(sexp(dict(sorted(registry.items())))+'\n')
 for stale in (OUT/'data').iterdir():
     if stale.name not in {f'{id}.rktd.gz' for id in registry}: stale.unlink()

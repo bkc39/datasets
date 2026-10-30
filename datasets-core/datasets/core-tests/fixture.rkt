@@ -8,7 +8,7 @@
          (only-in racket/contract/base -> ->* and/c any any/c contract-out hash/c list/c listof or/c)
          (only-in racket/file delete-directory/files file->bytes make-directory*
                   make-temporary-directory)
-         (only-in racket/match match-lambda)
+         (only-in racket/match match match-lambda)
          (only-in racket/path find-relative-path)
          (only-in racket/port call-with-output-bytes)
          (only-in racket/runtime-path define-runtime-path)
@@ -32,6 +32,8 @@
           [call-with-environment (-> (hash/c string? (or/c #f string?)) (-> any) any)]
           [call-with-artifact-url (-> bytes? (-> string? any) any)]
           [cache-files (-> path? (listof string?))]
+          [conjuncts (-> (or/c symbol? pair?) (listof string?))]
+          [license-ids (-> string? (listof string?))]
           [wait-until (-> (and/c real? positive?) (-> any/c) boolean?)]
           [fetch-error? (-> (or/c string? regexp?) ... (-> any/c boolean?))]
           [with-server (-> hash? (-> (-> string? string?) (listof hash?))
@@ -246,3 +248,22 @@
              "columns" (for/list ([j (in-range m)])
                          (hash "name" (format "c~a" j) "original-name" (format "c~a" j) "type" "integer"
                                "levels" '() "unit" #f "description" "c" "missing-count" 0))))
+
+(define (license-ids license)
+  (regexp-split #px" (?:AND|OR) " (regexp-replace* #rx"[()]" license "")))
+
+(define (conjuncts expression)
+  (match expression
+    [(list left 'AND right) (append (conjuncts left) (conjuncts right))]
+    [_ (list (expression->string expression))]))
+
+(define (expression->string expression)
+  (match expression
+    [(list left operator right)
+     (format "~a ~a ~a" (operand->string left) operator (operand->string right))]
+    [(? symbol?) (symbol->string expression)]))
+
+(define (operand->string expression)
+  (match expression
+    [(? pair?) (format "(~a)" (expression->string expression))]
+    [_ (expression->string expression)]))

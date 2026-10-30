@@ -194,8 +194,8 @@ package (through `scripts/export-r-datasets.R`) into
 `datasets-uci/datasets/uci-data` (Python only, with xlrd for one `.xls`
 source); `--target DIR` writes elsewhere.
 Reimport, inspect the diff, then run checks.
-`--package datasets-islr` imports the ISLR2 sets into
-`datasets-islr/datasets/islr-data`.
+`--package datasets-islr` imports the ISLR2 and ElemStatLearn sets into
+`datasets-islr/datasets/islr-data` and needs both source archives.
 Source selection is in `scripts/sources.json`; original documentation is copied
 alongside data. No X/y helpers are included in v0.1.
 

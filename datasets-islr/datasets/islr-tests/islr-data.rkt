@@ -4,17 +4,17 @@
                   dataset-packages dataset-table-column dataset-table-columns dataset-table-names
                   dataset-table-row-count load-dataset-table)
          (only-in datasets/core-doc/catalog-rows catalog-column-rows)
-         (only-in datasets/core-tests/fixture gunzip-file hex)
+         (only-in datasets/core-tests/fixture conjuncts gunzip-file hex license-ids)
          (only-in datasets/islr-tests/columns column-meta column-names)
          (only-in racket/list append-map remove-duplicates)
-         (only-in racket/match == match match-define)
+         (only-in racket/match match match-define)
          (only-in racket/runtime-path define-runtime-path)
          (only-in racket/vector vector-count)
          (only-in setup/getinfo get-info/full))
 (define-runtime-path islr-data "../islr-data")
 (define-runtime-path package-root "../..")
 (module+ test
-  (require (only-in rackunit check-= check-equal? check-false check-not-false check-true))
+  (require (only-in rackunit check-= check-equal? check-false check-not-false check-true test-case))
   (define islr-shapes
     '((auto 392 9) (bikeshare 8645 15) (boston 506 13) (brain-cancer 88 8) (caravan 5822 86)
       (carseats 400 11) (college 777 19) (credit 400 11) (default 10000 4) (fund 50 2000)
@@ -44,11 +44,6 @@
     (define name (hash-ref meta "name"))
     (and (regexp-match? #px"(^|-)[a-z](-|$)" name) (not (member name '("x" "y")))))
   (define (escaped-description? meta) (regexp-match? #rx"\\\\" (hash-ref meta "description")))
-  (define (runs id name)
-    (for/fold ([runs '()] #:result (reverse runs)) ([v (in-vector (column id name))])
-      (match runs
-        [(cons (list (== v) n) more) (cons (list v (add1 n)) more)]
-        [_ (cons (list v 1) runs)])))
   (define (check-chapters info where)
     (check-false (regexp-match? #rx"ISLR2 use" (hash-ref info "notes")) where)
     (define chapters (hash-ref info "islr2-chapters"))
@@ -57,12 +52,6 @@
       (check-true (andmap (lambda (c) (<= 1 c 13)) used) where)
       (check-equal? used (sort used <) where))
     (check-true (pair? (append (hash-ref chapters "text") (hash-ref chapters "exercises"))) where))
-  (define (license-ids license)
-    (regexp-split #px" (?:AND|OR) " (regexp-replace* #rx"[()]" license "")))
-  (define (conjuncts expression)
-    (match expression
-      [(list left 'AND right) (append (conjuncts left) (conjuncts right))]
-      [(? symbol?) (list (symbol->string expression))]))
   (define spot-checks
     `((names auto ("mpg" "cylinders" "displacement" "horsepower" "weight" "acceleration" "year"
                    "origin" "name"))
@@ -198,6 +187,11 @@
       (sum prostate "pgg45" 2365)
       (info prostate "suggested-targets" ("lpsa"))
       (info prostate "identifiers" ())
+      (info prostate "notes"
+            ,(string-append "Data to examine the correlation between the level of prostate-specific antigen and a number"
+                            " of clinical measures in men who were about to receive a radical prostatectomy. split is"
+                            " R's logical train: the 67 training and 30 test observations of the book's §3.2.1. lweight"
+                            " for subject 32 has the second-edition correction."))
       (types sa-heart "real" ("integer" "sbp" "typea" "age" "chd") ("categorical" "famhist"))
       (meta sa-heart "famhist" "levels" ("Absent" "Present"))
       (row sa-heart 0 ("sbp" "tobacco" "ldl" "famhist" "typea" "alcohol" "age" "chd")
@@ -213,7 +207,8 @@
       (types vowel "real" ("integer" "y") ("categorical" "split"))
       (meta vowel "x10" "original-name" "x.10")
       (level-counts vowel "split" (528 462))
-      (runs vowel "split" (("train" 528) ("test" 462)))
+      (row vowel 527 ("split") ("train"))
+      (row vowel 528 ("split") ("test"))
       (value-counts vowel "y" (1 2 3 4 5 6 7 8 9 10 11) (90 90 90 90 90 90 90 90 90 90 90))
       (row vowel 0 ("y" "x1" "x10") (1 -3.639 -0.814))
       (row vowel 528 ("y" "x1") (1 -1.149))
@@ -235,8 +230,9 @@
 
   (check-equal? (dataset-names #:package "datasets-islr") ids)
   (check-not-false (member "datasets-islr" (dataset-packages)))
-  (for* ([source (in-list sources)] [shape (in-list (car source))])
-    (match-define (list _ license version chapters?) source)
+  (for* ([source (in-list sources)]
+         #:do [(match-define (list shapes license version chapters?) source)]
+         [shape (in-list shapes)])
     (match-define (list id rows cols) shape)
     (define t (load-dataset-table id))
     (define info (dataset-info id))
@@ -250,9 +246,9 @@
     (define where (symbol->string id))
     (check-equal? (hash-ref info "license") license where)
     (check-equal? (hash-ref info "source-version") version where)
-    (cond
-      [chapters? (check-chapters info where)]
-      [else (check-false (hash-has-key? info "islr2-chapters") where)])
+    (if chapters?
+        (check-chapters info where)
+        (check-false (hash-has-key? info "islr2-chapters") where))
     (check-equal? (column-names id single-letter-segment?) '() where)
     (check-equal? (column-names id escaped-description?) '() where)
     (check-equal? (hex (sha256-bytes (gunzip-file (data-file id)))) (hash-ref info "sha256"))
@@ -287,21 +283,31 @@
   (check-equal? (map car (catalog-column-rows (hash-ref (dataset-info 'vowel) "columns")))
                 '("y" "x1 … x10" "split"))
 
-  (define airquality (load-dataset-table 'airquality))
-  (define complete-days
-    (for/list ([i (in-range (dataset-table-row-count airquality))]
-               #:unless (for/or ([c (in-vector (dataset-table-columns airquality))])
-                          (dataset-missing? (vector-ref c i))))
-      i))
-  (check-equal? (length complete-days) 111)
-  (define ozone (load-dataset-table 'ozone))
-  (define (cell table name i) (vector-ref (dataset-table-column table name) i))
-  (check-equal? (for*/list ([(day k) (in-parallel (in-list complete-days) (in-naturals))]
-                            [(esl aq) (in-parallel (in-list '("ozone" "radiation" "temperature" "wind"))
-                                                   (in-list '("ozone" "solar-r" "temp" "wind")))]
-                            #:unless (= (cell ozone esl k) (cell airquality aq day)))
-                  (list k esl (cell ozone esl k) (cell airquality aq day)))
-                '((33 "wind" 4.0 4.1) (82 "ozone" 95.9999999999999 96)))
+  (check-true (file-exists? (build-path islr-data "provenance" "vowel-test.Rd")))
+
+  (test-case "an ESL note mentions kebab-case only when a column is renamed"
+    (for ([id (in-list (map car esl-shapes))])
+      (define info (dataset-info id))
+      (define renamed?
+        (for/or ([meta (in-list (hash-ref info "columns"))])
+          (not (equal? (hash-ref meta "name") (hash-ref meta "original-name")))))
+      (check-false (and (regexp-match? #rx"kebab-case" (hash-ref info "notes")) (not renamed?)) (symbol->string id))))
+
+  (test-case "ozone is airquality's complete days, renamed, two cells apart"
+    (define airquality (load-dataset-table 'airquality))
+    (define complete-days
+      (for/list ([i (in-range (dataset-table-row-count airquality))]
+                 #:unless (for/or ([c (in-vector (dataset-table-columns airquality))])
+                            (dataset-missing? (vector-ref c i))))
+        i))
+    (check-equal? (length complete-days) 111)
+    (check-equal? (for*/list ([(esl aq) (in-parallel '("ozone" "radiation" "temperature" "wind")
+                                                     '("ozone" "solar-r" "temp" "wind"))]
+                              #:do [(define days (dataset-table-column airquality aq))]
+                              [(value day k) (in-parallel (column 'ozone esl) complete-days (in-naturals))]
+                              #:unless (= value (vector-ref days day)))
+                    (list k esl value (vector-ref days day)))
+                  '((82 "ozone" 95.9999999999999 96) (33 "wind" 4.0 4.1))))
 
   (for ([spot (in-list spot-checks)])
     (match spot
@@ -327,7 +333,6 @@
        (for ([type (in-list types)] [expected (in-list names)])
          (check-equal? (column-names id (has-type type)) expected (symbol->string id)))]
       [(list 'meta id name key expected) (check-equal? (column-meta id name key) expected)]
-      [(list 'runs id name expected) (check-equal? (runs id name) expected)]
       [(list 'meta-length id name key expected)
        (check-equal? (length (column-meta id name key)) expected)]
       [(list 'info id key expected) (check-equal? (hash-ref (dataset-info id) key) expected)])))

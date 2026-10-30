@@ -4,6 +4,7 @@
          (only-in datasets/core-tests/fixture call-with-environment call-with-temporary-fixture)
          (only-in datasets/fetch-private/convert idx-file-names)
          (only-in file/sha1 bytes->hex-string)
+         (only-in racket/list make-list)
          (only-in racket/match match-define match-lambda)
          (only-in racket/string string-join)
          (only-in threading ~>))
@@ -89,12 +90,17 @@
       (check-regexp-match #px"Downloads [0-9.]+ MB" (hash-ref info "notes"))))
 
   (test-case "the catalog shows the pixel columns of the image sets as one row"
-    (for ([c (in-list '((mnist ("pixel1 … pixel784" "label" "split"))
-                        (fashion-mnist ("pixel1 … pixel784" "label" "split"))
-                        (zip ("digit" "pixel1 … pixel256" "split"))))])
-      (match-define (list name rows) c)
-      (check-equal? (map car (catalog-column-rows (hash-ref (dataset-info name) "columns"))) rows
-                    (symbol->string name))))
+    (for ([name (in-list '(mnist fashion-mnist))])
+      (check-equal? (map car (catalog-column-rows (hash-ref (dataset-info name) "columns")))
+                    '("pixel1 … pixel784" "label" "split")
+                    (symbol->string name)))
+    (check-equal? (map car (catalog-column-rows (hash-ref (dataset-info 'zip) "columns")))
+                  '("digit" "pixel1 … pixel256" "split")))
+
+  (test-case "zip types: digit integer, pixels real, split categorical train then test"
+    (check-equal? (for/list ([column (in-list (hash-ref (dataset-info 'zip) "columns"))])
+                    (list (hash-ref column "type") (hash-ref column "levels")))
+                  `(("integer" ()) ,@(make-list 256 '("real" ())) ("categorical" ("train" "test")))))
 
   (test-case "queries load no converter"
     (call-with-temporary-fixture

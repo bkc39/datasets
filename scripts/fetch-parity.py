@@ -16,10 +16,11 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from rtable import read_r_table
+from rtable import kebab, read_r_table, read_rktd
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "datasets-fetch/datasets/fetch-tests/fixtures/parity.json"
+FETCH_REGISTRY = ROOT / "datasets-fetch/datasets/fetch-data/registry.rktd"
 NYCFLIGHTS13_TABLES = ["airlines", "airports", "flights", "planes", "weather"]
 
 CALIFORNIA = {"MedInc": "med-inc", "HouseAge": "house-age", "AveRooms": "ave-rooms",
@@ -96,8 +97,7 @@ def loader_references():
 
 def r_table(directory, id):
     header, _, rows = read_r_table(directory, id)
-    names = [re.sub("[^a-z0-9]+", "-", n.lower()).strip("-") for n in header]
-    return len(rows), {n: cells(r[j] for r in rows) for j, n in enumerate(names)}
+    return len(rows), {kebab(n): cells(r[j] for r in rows) for j, n in enumerate(header)}
 
 
 def description_version(package_dir):
@@ -106,56 +106,35 @@ def description_version(package_dir):
     return fields["Version"]
 
 
-def nycflights13_references(archive_dir):
-    source = json.loads((ROOT / "scripts/sources.json").read_text())["nycflights13"]
-    archive = Path(archive_dir) / source["file"]
-    assert hashlib.sha256(archive.read_bytes()).hexdigest() == source["sha256"], archive
-    with tempfile.TemporaryDirectory() as tmp:
-        tmp = Path(tmp)
-        with tarfile.open(archive) as a:
-            a.extractall(tmp, filter="data")
-        subprocess.run(["Rscript", str(ROOT / "scripts/export-r.R"), str(tmp), str(tmp), "nycflights13"],
-                       check=True)
-        tables = {f"nycflights13-{t}": r_table(tmp, f"nycflights13-{t}") for t in NYCFLIGHTS13_TABLES}
-        version = description_version(tmp / "nycflights13")
-    return {"nycflights13": version}, tables
-
-
 def verified(path, sha256):
     assert hashlib.sha256(path.read_bytes()).hexdigest() == sha256, path
     return path
 
 
-def registry_files(name):
-    text = (ROOT / "datasets-fetch/datasets/fetch-data/registry.rktd").read_text()
-    start = text.index(f'\n ("{name}"\n')
-    end = text.find('\n ("', start + 1)
-    entry = text[start:end if end >= 0 else None]
-    return dict(re.findall(r'#hash\(\("name" \. "([^"]+)"\) \("sha256" \. "([0-9a-f]{64})"\)', entry))
-
-
-def esl_zip_references(archive_dir):
-    source = json.loads((ROOT / "scripts/sources.json").read_text())["ElemStatLearn"]
+def r_references(archive_dir, package, target, ids, files=()):
+    source = json.loads((ROOT / "scripts/sources.json").read_text())[package]
     archive_dir = Path(archive_dir)
     archive = verified(archive_dir / source["file"], source["sha256"])
-    for file, sha256 in registry_files("zip").items():
-        verified(archive_dir / file, sha256)
+    for file in files:
+        verified(archive_dir / file["name"], file["sha256"])
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp)
         with tarfile.open(archive) as a:
             a.extractall(tmp, filter="data")
-        subprocess.run(["Rscript", str(ROOT / "scripts/export-r.R"), str(tmp), str(tmp), "esl-zip", str(archive_dir)],
+        subprocess.run(["Rscript", str(ROOT / "scripts/export-r.R"), str(tmp), str(tmp), target, str(archive_dir)],
                        check=True)
-        return {"ElemStatLearn": description_version(tmp / "ElemStatLearn")}, {"zip": r_table(tmp, "zip")}
+        return {package: description_version(tmp / package)}, {id: r_table(tmp, id) for id in ids}
 
 
 match sys.argv[1:]:
     case []:
         versions, tables = loader_references()
     case ["nycflights13", archive_dir]:
-        versions, tables = nycflights13_references(archive_dir)
+        versions, tables = r_references(archive_dir, "nycflights13", "nycflights13",
+                                        [f"nycflights13-{t}" for t in NYCFLIGHTS13_TABLES])
     case ["esl-zip", archive_dir]:
-        versions, tables = esl_zip_references(archive_dir)
+        versions, tables = r_references(archive_dir, "ElemStatLearn", "esl-zip", ["zip"],
+                                        read_rktd(FETCH_REGISTRY, "zip", "fetch", "files"))
     case _:
         sys.exit(__doc__)
 reference = json.loads(OUT.read_text()) if OUT.exists() else {"versions": {}}

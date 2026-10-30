@@ -151,7 +151,7 @@ book, are the first column of @racket['hitters]:
  (for/sum ([salary (in-vector (dataset-table-column hitters "salary"))])
    (if (dataset-missing? salary) 1 0))]
 
-The @tt{islr2-chapters} key of each dataset's metadata lists the chapters whose
+The @tt{islr2-chapters} key of each ISLR2 dataset's metadata lists the chapters whose
 text and labs, and whose exercises, use it:
 
 @examples[#:eval ev
@@ -168,26 +168,18 @@ describes the columns and provenance of each dataset.
 
 @section[#:tag "datasets-esl-guide"]{Datasets from ESL}
 
-@tt{datasets-islr} also bundles four datasets of
+@tt{datasets-islr} also bundles @racket['prostate], @racket['sa-heart],
+@racket['vowel] and @racket['ozone] from
 @hyperlink["https://hastie.su.domains/ElemStatLearn/"]{The Elements of Statistical
-Learning}, from the R package ElemStatLearn 2015.6.26.2: @racket['prostate],
-@racket['sa-heart], @racket['vowel] and @racket['ozone]. The ZIP code digits,
-@racket['zip], are in @tt{datasets-fetch} and are downloaded from the book's data
-page on first use. A train/test partition is a final @tt{split} column, with the
-training rows first where the book has two files:
+Learning}. The ZIP code digits, @racket['zip], are in @tt{datasets-fetch} and are
+downloaded on first load. A train/test partition is a final @tt{split} column:
 
 @examples[#:eval ev
- (define prostate (load-dataset 'prostate #:format 'table))
- (for/sum ([s (in-vector (dataset-table-column prostate "split"))])
-   (if (equal? s "train") 1 0))
- (hash-ref (dataset-info 'vowel) "suggested-targets")
+ (define vowel (load-dataset 'vowel #:format 'table))
+ (dataset-table-names vowel)
  (hash-ref (dataset-info 'zip) "tier")]
 
-ESL's spam data is @racket['spambase] from @tt{datasets-uci}: the same 4,601 rows
-and 57 attributes in the same order, with @tt{spam} 1 for ESL's @tt{spam} and 0
-for @tt{email}. The book's training and test indicator is not included.
-@racket['ozone] holds the 111 complete days of @racket['airquality] without month
-and day; two values differ from it.
+ESL's spam data is @racket['spambase] in @tt{datasets-uci}.
 
 @section[#:tag "datasets-matrices-guide"]{Preparing a numeric matrix}
 
