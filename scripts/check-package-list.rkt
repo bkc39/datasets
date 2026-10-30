@@ -2,8 +2,8 @@
 (require (for-syntax racket/base)
          (only-in racket/cmdline command-line)
          (only-in racket/file file->lines)
-         (only-in racket/list append-map check-duplicates drop-right filter-map filter-not last take)
-         (only-in racket/match match)
+         (only-in racket/list append-map check-duplicates drop-right filter-map last take)
+         (only-in racket/match == match)
          (only-in racket/runtime-path define-runtime-path)
          (only-in setup/getinfo get-info/full))
 
@@ -17,21 +17,35 @@
     [#f '()]
     [info (info key (λ () '()))]))
 
-(define (dep-name form)
-  (match form
-    [(or (? string? name) (cons (? string? name) _)) name]
+(define (dep-options? options)
+  (match options
+    ['() #t]
+    [(list* '#:version (? string?) more) (dep-options? more)]
+    [(list* '#:platform _ more) (dep-options? more)]
     [_ #f]))
 
-(define (bad-forms field)
+(define (dep-name form)
+  (match form
+    [(or (? string? name) (list (? string? name) (? string?))) name]
+    [(list* (? string? name) (? dep-options?)) name]
+    [_ #f]))
+
+(define (dep-problem name form)
+  (match (dep-name form)
+    [#f `(dep ,name ,form)]
+    [(== name) `(self ,name)]
+    [_ #f]))
+
+(define (field-problems name field)
   (match field
-    [(? list? forms) (filter-not dep-name forms)]
-    [form (list form)]))
+    [(? list? forms) (filter-map (λ (form) (dep-problem name form)) forms)]
+    [form `((dep ,name ,form))]))
 
 (define (form-problems root name)
-  (with-handlers ([exn:fail? (λ (e) `((info ,name ,(exn-message e))))])
-    (for*/list ([key (in-list '(deps build-deps))]
-                [form (in-list (bad-forms (info-field root name key)))])
-      `(dep ,name ,form))))
+  (match (with-handlers ([exn:fail? exn-message])
+           (map (λ (key) (info-field root name key)) '(deps build-deps)))
+    [(? string? message) `((info ,name ,message))]
+    [fields (append-map (λ (field) (field-problems name field)) fields)]))
 
 (define (listed-deps root name keys names)
   (for*/list ([key (in-list keys)]
@@ -77,29 +91,35 @@
 
 (define (describe problem)
   (match problem
-    [(list 'line name) (format "~s is not a package name" name)]
-    [(list 'duplicate name) (format "~a is listed twice" name)]
-    [(list 'count n) (format "~a packages listed; a core and an umbrella are needed" n)]
-    [(list 'info name message) (format "~a/info.rkt cannot be read: ~a" name message)]
-    [(list 'dep name form) (format "~a/info.rkt has the dependency form ~s" name form)]
-    [(list 'order name dep) (format "~a depends on ~a, which is not listed before it" name dep)]
+    [(list 'line name) (format "scripts/packages.txt: ~s is not a package name" name)]
+    [(list 'duplicate name) (format "scripts/packages.txt: ~a is listed twice" name)]
+    [(list 'count n)
+     (format "scripts/packages.txt: ~a packages listed; a core and an umbrella are needed" n)]
+    [(list 'info name message) (format "~a/info.rkt: cannot be read: ~a" name message)]
+    [(list 'dep name form) (format "~a/info.rkt: ~s is not a dependency form" name form)]
+    [(list 'self name) (format "~a/info.rkt: the package depends on itself" name)]
+    [(list 'order name dep)
+     (format "scripts/packages.txt: ~a depends on ~a, which is not listed before it" name dep)]
     [(list 'deps found expected)
-     (format "the umbrella's info.rkt deps on listed packages are ~s, not ~s" found expected)]
+     (format "scripts/packages.txt: the umbrella's info.rkt deps on listed packages are ~s, not ~s"
+             found
+             expected)]
     [(list 'dirs found expected)
-     (format "the package directories are ~s, not ~s" found expected)]))
+     (format "scripts/packages.txt: the package directories are ~s, not ~s" found expected)]))
+
 (module+ main
   (define root (command-line #:args ([root repo-root]) (path->complete-path root)))
   (define problems (package-list-problems root))
   (for ([problem (in-list problems)])
-    (eprintf "check-package-list: scripts/packages.txt: ~a\n" (describe problem)))
+    (eprintf "check-package-list: ~a\n" (describe problem)))
   (exit (if (null? problems) 0 1)))
-
 
 (module+ test
   (require (only-in racket/file delete-directory/files make-directory* make-temporary-directory)
            (only-in racket/list drop remove-duplicates)
            (only-in racket/match match-define)
            (only-in racket/port with-output-to-string)
+           (only-in racket/string string-prefix?)
            (only-in racket/system system*)
            rackunit)
 
@@ -206,6 +226,15 @@
         (add deps "datasets-r" "extra-pkg"))
        ()]
       [((add deps "datasets-r" datasets-core)) (dep)]
+      [((add deps "datasets-r" ("datasets-core" . "0.2"))) (dep)]
+      [((add deps "datasets-r" ("datasets-core" "0.2" junk))) (dep)]
+      [((add deps "datasets-r" ("datasets-core" #:version 0.2))) (dep)]
+      [((add deps "datasets-r" ("datasets-core" #:platform unix #:version))) (dep)]
+      [((add deps "datasets-r" ("datasets-core" "0.2"))) ()]
+      [((add deps "datasets-r" ("datasets-core" #:platform unix #:version "0.2"))) ()]
+      [((add deps "datasets-r" "datasets-r")) (self)]
+      [((add deps "datasets" ("datasets" #:version "0.1"))) (self)]
+      [((add build-deps "datasets" "datasets")) (self)]
       [((set build-deps "datasets-r" "rackunit-lib")) (dep)]
       [((info-text "datasets-r" "#lang info\n(define deps")) (info)]
       [((add-dir "datasets-foo")) (dirs)]
@@ -215,13 +244,21 @@
       [((duplicate-line 0)) (duplicate)]
       [((keep-lines 1)) (count)]))
 
+  (define (problem-file problem)
+    (match problem
+      [(list (or 'info 'dep 'self) name _ ...) (format "~a/info.rkt: " name)]
+      [_ "scripts/packages.txt: "]))
+
   (for ([c (in-list cases)])
     (match-define (list changes expected) c)
     (call-with-tree (foldl (λ (change t) (edit t change)) fixture changes)
                     (λ (root)
-                      (check-equal? (remove-duplicates (map car (package-list-problems root)))
-                                    expected
-                                    (format "~s" changes)))))
+                      (define problems (package-list-problems root))
+                      (define label (format "~s" changes))
+                      (check-equal? (remove-duplicates (map car problems)) expected label)
+                      (for ([problem (in-list problems)])
+                        (check-true (string-prefix? (describe problem) (problem-file problem))
+                                    label)))))
 
   (define (script-calls-raco? t script . args)
     (call-with-tree
