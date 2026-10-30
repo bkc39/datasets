@@ -4,6 +4,7 @@
                   dataset-info dataset-missing dataset-names dataset-table dataset-table-columns
                   dataset-table-info dataset-table-names dataset-table-row-count load-dataset-table
                   make-blobs make-circles make-regression)
+         (only-in datasets/core-tests/fixture column-types datum->cells rebuild)
          (only-in datasets/data-frame data-frame-column-names table->data-frame)
          (only-in datasets/matrix table->matrix)
          (only-in datasets/polars table->polars)
@@ -14,9 +15,6 @@
          (only-in racket/match match match-define))
 (module+ test
   (require (only-in rackunit check-eq? check-equal? check-not-false check-true test-case))
-  (define (rebuild t)
-    (dataset-table (dataset-table-names t) (vector->list (dataset-table-columns t))
-                   #:info (dataset-table-info t)))
   (define (rows t) (dataset-table-row-count t))
   (define (view format t)
     (match format
@@ -37,10 +35,6 @@
                (for/list ([i (in-range (rows t))]) (df:df-ref d i n))))]
       ['matrix
        (with-handlers ([exn:fail:contract? exn-message]) (matrix->list* (table->matrix t)))]))
-  (define (cells datum)
-    (map (λ (c) (if (eq? c 'missing) dataset-missing c)) datum))
-  (define (types t)
-    (for/list ([c (in-list (hash-ref (dataset-table-info t) "columns"))]) (hash-ref c "type")))
   (define compatible
     (hash "integer" '("integer") "real" '("real" "integer") "categorical" '("string")
           "string" '("string") "identifier" '("string" "integer")))
@@ -55,31 +49,32 @@
                 bundled))
   (define formats '(table polars data-frame matrix))
 
-  (test-case "TF1 exact: a rebuilt table is indistinguishable under every format"
-    (check-true (pair? bundled))
-    (for* ([t (in-list loaded)] [f (in-list formats)])
-      (check-equal? (view f (rebuild t)) (view f t)
-                    (format "~a ~a" (hash-ref (dataset-table-info t) "name") f)))
-    (for* ([t (in-list (list (make-circles #:format 'table #:n-samples 0 #:seed 0)
-                             (make-blobs #:format 'table #:n-samples 5 #:seed 0)
-                             (make-regression #:format 'table #:n-samples 4 #:n-features 2
-                                              #:n-targets 3 #:seed 0)))]
-           [f (in-list (if (zero? (rows t)) '(table polars data-frame) formats))])
-      (check-equal? (view f (rebuild t)) (view f t) (format "~a ~a" (rows t) f))))
+  (define generated
+    (list (make-circles #:format 'table #:n-samples 0 #:seed 0)
+          (make-blobs #:format 'table #:n-samples 5 #:seed 0)
+          (make-regression #:format 'table #:n-samples 4 #:n-features 2 #:n-targets 3 #:seed 0)))
+  (define (label t)
+    (format "~a/~a" (hash-ref (dataset-table-info t) "name") (car (dataset-table-names t))))
+
+  (check-true (pair? bundled))
+  (for* ([t (in-list (append loaded generated))]
+         [f (in-list (if (zero? (rows t)) '(table polars data-frame) formats))])
+    (test-case (format "TF1 exact: a rebuilt ~a is indistinguishable as ~a" (label t) f)
+      (check-equal? (view f (rebuild t)) (view f t))))
 
   (test-case "TF2 exact: the polars dtype follows the derived type"
     (for ([row (in-list `((() int64) ((missing missing) int64) ((1 2) int64) ((1 2.5) float64)
                           ((+nan.0) float64) ((missing 1.0) float64) (("a" missing) string)
                           ((,(expt 2 62)) int64)))])
       (match-define (list column dtype) row)
-      (define p (table->polars (dataset-table '("c") (list (cells column)))))
+      (define p (table->polars (dataset-table '("c") (list (datum->cells column)))))
       (check-equal? (pl:series-dtype (pl:dataframe-column p "c")) dtype (format "~s" column))))
 
   (test-case "TF3 exact: derived types agree with every bundled registry"
     (for ([name (in-list bundled)])
       (define t (load-dataset-table name))
-      (define derived (types (dataset-table (dataset-table-names t)
-                                            (vector->list (dataset-table-columns t)))))
+      (define derived (column-types (dataset-table (dataset-table-names t)
+                                                   (vector->list (dataset-table-columns t)))))
       (for ([c (in-list (hash-ref (dataset-info name) "columns"))] [d (in-list derived)])
         (check-not-false (member d (hash-ref compatible (hash-ref c "type")))
                          (format "~a/~a: ~a as ~a" name (hash-ref c "name") (hash-ref c "type") d)))))

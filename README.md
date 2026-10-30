@@ -61,10 +61,11 @@ contributes `datasets/islr-data` the same way. `datasets-fetch` contributes
 private converters; it requires `datasets-core` 0.2.
 
 `datasets-core` contributes `datasets/core` and depends only on `base` at runtime.
-It provides `load-dataset-table`, `dataset-names`, `dataset-info`, table predicates
-and accessors, and a dedicated `dataset-missing` singleton. Column vectors,
-strings, and metadata are immutable. Metadata describes the full source dataset,
-even on selected tables. Data is read lazily using runtime-relative paths.
+It provides `load-dataset-table`, `dataset-names`, `dataset-info`, the
+`dataset-table` constructor, table predicates and accessors, and a dedicated
+`dataset-missing` singleton. Every table, loaded, generated or constructed, is
+immutable throughout: column vectors, strings, and metadata with its nested lists
+and hashes. Metadata describes the full source dataset, even on selected tables. Data is read lazily using runtime-relative paths.
 Core's tests and Scribble manual build without Polars, math-lib, or data-frame.
 
 `datasets` contributes the main loader module and `datasets/polars`,

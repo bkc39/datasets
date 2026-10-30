@@ -1,11 +1,13 @@
 #lang racket/base
-(require (only-in racket/contract/base flat-named-contract integer-in or/c)
-         (only-in racket/match match))
+(require (for-syntax racket/base (only-in syntax/parse ...+ expr id))
+         (only-in racket/contract/base and/c flat-named-contract non-empty-listof)
+         (only-in racket/vector vector-map)
+         (only-in syntax/parse/define define-syntax-parse-rule))
 (provide (struct-out dataset-table-struct)
          unchecked-dataset-table
          dataset-table
          dataset-missing dataset-missing?
-         dataset-cell/c dataset-column/c dataset-info/c
+         columns/c dataset-info/c
          freeze column-info)
 
 (struct missing-value ())
@@ -14,38 +16,67 @@
 (struct dataset-table (names columns row-count info)
   #:transparent #:name dataset-table-struct #:constructor-name unchecked-dataset-table)
 
-(define int64? (integer-in (- (expt 2 63)) (sub1 (expt 2 63))))
+(define-syntax-parse-rule (for/fold-column (accumulator ...) ([cell:id column:expr]) body ...+)
+  (let ([v column])
+    (if (vector? v)
+        (for/fold (accumulator ...) ([cell (in-vector v)]) body ...)
+        (for/fold (accumulator ...) ([cell (in-list v)]) body ...))))
 
-(define dataset-cell/c
-  (flat-named-contract 'dataset-cell/c (or/c dataset-missing? int64? flonum? string?)))
+(define int64-min (- (expt 2 63)))
+(define int64-max (sub1 (expt 2 63)))
 
-(define (column->list v)
-  (cond [(list? v) v]
-        [(vector? v) (vector->list v)]
+(define (int64? v)
+  (or (fixnum? v) (and (exact-integer? v) (<= int64-min v int64-max))))
+
+(define (next-kind kind cell)
+  (cond [(dataset-missing? cell) kind]
+        [(int64? cell) (case kind [(empty integer) 'integer] [(real) 'real] [else #f])]
+        [(flonum? cell) (case kind [(empty integer real) 'real] [else #f])]
+        [(string? cell) (case kind [(empty string) 'string] [else #f])]
         [else #f]))
 
-(define (present-cells cells)
-  (for/list ([c (in-list cells)] #:unless (dataset-missing? c)) c))
+(define (column-summary column)
+  (for/fold-column ([kind 'empty] [missing 0]) ([cell column])
+    (values (next-kind kind cell) (if (dataset-missing? cell) (add1 missing) missing))))
 
-(define (homogeneous? cells)
-  (define present (present-cells cells))
-  (or (andmap number? present) (andmap string? present)))
+(define (column-kind column)
+  (define-values (kind _missing) (column-summary column))
+  kind)
 
 (define (dataset-column? v)
-  (define cells (column->list v))
-  (and cells (andmap dataset-cell/c cells) (homogeneous? cells)))
+  (and (or (vector? v) (list? v)) (column-kind v) #t))
 
-(define dataset-column/c (flat-named-contract 'dataset-column/c dataset-column?))
+(define (column-length column)
+  (if (vector? column) (vector-length column) (length column)))
+
+(define (equal-lengths? columns)
+  (define n (column-length (car columns)))
+  (andmap (λ (c) (= (column-length c) n)) columns))
+
+(define (columns/c names)
+  (and/c (non-empty-listof (flat-named-contract 'dataset-column/c dataset-column?))
+         (flat-named-contract "one column per name" (λ (cs) (= (length cs) (length names))))
+         (flat-named-contract "every column the same length" equal-lengths?)))
+
+(define (info-value? v ancestors)
+  (cond [(or (string? v) (number? v) (boolean? v) (symbol? v) (null? v)) #t]
+        [(hash-ref ancestors v #f) #f]
+        [(list? v) (andmap (λ (x) (info-value? x (hash-set ancestors v #t))) v)]
+        [(hash? v) (info-hash? v (hash-set ancestors v #t))]
+        [else #f]))
+
+(define (info-hash? v ancestors)
+  (and (hash-equal? v)
+       (for/and ([(k x) (in-hash v)]) (and (string? k) (info-value? x ancestors)))))
 
 (define (column-description? v)
   (and (hash? v) (string? (hash-ref v "name" #f))))
 
 (define (dataset-info? v)
   (and (hash? v)
-       (for/and ([k (in-hash-keys v)]) (string? k))
-       (match (hash-ref v "columns" '())
-         [(list (? column-description?) ...) #t]
-         [_ #f])))
+       (info-hash? v (hasheq v #t))
+       (let ([columns (hash-ref v "columns" '())])
+         (and (list? columns) (andmap column-description? columns)))))
 
 (define dataset-info/c (flat-named-contract 'dataset-info/c dataset-info?))
 
@@ -59,31 +90,32 @@
   (hash "name" name "original-name" original-name "type" type "levels" '() "unit" #f
         "missing-count" missing-count "description" description))
 
-(define (column-type cells)
-  (define present (present-cells cells))
-  (cond [(andmap exact-integer? present) "integer"]
-        [(andmap string? present) "string"]
-        [else "real"]))
+(define (freeze-cell cell)
+  (if (string? cell) (string->immutable-string cell) cell))
 
-(define (freeze-column cells)
-  (vector->immutable-vector
-   (for/vector #:length (length cells) ([c (in-list cells)])
-     (if (string? c) (string->immutable-string c) c))))
+(define (string-column? cells)
+  (for/first ([cell (in-vector cells)] #:unless (dataset-missing? cell)) (string? cell)))
+
+(define (freeze-column column)
+  (define cells (if (vector? column) column (list->vector column)))
+  (vector->immutable-vector (if (string-column? cells) (vector-map freeze-cell cells) cells)))
+
+(define (describe name column)
+  (define-values (kind missing) (column-summary column))
+  (column-info name name (if (eq? kind 'empty) "integer" (symbol->string kind)) "" missing))
 
 (define (dataset-table names columns #:info [info (hash)])
   (define frozen-names (map string->immutable-string names))
-  (define cell-lists (map column->list columns))
-  (define rows (length (car cell-lists)))
+  (define frozen-columns (map freeze-column columns))
+  (define rows (vector-length (car frozen-columns)))
   (define defaults
     (hash "name" #f "rows" rows "column-count" (length names)
-          "columns" (for/list ([n (in-list frozen-names)] [cells (in-list cell-lists)])
-                      (column-info n n (column-type cells) ""
-                                   (for/sum ([c (in-list cells)]) (if (dataset-missing? c) 1 0))))
+          "columns" (map describe frozen-names frozen-columns)
           "identifiers" '() "suggested-targets" '()
           "source-url" #f "source-version" #f "source-sha256" #f "sha256" #f
           "license" #f "citation" #f "notes" #f "time-series" #f))
   (unchecked-dataset-table
    frozen-names
-   (vector->immutable-vector (list->vector (map freeze-column cell-lists)))
+   (apply vector-immutable frozen-columns)
    rows
    (freeze (for/fold ([merged defaults]) ([(k v) (in-hash info)]) (hash-set merged k v)))))

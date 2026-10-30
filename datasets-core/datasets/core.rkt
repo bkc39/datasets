@@ -10,7 +10,7 @@
          (only-in datasets/core-private/error raise-registry-error)
          (only-in datasets/core-private/log log-datasets-warning)
          (only-in datasets/core-private/table
-                  dataset-column/c dataset-info/c dataset-missing dataset-missing? dataset-table
+                  columns/c dataset-info/c dataset-missing dataset-missing? dataset-table
                   dataset-table-columns dataset-table-info dataset-table-names
                   dataset-table-row-count dataset-table? freeze unchecked-dataset-table)
          (only-in racket/contract/base -> ->* ->i and/c contract-out listof non-empty-listof or/c)
@@ -34,11 +34,9 @@
           [clear-dataset-cache (->* () ((or/c #f symbol?)) void?)]
           [dataset-table
            (->i ([names (non-empty-listof string?)]
-                 [columns (non-empty-listof dataset-column/c)])
+                 [columns (names) (columns/c names)])
                 (#:info [info dataset-info/c])
                 #:pre/name (names) "duplicate column" (not (check-duplicates names))
-                #:pre/name (names columns) "one column per name" (= (length names) (length columns))
-                #:pre/name (columns) "every column the same length" (equal-lengths? columns)
                 [result dataset-table?])])
          dataset-info
          dataset-missing dataset-missing?
@@ -59,10 +57,6 @@
      #'(quote names)]))
 
 (define core-registry-names (declared-core-registries))
-
-(define (equal-lengths? columns)
-  (define lengths (for/list ([c (in-list columns)]) (if (vector? c) (vector-length c) (length c))))
-  (andmap (lambda (n) (= n (car lengths))) lengths))
 
 (define (registry-path-string? v)
   (and (string? v) (relative-path? v) (andmap path? (explode-path v))))

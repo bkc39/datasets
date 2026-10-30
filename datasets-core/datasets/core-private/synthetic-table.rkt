@@ -92,7 +92,7 @@
                          (string->immutable-string (string-append "sklearn.datasets." reference))
                          "reference-version" "1.8.0" "stream" 1 "arguments" arguments
                          "derived" (generated-derived result))))
-  (unchecked-dataset-table names (vector->immutable-vector (list->vector data)) rows info))
+  (unchecked-dataset-table names (apply vector-immutable data) rows info))
 
 (define-syntax-parse-rule (define-generator name:generator #:stream stream:id body:expr ...+)
   #:with label (datum->syntax #'name (symbol->string (syntax-e #'name)))
