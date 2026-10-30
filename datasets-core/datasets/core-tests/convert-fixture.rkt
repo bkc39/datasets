@@ -3,9 +3,9 @@
          (only-in racket/file file->value)
          (only-in racket/match match-lambda)
          (only-in racket/sequence sequence-map))
-(provide concat-rows reversed-rows edge-rows failing-rows lazy-failing-rows raising-rows malformed-rows
-         non-sequence-rows stalling-rows wrong-arity not-a-procedure
-         converter-recorder malformed-row edge-table-rows)
+(provide concat-rows reversed-rows edge-rows bound-rows failing-rows lazy-failing-rows raising-rows
+         malformed-rows non-sequence-rows stalling-rows wrong-arity not-a-procedure long-rows
+         converter-recorder malformed-row edge-table-rows bound-table-rows long-row-count long-row-text)
 
 (define converter-recorder (make-parameter void))
 (define malformed-row (make-parameter #f))
@@ -22,7 +22,9 @@
     row))
 (define (concat-rows files info) (record! files info) (files-rows files info))
 (define (reversed-rows files info) (record! files info) (reverse (files-rows files info)))
+(define bound-table-rows `((,(sub1 (expt 10 1000)) "a" 0.5) (,(- 1 (expt 10 1000)) "b" 1.5)))
 (define (edge-rows files info) (record! files info) edge-table-rows)
+(define (bound-rows files info) (record! files info) bound-table-rows)
 (define (failing-rows files info) (record! files info) (error 'failing-rows "upstream format changed"))
 (define (lazy-failing-rows files info)
   (sequence-map (match-lambda [0 '(1 "a" 0.5)] [i (error 'lazy-failing-rows "line ~a malformed" i)])
@@ -31,5 +33,9 @@
 (define (malformed-rows files info) (record! files info) (list '(1 "a" 0.5) (malformed-row)))
 (define (non-sequence-rows files info) (record! files info) 'rows)
 (define (stalling-rows files info) (record! files info) (semaphore-wait (make-semaphore 0)) '())
+(define long-row-count 250000)
+(define long-row-text (make-string 200 #\a))
+(define (long-rows files info)
+  (sequence-map (lambda (i) (list i long-row-text 0.5)) (in-range long-row-count)))
 (define (wrong-arity files) '())
 (define not-a-procedure 'rows)

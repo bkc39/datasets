@@ -6,7 +6,7 @@
          (only-in racket/file file->bytes)
          (only-in racket/flonum fl/)
          (only-in racket/match match match* match-define)
-         (only-in racket/sequence sequence-map)
+         (only-in racket/sequence sequence-append sequence-map)
          (only-in threading ~>))
 (provide (contract-out
           [covtype-rows converter/c]
@@ -50,8 +50,8 @@
 (define (idx-image-rows files info)
   (match-define (list train-images train-labels test-images test-labels) idx-file-names)
   (define width (- (hash-ref info "column-count") 2))
-  (in-sequences (idx-split-rows files train-images train-labels "train" width)
-                (idx-split-rows files test-images test-labels "test" width)))
+  (sequence-append (idx-split-rows files train-images train-labels "train" width)
+                   (idx-split-rows files test-images test-labels "test" width)))
 
 (define (idx-split-rows files images-file labels-file split width)
   (define-values (image-dims images) (idx-file files images-file))
