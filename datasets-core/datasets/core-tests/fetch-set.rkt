@@ -2,7 +2,8 @@
 (require (only-in datasets/core clear-dataset-cache dataset-cache-directory dataset-cached? dataset-info
                   dataset-missing dataset-names dataset-table-column dataset-table-row-count fetch-dataset
                   load-dataset-table)
-         (only-in datasets/core-tests/convert-fixture converter-recorder edge-table-rows malformed-row)
+         (only-in datasets/core-tests/convert-fixture bound-table-rows converter-recorder edge-table-rows
+                  malformed-row)
          (only-in racket/contract/combinator blame-positive exn:fail:contract:blame-object
                   exn:fail:contract:blame?)
          (only-in racket/file make-directory*)
@@ -299,6 +300,14 @@
                         (vector->list (dataset-table-column t c)))
                       (list '(1 2 3) (list "x\ny \"q\" é" dataset-missing "c") (list -0.0 1e21 +nan.0))))))
 
+  (test-case "integers just inside 1000 digits convert and load back equal"
+    (define text (rows->rktd-bytes bound-table-rows))
+    (with-server routes (set-with "bound-rows" #:data-sha256 (hex (sha256-bytes text)))
+      (lambda (srv root registry)
+        (check-equal? (gunzip-file (fetch-dataset 'toy-set)) text)
+        (check-equal? (vector->list (dataset-table-column (load-dataset-table 'toy-set) "id"))
+                      (map car bound-table-rows)))))
+
   (test-case "the converted text does not follow the caller's print parameters"
     (define text (rows->rktd-bytes edge-table-rows))
     (with-server routes (set-with "edge-rows" #:data-sha256 (hex (sha256-bytes text)))
@@ -343,8 +352,9 @@
                         (#"(\n  (123456789012345678901 -1234567890123456789)\n)\n"
                          (1 (123456789012345678901) (-1234567890123456789)))
                         (#"(\n  (2.9e-05 1e+21)\n  (0.5 -1e-7)\n)\n" (2 (2.9e-05 0.5) (1e+21 -1e-7)))
-                        (,(bytes-append #"(\n  (" (make-bytes 1000 57) #" -" (make-bytes 21 57) #"."
-                                        (make-bytes 21 57) #"e-999)\n)\n")
+                        (#"(\n  (1e-320 5e-324)\n)\n" (1 (1e-320) (5e-324)))
+                        (,(bytes-append #"(\n  (" (make-bytes 1000 57) #" -" (make-bytes 21 48) #"."
+                                        (make-bytes 20 48) #"9e-324)\n)\n")
                          (1 (,(sub1 (expt 10 1000))) (-0.0)))))])
       (match-define (list text expected) c)
       (check-equal? (load-wide-text text (car expected)) expected (format "~s" text))))
@@ -379,6 +389,9 @@
                         (#"(\n  (1 #e1e5)\n)\n" "row 0: unexpected value #e1e5")
                         (#"(\n  (1 4.)\n)\n" "row 0: unexpected value 4.")
                         (#"(\n  (1 1e1000)\n)\n" "row 0: unexpected value 1e1000")
+                        (#"(\n  (1 1e999)\n)\n" "row 0: unexpected value 1e999")
+                        (#"(\n  (1 1e-999)\n)\n" "row 0: unexpected value 1e-999")
+                        (#"(\n  (1 1e-325)\n)\n" "row 0: unexpected value 1e-325")
                         (#"(\n  (1 -nan.0)\n)\n" "row 0: unexpected value -nan.0")
                         (,(second-cell (make-bytes 1001 49)) "row 0: unexpected value 1111")
                         (,(second-cell (bytes-append #"0." (make-bytes 22 49))) "row 0: unexpected value 0.1111")
@@ -386,6 +399,7 @@
       (match-define (list text detail) c)
       (define message (load-wide-text text 1))
       (check-pred string? message)
+      (check-true (< (string-length message) 400) (format "~a bytes" (string-length message)))
       (for ([needle (in-list (list "load-dataset-table: cannot parse dataset data\n" "dataset: wide"
                                    "package: datasets-fetch-fixture" (string-append "error: " detail)))])
         (check-true (regexp-match? (regexp-quote needle) message) needle))))

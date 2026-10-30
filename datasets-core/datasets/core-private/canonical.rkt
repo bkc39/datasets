@@ -19,10 +19,14 @@
 (define digit-9 (char->integer #\9))
 (define close-paren (char->integer #\)))
 (define row-prefix #"  (")
+(define exponent #"e[+-]?(?:0?[0-9]{1,2}|[12][0-9]{2}|3[01][0-9]|32[0-4])")
 (define number-rx
-  #px#"^(?:-?[0-9]{1,1000}|-?[0-9]{1,21}(?:\\.[0-9]{1,21})?(?:e[+-]?[0-9]{1,3})?|[+-]inf\\.0|\\+nan\\.0)$")
+  (byte-pregexp
+   (bytes-append #"^(?:-?[0-9]{1,1000}|-?[0-9]{1,21}(?:\\.[0-9]{1,21})?(?:" exponent
+                 #")?|[+-]inf\\.0|\\+nan\\.0)$")))
 (define integer-bound (expt 10 1000))
 (define cell-budget (expt 2 26))
+(define preview-bytes 40)
 
 (define (write-canonical-rows rows width out)
   (write-string "(\n" out)
@@ -127,7 +131,11 @@
     [(small-integer line i j)]
     [(token=? line i j #"missing") dataset-missing]
     [(regexp-match? number-rx line i j) (string->number (bytes->string/latin-1 line #f i j) 10)]
-    [else (fail "row ~a: unexpected value ~a" row (subbytes line i j))]))
+    [else (fail "row ~a: unexpected value ~a" row (token-preview line i j))]))
+
+(define (token-preview line i j)
+  (define shown (bytes->string/utf-8 line #\uFFFD i (min j (+ i preview-bytes))))
+  (if (> (- j i) preview-bytes) (string-append shown "…") shown))
 
 (define (small-integer line i j)
   (define start (if (and (< i j) (eqv? (bytes-ref line i) minus)) (add1 i) i))

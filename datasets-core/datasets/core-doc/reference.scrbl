@@ -87,10 +87,11 @@ collection-level @tt{info.rkt}: a list of paths relative to that file's
 directory. Each dataset's data is @tt{data/@italic{name}.rktd.gz} beside its
 registry: gzip-compressed UTF-8 text of an opening parenthesis and newline, each
 row on its own line as two spaces followed by its @racket[write] form, then a
-closing parenthesis and newline. Loading expects this form; other text may be
-rejected. The registries of all installed packages are merged when first used.
-Each later call checks the registry files and declaring @tt{info.rkt} files of
-the packages already found, and merges again when one changes. The installed
+closing parenthesis and newline. Loading expects this form, with exact integers
+of at most 1000 digits; other text may be rejected. The registries of all
+installed packages are merged when first used. Each later call checks the
+registry files and declaring @tt{info.rkt} files of the packages already found,
+and merges again when one changes. The installed
 package index is read again when the collection search path changes, as
 with @racket[current-library-collection-paths], when @exec{raco setup} runs in
 the same process, or after a call whose discovery failed or was interrupted, so
@@ -218,10 +219,10 @@ takes effect only with a registry update that pins the new content.
 The protocol a converter binding follows. @racket[files] maps each file's
 @tt{name} to its verified download and @racket[info] is the dataset's
 @racket[dataset-info]. The result is a sequence, possibly lazy, of rows in source
-order, each a list of @tt{column-count} exact integers of at most 1000 digits,
-flonums, strings or @racket['missing]. A contract violation raised while loading
-the converter or producing rows, such as a binding that is not a procedure of two
-arguments or a result that is not a sequence, propagates unchanged; any other
+order, each a list of @tt{column-count} exact integers, flonums, strings or
+@racket['missing], within the limits of the data format above. A contract
+violation raised while loading the converter or producing rows, such as a binding
+that is not a procedure of two arguments or a result that is not a sequence, propagates unchanged; any other
 @racket[exn:fail] is reported as described for @racket[fetch-dataset].}
 
 @subsection[#:tag "datasets-core-offline-reference"]{Disabling downloads}

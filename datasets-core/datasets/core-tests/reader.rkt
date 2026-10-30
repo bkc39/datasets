@@ -2,10 +2,11 @@
 (require (only-in compiler/find-exe find-exe)
          (only-in datasets/core dataset-info dataset-missing dataset-names dataset-table-columns
                   dataset-table-row-count fetch-dataset load-dataset-table)
-         (only-in datasets/core-private/canonical read-canonical-columns)
+         (only-in datasets/core-private/canonical read-canonical-columns write-canonical-rows)
          (only-in datasets/core-tests/convert-fixture long-row-count long-row-text)
          (only-in racket/list append-map first index-of last remove-duplicates)
          (only-in racket/match match match-define)
+         (only-in racket/port call-with-output-bytes)
          (only-in racket/system system*/exit-code)
          (only-in racket/vector vector-copy vector-extend)
          (only-in "fixture.rkt" call-with-memory-limit call-with-registry-fixtures
@@ -132,6 +133,39 @@
       (check-equal? (read-canonical-columns (open-input-bytes text) indices 2 stated budget)
                     (cons (read-reference text indices stated) n)
                     (format "~a rows, ~a stated, columns ~a" n stated indices))))
+
+  (define (flonum-bits x) (integer-bytes->integer (real->floating-point-bytes x 8) #t))
+  (define (bits-flonum n) (floating-point-bytes->real (integer->integer-bytes n 8 #t)))
+  (define (flonum-step x d) (bits-flonum (+ (flonum-bits x) d)))
+  (define boundary-flonums
+    (append '(0.0 5e-324 1e-320 1e21 1e+20 +inf.0 +nan.0)
+            (for*/list ([k (in-range -330 310)] [d (in-list '(-1 0 1))])
+              (flonum-step (string->number (format "1e~a" k)) d))))
+  (define random-flonums
+    (parameterize ([current-pseudo-random-generator (make-pseudo-random-generator)])
+      (random-seed 42)
+      (for/list ([_ (in-range 100000)])
+        (floating-point-bytes->real (apply bytes (for/list ([_ (in-range 8)]) (random 256)))))))
+
+  (test-case "every flonum loads back as written"
+    (define flonums (append boundary-flonums (map - boundary-flonums) random-flonums))
+    (define text (call-with-output-bytes (lambda (out) (write-canonical-rows (map list flonums) 1 out))))
+    (match-define (cons (vector column) count)
+      (read-canonical-columns (open-input-bytes text) '(0) 1 (length flonums)))
+    (check-equal? count (length flonums))
+    (check-equal? (for/list ([v (in-list flonums)] [r (in-vector column)] #:unless (eqv? v r)) (list v r)) '()))
+
+  (test-case "bundled data with its sha256 and a 1001-digit integer cannot be parsed"
+    (call-with-gen-fixture (bytes-append #"(\n  (" (make-bytes 1001 49) #")\n)\n") (gen-entry "gen")
+      (lambda (dir)
+        (define message
+          (call-with-registry-fixtures (list dir)
+            (lambda () (with-handlers ([exn:fail? exn-message]) (load-dataset-table 'gen) #f))))
+        (check-true (and (string? message)
+                         (regexp-match? #rx"^load-dataset-table: cannot parse dataset data\n" message)
+                         (regexp-match? #px"row 0: unexpected value 1{40}…$" message))
+                    (format "~a" message))
+        (check-true (< (string-length (or message "")) 400)))))
 
   (define linux? (eq? (system-type 'os*) 'linux))
   (define (open-fds) (directory-list "/proc/self/fd" #:build? #t))
