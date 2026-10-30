@@ -7,7 +7,7 @@
          (only-in datasets/core-tests/fixture conjuncts gunzip-file hex license-ids)
          (only-in datasets/islr-tests/columns column-meta column-names)
          (only-in racket/list append-map remove-duplicates)
-         (only-in racket/match match match-define)
+         (only-in racket/match == match match-define)
          (only-in racket/runtime-path define-runtime-path)
          (only-in racket/vector vector-count)
          (only-in setup/getinfo get-info/full))
@@ -31,6 +31,11 @@
   (define (column-count id name keep?) (vector-count keep? (column id name)))
   (define (value-counts id name values)
     (for/list ([value (in-list values)]) (column-count id name (lambda (v) (equal? v value)))))
+  (define (runs values)
+    (reverse (for/fold ([acc '()]) ([v (in-vector values)])
+               (match acc
+                 [(cons (list (== v) n) rest) (cons (list v (add1 n)) rest)]
+                 [_ (cons (list v 1) acc)]))))
   (define (column-sum id name)
     (for/sum ([v (in-vector (column id name))] #:unless (dataset-missing? v)) v))
   (define ((has-type type) meta) (equal? (hash-ref meta "type") type))
@@ -207,8 +212,8 @@
       (types vowel "real" ("integer" "y") ("categorical" "split"))
       (meta vowel "x10" "original-name" "x.10")
       (level-counts vowel "split" (528 462))
-      (row vowel 527 ("split") ("train"))
-      (row vowel 528 ("split") ("test"))
+      (runs vowel "split" (("train" 528) ("test" 462)))
+      (row vowel 527 ("y" "x1") (11 -4.261))
       (value-counts vowel "y" (1 2 3 4 5 6 7 8 9 10 11) (90 90 90 90 90 90 90 90 90 90 90))
       (row vowel 0 ("y" "x1" "x10") (1 -3.639 -0.814))
       (row vowel 528 ("y" "x1") (1 -1.149))
@@ -321,6 +326,7 @@
                      expected)]
       [(list 'sum id name expected) (check-equal? (column-sum id name) expected)]
       [(list 'sum id name expected epsilon) (check-= (column-sum id name) expected epsilon)]
+      [(list 'runs id name expected) (check-equal? (runs (column id name)) expected)]
       [(list 'level-counts id name expected)
        (check-equal? (value-counts id name (column-meta id name "levels")) expected)]
       [(list 'value-counts id name values expected)
