@@ -4,8 +4,8 @@ set -euo pipefail
 project_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
 cd "$project_root"
 mode=${1:-full}
-source scripts/packages.sh
 racket scripts/check-package-list.rkt
+source scripts/packages.sh
 raco test scripts/check-package-list.rkt
 if [[ "$mode" == full ]]; then
   # Render the manuals referenced by the evaluated guide examples.
