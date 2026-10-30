@@ -154,7 +154,7 @@
      (apply raise-registry-error who "converter produced a malformed row"
             (append fields
                     (list "row" index
-                          "expected" (format "a list of ~a values, each an exact integer, flonum, string or 'missing"
+                          "expected" (format "a list of ~a values, each an exact integer of at most 1000 digits, flonum, string or 'missing"
                                              width)
                           "given" (~e row))))]))
 

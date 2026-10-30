@@ -6,7 +6,8 @@
          (only-in file/gunzip gunzip-through-ports)
          (only-in file/gzip gzip-through-ports)
          (only-in net/url path->url url->string)
-         (only-in racket/contract/base -> ->* and/c any any/c contract-out hash/c list/c listof or/c)
+         (only-in racket/contract/base -> ->* and/c any any/c contract-out hash/c integer-in list/c listof
+                  or/c)
          (only-in racket/file delete-directory/files file->bytes make-directory*
                   make-temporary-directory)
          (only-in racket/match match match-lambda)
@@ -19,6 +20,8 @@
           [registry-fixture (-> string? complete-path?)]
           [call-with-registry-fixtures (->* ((listof complete-path?) (-> any)) (#:specs (listof any/c)) any)]
           [call-with-temporary-fixture (-> (-> complete-path? any) any)]
+          [call-with-deep-fixture-directory (-> (integer-in 1 255) (-> any) any)]
+          [error-detail (-> string? string?)]
           [write-fixture-index! (-> complete-path? (listof complete-path?) (listof any/c) void?)]
           [write-registry-fixture! (-> path? #:info any/c #:registries (hash/c string? any/c)
                                        #:data (hash/c string? bytes?) void?)]
@@ -64,13 +67,28 @@
   (simplify-path (build-path fixtures name)))
 
 (define fixture-count (box 0))
+(define fixture-base-directory (make-parameter #f))
 
 (define (call-with-temporary-fixture proc)
   (set-box! fixture-count (add1 (unbox fixture-count)))
-  (define dir (make-temporary-directory (format "datasets-fixture-~a-~~a" (unbox fixture-count))))
+  (define dir (make-temporary-directory (format "datasets-fixture-~a-~~a" (unbox fixture-count))
+                                        #:base-dir (fixture-base-directory)))
   (dynamic-wind void
                 (lambda () (proc dir))
                 (lambda () (delete-directory/files dir #:must-exist? #f))))
+
+(define (call-with-deep-fixture-directory name-length thunk)
+  (call-with-temporary-fixture
+   (lambda (dir)
+     (define deep (build-path dir (make-string name-length #\d)))
+     (make-directory* deep)
+     (parameterize ([fixture-base-directory deep])
+       (thunk)))))
+
+(define (error-detail message)
+  (match message
+    [(regexp #rx"\n  error: ([^\n]*)$" (list _ detail)) detail]
+    [_ message]))
 
 (define (call-with-registry-fixtures dirs thunk
                                      #:specs [specs (for/list ([i (in-range (length dirs))])

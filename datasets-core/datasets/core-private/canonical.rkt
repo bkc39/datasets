@@ -134,7 +134,12 @@
     [else (fail "row ~a: unexpected value ~a" row (token-preview line i j))]))
 
 (define (token-preview line i j)
-  (define shown (bytes->string/utf-8 line #\uFFFD i (min j (+ i preview-bytes))))
+  (define cut
+    (let back ([k (min j (+ i preview-bytes))])
+      (cond
+        [(and (< i k j) (<= #x80 (bytes-ref line k) #xBF)) (back (sub1 k))]
+        [else k])))
+  (define shown (bytes->string/utf-8 line #\uFFFD i cut))
   (if (> (- j i) preview-bytes) (string-append shown "…") shown))
 
 (define (small-integer line i j)

@@ -9,10 +9,10 @@
          (only-in racket/port call-with-output-bytes)
          (only-in racket/system system*/exit-code)
          (only-in racket/vector vector-copy vector-extend)
-         (only-in "fixture.rkt" call-with-memory-limit call-with-registry-fixtures
-                  call-with-temporary-fixture call-with-timeout fetch-entry fetch-error? gen-entry
-                  gunzip-file gzip-bytes hex raw-a raw-b rows->rktd-bytes toy-artifact toy-at toy-rows
-                  toy-set-entry wait-until with-server write-registry-fixture!))
+         (only-in "fixture.rkt" call-with-deep-fixture-directory call-with-memory-limit
+                  call-with-registry-fixtures call-with-temporary-fixture call-with-timeout error-detail
+                  fetch-entry fetch-error? gen-entry gunzip-file gzip-bytes hex raw-a raw-b rows->rktd-bytes
+                  toy-artifact toy-at toy-rows toy-set-entry wait-until with-server write-registry-fixture!))
 (module+ test
   (require (only-in rackunit check-equal? check-false check-true test-case))
 
@@ -155,17 +155,17 @@
     (check-equal? count (length flonums))
     (check-equal? (for/list ([v (in-list flonums)] [r (in-vector column)] #:unless (eqv? v r)) (list v r)) '()))
 
-  (test-case "bundled data with its sha256 and a 1001-digit integer cannot be parsed"
-    (call-with-gen-fixture (bytes-append #"(\n  (" (make-bytes 1001 49) #")\n)\n") (gen-entry "gen")
-      (lambda (dir)
-        (define message
-          (call-with-registry-fixtures (list dir)
-            (lambda () (with-handlers ([exn:fail? exn-message]) (load-dataset-table 'gen) #f))))
-        (check-true (and (string? message)
-                         (regexp-match? #rx"^load-dataset-table: cannot parse dataset data\n" message)
-                         (regexp-match? #px"row 0: unexpected value 1{40}…$" message))
-                    (format "~a" message))
-        (check-true (< (string-length (or message "")) 400)))))
+  (test-case "bundled data with its sha256 and a 1001-digit integer cannot be parsed, under any fixture path"
+    (call-with-deep-fixture-directory 150
+     (lambda ()
+       (call-with-gen-fixture (bytes-append #"(\n  (" (make-bytes 1001 49) #")\n)\n") (gen-entry "gen")
+         (lambda (dir)
+           (define message
+             (call-with-registry-fixtures (list dir)
+               (lambda () (with-handlers ([exn:fail? exn-message]) (load-dataset-table 'gen) "loaded"))))
+           (check-true (regexp-match? #rx"^load-dataset-table: cannot parse dataset data\n" message) message)
+           (check-equal? (error-detail message)
+                         (string-append "row 0: unexpected value " (make-string 40 #\1) "…")))))))
 
   (define linux? (eq? (system-type 'os*) 'linux))
   (define (open-fds) (directory-list "/proc/self/fd" #:build? #t))
