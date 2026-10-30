@@ -1,6 +1,6 @@
 #lang scribble/manual
 @(require scribble/eval
-          (for-label racket/base racket/contract/base datasets/core))
+          (for-label racket/base racket/contract/base datasets/core datasets/synthetic))
 @(define ev (make-base-eval))
 @(ev '(require datasets/core))
 
@@ -237,11 +237,52 @@ checks the data's SHA-256, for both tiers; a corrupt cached file raises
 Downloads are logged at level @racket['info] with topic @racket['datasets]; set
 @envvar{PLTSTDERR} to @tt{info@"@"datasets} to see them.
 
-@section[#:tag "datasets-core-table-reference"]{Table inspection}
+@section[#:tag "datasets-core-table-reference"]{Tables}
+
+@defproc[(dataset-table [names (non-empty-listof string?)]
+                        [columns (non-empty-listof (or/c list? vector?))]
+                        [#:info info hash? (hash)])
+         dataset-table?]{
+Returns a table with one column per name, in order. Each column is a list or vector
+of cells: exact integers from @racket[(- (expt 2 63))] to @racket[(sub1 (expt 2 63))],
+flonums, strings, or @racket[dataset-missing]; a column's other cells are all numbers
+or all strings. Names must be distinct and columns equally long; that length is the
+row count, which may be zero. A violation raises @racket[exn:fail:contract] blaming
+the caller.
+
+The result is immutable like a loaded table: columns are copied into immutable
+vectors, strings in @racket[names], cells and @racket[info] become immutable, and hash
+tables in @racket[info] become immutable @racket[equal?]-based hashes. Later changes to
+the arguments do not affect it.
+
+The metadata is @racket[info] over defaults: @tt{name} @racket[#f], @tt{rows} the row
+count, @tt{column-count} the number of names, @tt{identifiers} and
+@tt{suggested-targets} empty, @tt{source-url}, @tt{source-version},
+@tt{source-sha256}, @tt{sha256}, @tt{license}, @tt{citation}, @tt{notes} and
+@tt{time-series} @racket[#f], and @tt{columns} one description per name whose
+@tt{original-name} is the name, @tt{type} is @racket["integer"] when every nonmissing
+cell is an exact integer (so for a column with none), @racket["string"] when every one
+is a string and @racket["real"] otherwise, @tt{levels} empty, @tt{unit} @racket[#f],
+@tt{description} @racket[""] and @tt{missing-count} the column's missing cells. Each
+key of @racket[info], @tt{columns} included, replaces its default whole and is not
+checked against the data; keys must be strings, and @tt{columns}, if given, a list of
+hashes each with a string @tt{name}. Rebuilding a loaded or generated table from its
+names, columns and metadata gives an @racket[equal?] table.}
+
+@examples[#:eval ev
+ (define t (dataset-table '("x" "label") (list (list 1.5 dataset-missing 3) '("a" "b" "a"))))
+ (dataset-table-row-count t)
+ (for/list ([c (in-list (hash-ref (dataset-table-info t) "columns"))]) (hash-ref c "type"))
+ (define iris (load-dataset-table 'iris))
+ (equal? iris (dataset-table (dataset-table-names iris)
+                             (vector->list (dataset-table-columns iris))
+                             #:info (dataset-table-info iris)))
+ (eval:error (dataset-table '("a" "a") '((1) (2))))]
 
 @defproc[(dataset-table? [value any/c]) boolean?]{
 Returns @racket[#t] if @racket[value] is a dataset table, @racket[#f] otherwise.
-There is no public table constructor or mutator.}
+Tables come from @racket[load-dataset-table], the @racketmodname[datasets/synthetic]
+generators and @racket[dataset-table]; there is no mutator.}
 
 @defproc[(dataset-table-names [table dataset-table?]) (listof string?)]{
 Returns the selected column names in order. Each string is immutable.}
@@ -261,7 +302,8 @@ Returns the number of source observations, including rows with missing values.}
 
 @defproc[(dataset-table-info [table dataset-table?]) (and/c hash? immutable?)]{
 Returns the full source metadata. Its @racket["column-count"] may exceed the
-number of selected columns in @racket[table].}
+number of selected columns in @racket[table]. For a table from
+@racket[dataset-table], the metadata described there.}
 
 @section[#:tag "datasets-core-missing-reference"]{Missing values}
 
