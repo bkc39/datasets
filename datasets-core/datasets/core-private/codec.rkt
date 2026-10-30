@@ -19,18 +19,14 @@
 (define (drain in)
   (copy-port in (open-output-nowhere)))
 
-(define (worker thunk release)
+(define (worker thunk [release void])
   (thread #:keep 'results
-          (lambda ()
-            (dynamic-wind void
-                          (lambda () (with-handlers ([exn:fail? values]) (thunk)))
-                          release))))
+          (lambda () (begin0 (with-handlers ([exn:fail? values]) (thunk)) (release)))))
 
 (define (tee source)
   (define-values (digest-in digest-out) (make-pipe pipe-limit))
   (define-values (copy-in copy-out) (make-pipe pipe-limit))
-  (define digest
-    (worker (lambda () (sha256-bytes digest-in)) void))
+  (define digest (worker (lambda () (sha256-bytes digest-in))))
   (thread (lambda ()
             (copy-port source digest-out copy-out)
             (close-output-port digest-out)

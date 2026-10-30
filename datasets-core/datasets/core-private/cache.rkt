@@ -1,8 +1,8 @@
 #lang racket/base
 (require (for-syntax racket/base (only-in syntax/parse ...+ expr id))
-         (only-in datasets/core-private/canonical write-canonical-row)
+         (only-in datasets/core-private/canonical write-canonical-rows)
          (only-in datasets/core-private/codec call-with-gzip-sha256 file-sha256)
-         (only-in datasets/core-private/convert convert-fetch? converter/c row-value?)
+         (only-in datasets/core-private/convert convert-fetch? converter/c)
          (only-in datasets/core-private/error raise-registry-error)
          (only-in datasets/core-private/log log-datasets-info)
          (only-in datasets/core-private/resource with-custodian with-resource)
@@ -54,9 +54,11 @@
      (write-cache-file who name final (lambda (part) (download-file who name #f fetch part idle)))]))
 
 (define-syntax-parse-rule (with-cache-failure [who:expr message:expr field:expr ...] body:expr ...+)
-  (with-handlers ([exn:fail? (lambda (e)
-                               (raise-registry-error who message field ... "error" (exn-message e)))])
+  (with-handlers ([exn:fail? (cache-failure who message field ...)])
     body ...))
+
+(define ((cache-failure who message . fields) e)
+  (apply raise-registry-error who message (append fields (list "error" (exn-message e)))))
 
 (define-syntax-parse-rule (with-converter-failure [who:expr message:expr fields:expr] body:expr ...+)
   (with-handlers ([converter-failure?
@@ -138,22 +140,16 @@
        (call-with-gzip-sha256
         part
         (lambda (out) (write-converted-rows who fields info converter files out))
-        (lambda (e)
-          (raise-registry-error who "cannot write the dataset cache" "dataset" name "file" final
-                                "error" (exn-message e)))))
+        (cache-failure who "cannot write the dataset cache" "dataset" name "file" final)))
      (unless (equal? actual expected)
        (apply raise-registry-error who "converted data sha256 mismatch"
               (append fields (list "expected" expected "actual" actual)))))))
 
 (define (write-converted-rows who fields info converter files out)
   (define width (hash-ref info "column-count"))
-  (write-string "(\n" out)
   (match (with-converter-failure [who "converter failed" fields]
-           (for/or ([row (converter files info)] [index (in-naturals)])
-             (cond
-               [(well-formed? row width) (write-canonical-row row out) #f]
-               [else (list index row)])))
-    [#f (write-string ")\n" out)]
+           (write-canonical-rows (converter files info) width out))
+    [#f (void)]
     [(list index row)
      (apply raise-registry-error who "converter produced a malformed row"
             (append fields
@@ -161,9 +157,6 @@
                           "expected" (format "a list of ~a values, each an exact integer, flonum, string or 'missing"
                                              width)
                           "given" (~e row))))]))
-
-(define (well-formed? row width)
-  (and (list? row) (= (length row) width) (andmap row-value? row)))
 
 (define (download-url url part idle)
   (with-custodian

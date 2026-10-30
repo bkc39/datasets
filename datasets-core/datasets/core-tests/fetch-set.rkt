@@ -10,7 +10,7 @@
          (only-in racket/match match match-define)
          (only-in racket/path path-only)
          (only-in "fixture.rkt" cache-files call-with-artifact-url call-with-environment
-                  call-with-fetch-fixture fetch-error? gunzip-file gzip-bytes hex raw-a raw-a-sha256 raw-b
+                  call-with-fetch-fixture call-with-memory-limit fetch-error? gunzip-file gzip-bytes hex raw-a raw-a-sha256 raw-b
                   raw-b-sha256 rows->rktd-bytes set-entry table-digest toy-content-sha256 toy-rows
                   toy-set-entry toy-table-digest wide-entry with-server)
          (only-in "http-fixture.rkt" http-fixture-closed-evt http-fixture-requests
@@ -299,6 +299,13 @@
                         (vector->list (dataset-table-column t c)))
                       (list '(1 2 3) (list "x\ny \"q\" é" dataset-missing "c") (list -0.0 1e21 +nan.0))))))
 
+  (test-case "the converted text does not follow the caller's print parameters"
+    (define text (rows->rktd-bytes edge-table-rows))
+    (with-server routes (set-with "edge-rows" #:data-sha256 (hex (sha256-bytes text)))
+      (lambda (srv root registry)
+        (parameterize ([print-pair-curly-braces #t] [print-graph #t])
+          (check-equal? (gunzip-file (fetch-dataset 'toy-set)) text)))))
+
   (test-case "each file's download and the conversion are logged on topic datasets"
     (define receiver (make-log-receiver (current-logger) 'info 'datasets))
     (with-server routes (set-with "concat-rows")
@@ -330,12 +337,21 @@
     (for ([rows (in-list '(3 1 100 0))])
       (check-equal? (load-wide-text text rows) '(3 (1 3 5) (2 4 6)))))
 
+  (test-case "canonical cells and framing load as written"
+    (for ([c (in-list '((#"(\n  (1 2)\n)" (1 (1) (2)))
+                        (#"(\n  (+inf.0 -inf.0)\n  (+nan.0 -0.0)\n)\n" (2 (+inf.0 +nan.0) (-inf.0 -0.0)))
+                        (#"(\n  (123456789012345678901 -1234567890123456789)\n)\n"
+                         (1 (123456789012345678901) (-1234567890123456789)))
+                        (#"(\n  (2.9e-05 1e+21)\n  (0.5 -1e-7)\n)\n" (2 (2.9e-05 0.5) (1e+21 -1e-7)))))])
+      (match-define (list text expected) c)
+      (check-equal? (load-wide-text text (car expected)) expected (format "~s" text))))
+
   (test-case "data that is not the canonical written form cannot be parsed"
     (for ([c (in-list '((#"; written by hand\n(\n  (1 2)\n)\n" "expected an opening parenthesis")
                         (#"(\n  (1 2)\n  (3)\n)\n" "row 1 has 1 values")
                         (#"(\n  (1 2)\n  3\n)\n" "row 1 is not a list")
                         (#"(\n  (1 2)\n" "unexpected end of data after row 1")
-                        (#"(\n  (1 2)\n  (3 \"4)\n" "")
+                        (#"(\n  (1 2)\n  (3 \"4)\n" "row 1: unterminated string")
                         (#"(\n  (1 2)\n)\n  (3 4)\n" "unexpected data after the closing parenthesis")
                         (#"(\n  (1 2)\n)\n)\n" "unexpected data after the closing parenthesis")
                         (#"(\n  (1 2 3)\n)\n" "row 0 has more than 2 values")
@@ -351,7 +367,7 @@
                         (#"(\n  (1 #t)\n)\n" "row 0: unexpected value #t")
                         (#"(\n  (1 nan)\n)\n" "row 0: unexpected value nan")
                         (#"(\n  (1 (2))\n)\n" "row 0: unexpected value (2)")
-                        (#"(\n  (1 \"\\q\")\n)\n" "row 0: ")
+                        (#"(\n  (1 \"\\q\")\n)\n" "row 0: string::1: read: unknown escape sequence `\\q` in string")
                         (#"(\n  (1 \"\377\")\n)\n" "row 0: invalid UTF-8 in a string")))])
       (match-define (list text detail) c)
       (define message (load-wide-text text 1))
@@ -367,15 +383,8 @@
     (call-with-wide-text text m n
       (lambda ()
         (fetch-dataset 'wide)
-        (collect-garbage) (collect-garbage)
-        (define c (make-custodian))
-        (custodian-limit-memory c (+ (bytes-length text) (* n m 8) (* 8 1024 1024)) c)
-        (define ch (make-channel))
-        (define collector (thread (lambda () (let loop () (collect-garbage) (sleep 0.02) (loop)))))
-        (define t (parameterize ([current-custodian c])
-                    (thread (lambda () (channel-put ch (dataset-table-row-count
-                                                        (load-dataset-table 'wide #:download? #f)))))))
-        (define result (or (sync/timeout 120 ch (wrap-evt (thread-dead-evt t) (lambda (_) 'killed)))
-                           'timeout))
-        (kill-thread collector)
-        (check-equal? result n)))))
+        (collect-garbage)
+        (check-equal? (call-with-memory-limit
+                       (+ (bytes-length text) (* n m 8) (* 8 1024 1024)) 120
+                       (lambda () (dataset-table-row-count (load-dataset-table 'wide #:download? #f))))
+                      n)))))

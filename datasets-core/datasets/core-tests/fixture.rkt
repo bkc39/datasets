@@ -9,7 +9,7 @@
          (only-in racket/contract/base -> ->* and/c any any/c contract-out hash/c list/c listof or/c)
          (only-in racket/file delete-directory/files file->bytes make-directory*
                   make-temporary-directory)
-         (only-in racket/match match-lambda)
+         (only-in racket/match match match-lambda)
          (only-in racket/path find-relative-path)
          (only-in racket/port call-with-output-bytes)
          (only-in racket/runtime-path define-runtime-path)
@@ -34,6 +34,8 @@
           [call-with-artifact-url (-> bytes? (-> string? any) any)]
           [cache-files (-> path? (listof string?))]
           [wait-until (-> (and/c real? positive?) (-> any/c) boolean?)]
+          [call-with-timeout (-> (and/c real? positive?) (-> any/c) any/c)]
+          [call-with-memory-limit (-> exact-positive-integer? (and/c real? positive?) (-> any/c) any/c)]
           [fetch-error? (-> (or/c string? regexp?) ... (-> any/c boolean?))]
           [with-server (-> hash? (-> (-> string? string?) (listof hash?))
                            (-> any/c complete-path? complete-path? any) any)]
@@ -195,6 +197,24 @@
     (cond [(ready?) #t]
           [(> (current-inexact-milliseconds) deadline) #f]
           [else (sleep 0.01) (loop)])))
+
+(define collect-interval 0.02)
+
+(define (call-with-timeout seconds thunk)
+  (define ch (make-channel))
+  (define t (thread (lambda () (channel-put ch (thunk)))))
+  (match (sync/timeout seconds ch (wrap-evt (thread-dead-evt t) (lambda (_) 'killed)))
+    [#f (kill-thread t) 'timeout]
+    [result result]))
+
+(define (call-with-memory-limit limit seconds thunk)
+  (collect-garbage)
+  (define c (make-custodian))
+  (custodian-limit-memory c limit c)
+  (define collector (thread (lambda () (let loop () (collect-garbage) (sleep collect-interval) (loop)))))
+  (begin0 (parameterize ([current-custodian c]) (call-with-timeout seconds thunk))
+          (kill-thread collector)
+          (custodian-shutdown-all c)))
 
 (define ((fetch-error? . rxs) e)
   (and (exn:fail? e) (not (exn:fail:contract? e))

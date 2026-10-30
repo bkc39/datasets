@@ -138,8 +138,11 @@
     [(not (equal? (hash-ref entry "name") name)) (list "name" "the dataset's registry key")]
     [(not (regexp-match? #px"^[a-z0-9]+(-[a-z0-9]+)*$" name))
      (list "name" "lowercase letters and digits in hyphen-separated words")]
+    [(not (exact-nonnegative-integer? (hash-ref entry "rows"))) (list "rows" "an exact nonnegative integer")]
     [(not ((nonempty-list-of column-hash?) (hash-ref entry "columns")))
      (list "columns" "a nonempty list of hashes, each with a string \"name\"")]
+    [(not (eqv? (hash-ref entry "column-count") (length (hash-ref entry "columns"))))
+     (list "column-count" "the number of columns")]
     [(not (sha256-string? (hash-ref entry "sha256"))) (list "sha256" "64 lowercase hexadecimal digits")]
     [(not (member tier '("bundled" "fetch"))) (list "tier" "\"bundled\" or \"fetch\"")]
     [(not (and (string? (hash-ref entry "package"))
@@ -317,7 +320,6 @@
   (define expected (hash-ref info "sha256"))
   (define fetch (hash-ref info "fetch"))
   (define width (length (hash-ref info "columns")))
-  (define rows (match (hash-ref info "rows") [(? exact-nonnegative-integer? n) n] [_ 0]))
   (define remedy-fields (if fetch (list "remedy" (format "(clear-dataset-cache '~a)" name)) '()))
   (define (pinned?)
     (and fetch (not (convert-fetch? fetch))
@@ -340,7 +342,7 @@
      (lambda (in)
        (with-handlers ([parse-failure? values])
          (call-with-default-reading-parameterization
-          (lambda () (read-canonical-columns in indices width rows)))))
+          (lambda () (read-canonical-columns in indices width (hash-ref info "rows"))))))
      unreadable))
   (match* (outcome actual)
     [((parse-failure detail) (== expected)) (unparsable detail)]
