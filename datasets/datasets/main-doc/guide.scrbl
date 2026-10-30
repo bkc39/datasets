@@ -16,12 +16,8 @@ Use Racket 9.3 or later. Install from the Racket catalog:
 
 @commandline{raco pkg install --auto datasets}
 
-This also installs @tt{datasets-core}, the data packages @tt{datasets-r},
-@tt{datasets-uci}, @tt{datasets-islr}, @tt{datasets-fetch}, and the adapter dependencies. From a
-checkout of the repository, install the packages from its root:
-
-@verbatim{raco pkg install ./datasets-core ./datasets-r ./datasets-uci ./datasets-islr ./datasets-fetch
-raco pkg install --auto ./datasets}
+This also installs @tt{datasets-core}, the data packages, and the adapter
+dependencies; to install from a checkout, follow the repository's @hyperlink["https://github.com/bkc39/datasets#readme"]{README}.
 
 The top-level directories are independently installable multi-collection
 packages. @tt{datasets-core} provides @racketmodname[datasets/core];
@@ -30,7 +26,7 @@ datasets from CRAN packages, and @tt{datasets-uci} datasets from the UCI Machine
 Learning Repository, to the core catalog; @tt{datasets} adds the
 convenient loaders and adapters to the same collection. The Polars package
 supplies its native library. With Nix, @tt{nix develop} prepares an isolated
-environment containing the six packages and that library.
+environment containing the packages and that library.
 @tt{datasets-islr} adds the datasets of ISLR2 and four of ESL; see
 @secref["datasets-islr-guide"] and @secref["datasets-esl-guide"].
 @tt{datasets-fetch} adds sets such as @tt{covtype} and @tt{mnist} that are

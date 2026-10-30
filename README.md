@@ -25,11 +25,11 @@ The 20 datasets of ISLR2 (auto, boston, hitters, smarket, wage, ...) and four of
 ESL (prostate, sa-heart, vowel, ozone) are in `datasets-islr`. `datasets-fetch` lists larger sets such as covtype and mnist
 that are downloaded from upstream and converted on first load; it ships no
 data. For the lightweight table API alone, install `datasets-core` instead.
-From a checkout, install the six packages with:
+From a checkout, install the packages listed in `scripts/packages.txt` from the
+repository root with:
 
 ```sh
-raco pkg install ./datasets-core ./datasets-r ./datasets-uci ./datasets-islr ./datasets-fetch
-raco pkg install --auto ./datasets
+raco pkg install --auto $(sed 's|^|./|' scripts/packages.txt)
 ```
 
 ```racket
@@ -49,8 +49,11 @@ source abbreviations such as `mpg` remain. Selection preserves requested order.
 Empty selections and duplicate names are rejected. Matrices require numeric,
 nonmissing values: categories are not encoded, nor missing values imputed.
 
-The repository has six top-level, independently installable package directories:
-`datasets-core/`, `datasets-r/`, `datasets-uci/`, `datasets-islr/`, `datasets-fetch/`, and `datasets/`. Each declares
+`scripts/packages.txt` lists the repository's top-level, independently installable
+package directories in dependency order: `datasets-core` first, the umbrella `datasets`
+last. The flake, scripts and gates read it; `scripts/check-package-list.rkt` checks that
+it names every package directory, that each package's deps and build-deps on listed
+packages are listed before it, and that the umbrella depends on all the others. Each package declares
 `collection 'multi` and contributes distinct directories to the shared `datasets` collection.
 `datasets-r` contributes `datasets/r-data`, found through its registry, and its
 tests; it depends on `datasets-core`, and `datasets` depends on it. Its sets have
@@ -58,13 +61,14 @@ no named loader: use `(load-dataset 'penguins)`. `datasets-uci` contributes
 `datasets/uci-data` the same way; `(load-dataset 'digits)`. `datasets-islr`
 contributes `datasets/islr-data` the same way. `datasets-fetch` contributes
 `datasets/fetch-data`, a registry of converted fetch-tier sets, and their
-private converters; it requires `datasets-core` 0.2.
+private converters; it requires `datasets-core` 0.3.
 
 `datasets-core` contributes `datasets/core` and depends only on `base` at runtime.
-It provides `load-dataset-table`, `dataset-names`, `dataset-info`, table predicates
-and accessors, and a dedicated `dataset-missing` singleton. Column vectors,
-strings, and metadata are immutable. Metadata describes the full source dataset,
-even on selected tables. Data is read lazily using runtime-relative paths.
+It provides `load-dataset-table`, `dataset-names`, `dataset-info`, the
+`dataset-table` constructor, table predicates and accessors, and a dedicated
+`dataset-missing` singleton. Every table, loaded, generated or constructed, is
+immutable throughout: column vectors, strings, and metadata with its nested lists
+and hashes. Metadata describes the full source dataset, even on selected tables. Data is read lazily using runtime-relative paths.
 Core's tests and Scribble manual build without Polars, math-lib, or data-frame.
 
 `datasets` contributes the main loader module and `datasets/polars`,
@@ -134,12 +138,12 @@ nix flake check
 nix develop                # isolated environment, no R tooling
 ```
 
-Outputs cover x86-64/AArch64 Linux and macOS. CI runs Nix on Linux x86-64 and
-macOS AArch64, plus ordinary Racket 9.3/stable installation checks. The flake
-pins sources and reuses Polars' native derivation and prefetched dependency
-closure. Intel macOS uses Polars' older pinned platform packages with the
-Racket 9.3 recipes, since the newer nixpkgs pin has dropped that platform.
-Installation, examples, tests, and documentation run offline.
+Outputs cover x86-64/AArch64 Linux and AArch64 macOS; the pinned nixpkgs has
+dropped Intel macOS. CI evaluates every output system and runs Nix on Linux
+x86-64 and macOS AArch64, plus ordinary Racket 9.3/stable installation checks.
+The flake pins sources and reuses Polars' native derivation and prefetched
+dependency closure. Installation, examples, tests, and documentation run
+offline.
 
 For ordinary Racket, separate dependency fetching from validation:
 

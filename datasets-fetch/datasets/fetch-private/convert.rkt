@@ -6,7 +6,7 @@
          (only-in racket/file file->bytes)
          (only-in racket/flonum fl/)
          (only-in racket/match match match* match-define)
-         (only-in racket/sequence sequence-map)
+         (only-in racket/sequence sequence-append sequence-map)
          (only-in racket/stream for/stream)
          (only-in racket/string string-split)
          (only-in threading ~>))
@@ -54,8 +54,8 @@
 (define (idx-image-rows files info)
   (match-define (list train-images train-labels test-images test-labels) idx-file-names)
   (define width (- (hash-ref info "column-count") 2))
-  (in-sequences (idx-split-rows files train-images train-labels "train" width)
-                (idx-split-rows files test-images test-labels "test" width)))
+  (sequence-append (idx-split-rows files train-images train-labels "train" width)
+                   (idx-split-rows files test-images test-labels "test" width)))
 
 (define (idx-split-rows files images-file labels-file split width)
   (define-values (image-dims images) (idx-file files images-file))
@@ -97,8 +97,8 @@
 (define (esl-zip-rows files info)
   (match-define (list train test) esl-zip-file-names)
   (define width (sub1 (hash-ref info "column-count")))
-  (in-sequences (esl-zip-split-rows files train "train" width)
-                (esl-zip-split-rows files test "test" width)))
+  (sequence-append (esl-zip-split-rows files train "train" width)
+                   (esl-zip-split-rows files test "test" width)))
 
 (define (esl-zip-split-rows files name split width)
   (for/stream ([line (in-lines (~> (hash-ref files name) gunzip-file open-input-bytes))]

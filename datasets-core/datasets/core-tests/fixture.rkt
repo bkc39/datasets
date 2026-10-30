@@ -1,11 +1,13 @@
 #lang racket/base
 (require (for-syntax racket/base)
-         (only-in datasets/core dataset-missing? dataset-table-columns dataset-table-names
-                  dataset-table-row-count dataset-table?)
-         (only-in datasets/core-private/codec gunzip-file hex)
+         (only-in datasets/core dataset-missing dataset-missing? dataset-table dataset-table-columns
+                  dataset-table-info dataset-table-names dataset-table-row-count dataset-table?)
+         (only-in datasets/core-private/codec hex)
+         (only-in file/gunzip gunzip-through-ports)
          (only-in file/gzip gzip-through-ports)
          (only-in net/url path->url url->string)
-         (only-in racket/contract/base -> ->* and/c any any/c contract-out hash/c list/c listof or/c)
+         (only-in racket/contract/base -> ->* and/c any any/c contract-out hash/c integer-in list/c listof
+                  or/c)
          (only-in racket/file delete-directory/files file->bytes make-directory*
                   make-temporary-directory)
          (only-in racket/match match match-lambda)
@@ -18,10 +20,15 @@
           [registry-fixture (-> string? complete-path?)]
           [call-with-registry-fixtures (->* ((listof complete-path?) (-> any)) (#:specs (listof any/c)) any)]
           [call-with-temporary-fixture (-> (-> complete-path? any) any)]
+          [call-with-deep-fixture-directory (-> (integer-in 1 255) (-> any) any)]
+          [error-detail (-> string? string?)]
           [write-fixture-index! (-> complete-path? (listof complete-path?) (listof any/c) void?)]
           [write-registry-fixture! (-> path? #:info any/c #:registries (hash/c string? any/c)
                                        #:data (hash/c string? bytes?) void?)]
           [table-digest (-> dataset-table? string?)]
+          [rebuild (-> dataset-table? dataset-table?)]
+          [datum->cells (-> list? list?)]
+          [column-types (-> dataset-table? (listof string?))]
           [toy-artifact bytes?]
           [toy-artifact-sha256 string?]
           [toy-table-digest string?]
@@ -35,6 +42,8 @@
           [conjuncts (-> (or/c symbol? pair?) (listof string?))]
           [license-ids (-> string? (listof string?))]
           [wait-until (-> (and/c real? positive?) (-> any/c) boolean?)]
+          [call-with-timeout (-> (and/c real? positive?) (-> any/c) any/c)]
+          [call-with-memory-limit (-> exact-positive-integer? (and/c real? positive?) (-> any/c) any/c)]
           [fetch-error? (-> (or/c string? regexp?) ... (-> any/c boolean?))]
           [with-server (-> hash? (-> (-> string? string?) (listof hash?))
                            (-> any/c complete-path? complete-path? any) any)]
@@ -63,13 +72,28 @@
   (simplify-path (build-path fixtures name)))
 
 (define fixture-count (box 0))
+(define fixture-base-directory (make-parameter #f))
 
 (define (call-with-temporary-fixture proc)
   (set-box! fixture-count (add1 (unbox fixture-count)))
-  (define dir (make-temporary-directory (format "datasets-fixture-~a-~~a" (unbox fixture-count))))
+  (define dir (make-temporary-directory (format "datasets-fixture-~a-~~a" (unbox fixture-count))
+                                        #:base-dir (fixture-base-directory)))
   (dynamic-wind void
                 (lambda () (proc dir))
                 (lambda () (delete-directory/files dir #:must-exist? #f))))
+
+(define (call-with-deep-fixture-directory name-length thunk)
+  (call-with-temporary-fixture
+   (lambda (dir)
+     (define deep (build-path dir (make-string name-length #\d)))
+     (make-directory* deep)
+     (parameterize ([fixture-base-directory deep])
+       (thunk)))))
+
+(define (error-detail message)
+  (match message
+    [(regexp #rx"\n  error: ([^\n]*)$" (list _ detail)) detail]
+    [_ message]))
 
 (define (call-with-registry-fixtures dirs thunk
                                      #:specs [specs (for/list ([i (in-range (length dirs))])
@@ -107,9 +131,23 @@
   (string->bytes/utf-8
    (string-append "(\n" (apply string-append (map (lambda (row) (format "  ~s\n" row)) rows)) ")\n")))
 
+(define (gunzip-file path)
+  (call-with-input-file path
+    (lambda (in) (call-with-output-bytes (lambda (out) (gunzip-through-ports in out))))))
+
 (define (gzip-bytes bs [timestamp 0])
   (call-with-output-bytes
    (lambda (out) (gzip-through-ports (open-input-bytes bs) out #f timestamp))))
+
+(define (rebuild t)
+  (dataset-table (dataset-table-names t) (vector->list (dataset-table-columns t))
+                 #:info (dataset-table-info t)))
+
+(define (datum->cells datum)
+  (map (lambda (c) (if (eq? c 'missing) dataset-missing c)) datum))
+
+(define (column-types t)
+  (map (lambda (c) (hash-ref c "type")) (hash-ref (dataset-table-info t) "columns")))
 
 (define (table-digest table)
   (hex (sha256-bytes
@@ -192,6 +230,24 @@
     (cond [(ready?) #t]
           [(> (current-inexact-milliseconds) deadline) #f]
           [else (sleep 0.01) (loop)])))
+
+(define collect-interval 0.02)
+
+(define (call-with-timeout seconds thunk)
+  (define ch (make-channel))
+  (define t (thread (lambda () (channel-put ch (thunk)))))
+  (match (sync/timeout seconds ch (wrap-evt (thread-dead-evt t) (lambda (_) 'killed)))
+    [#f (kill-thread t) 'timeout]
+    [result result]))
+
+(define (call-with-memory-limit limit seconds thunk)
+  (collect-garbage)
+  (define c (make-custodian))
+  (custodian-limit-memory c limit c)
+  (define collector (thread (lambda () (let loop () (collect-garbage) (sleep collect-interval) (loop)))))
+  (begin0 (parameterize ([current-custodian c]) (call-with-timeout seconds thunk))
+          (kill-thread collector)
+          (custodian-shutdown-all c)))
 
 (define ((fetch-error? . rxs) e)
   (and (exn:fail? e) (not (exn:fail:contract? e))
