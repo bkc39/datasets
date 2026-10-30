@@ -10,7 +10,15 @@ jobs:
     timeout-minutes: 150
     steps:
       - uses: actions/checkout@v4
-      - uses: cachix/install-nix-action@v31
+      - uses: DeterminateSystems/nix-installer-action@v23
+      - uses: DeterminateSystems/magic-nix-cache-action@v15
+      - name: Evaluate every output system
+        run: |
+          systems=$(nix eval --raw .#packages --apply 'ps: builtins.concatStringsSep " " (builtins.attrNames ps)')
+          for system in $systems; do
+            nix eval --raw ".#packages.$system.default.drvPath"
+            echo
+          done
       - run: nix flake check --print-build-logs
       - run: nix build .#core
       - run: nix build

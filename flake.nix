@@ -8,20 +8,9 @@
   };
   outputs = { self, nixpkgs, polars, data-frame, al2-test-runner }:
     let
-      systems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
+      systems = [ "x86_64-linux" "aarch64-linux" "aarch64-darwin" ];
       each = nixpkgs.lib.genAttrs systems;
-      # The Racket 9.3 pin no longer supports Intel macOS. Reuse Polars'
-      # older pinned platform/toolchain there, with the newer Racket recipes.
-      pkgsFor = system:
-        if system == "x86_64-darwin" then
-          import polars.inputs.nixpkgs {
-            inherit system;
-            overlays = [ (final: prev: {
-              racket-minimal = final.callPackage "${nixpkgs}/pkgs/by-name/ra/racket/minimal.nix" {};
-              racket = final.callPackage "${nixpkgs}/pkgs/by-name/ra/racket/package.nix" {};
-            }) ];
-          }
-        else import nixpkgs { inherit system; };
+      pkgsFor = system: import nixpkgs { inherit system; };
       source = pkgs: pkgs.lib.cleanSourceWith {
         src = ./.;
         filter = path: type: !(builtins.elem (baseNameOf path)
