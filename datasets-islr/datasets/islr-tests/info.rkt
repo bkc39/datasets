@@ -1,2 +1,2 @@
 #lang info
-(define test-timeouts '(("islr-data.rkt" 600)))
+(define test-timeouts '(("islr-data.rkt" 300)))

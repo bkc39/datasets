@@ -49,7 +49,6 @@ jobs:
           version: ${{ matrix.version }}
           distribution: full
       - name: Core install and tests on the official macOS build, raco distribute included
-        shell: bash
-        run: |
-          bash scripts/install-check.sh "$RUNNER_TEMP" core 2>&1 | tee "$RUNNER_TEMP/core.log"
-          grep -Eq '^ +[1-9][0-9]* .*/distribute\.rkt$' "$RUNNER_TEMP/core.log"
+        env:
+          DATASETS_REQUIRE_DISTRIBUTE: 1
+        run: bash scripts/install-check.sh "$RUNNER_TEMP" core

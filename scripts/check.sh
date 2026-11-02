@@ -6,6 +6,7 @@ cd "$project_root"
 mode=${1:-full}
 racket scripts/check-package-list.rkt
 source scripts/packages.sh
+test=(raco test --drdr --jobs 2 --package)
 raco test scripts/check-package-list.rkt
 if [[ "$mode" == full ]]; then
   # Render the manuals referenced by the evaluated guide examples.
@@ -13,9 +14,9 @@ if [[ "$mode" == full ]]; then
   raco setup --no-docs --pkgs "${families[@]}"
 fi
 raco setup --check-pkg-deps --unused-pkg-deps --pkgs "$core"
-raco test --drdr --jobs 2 --package "$core"
+"${test[@]}" "$core"
 if [[ "$mode" == full ]]; then
   raco setup --check-pkg-deps --unused-pkg-deps --pkgs "${dependents[@]}"
-  raco test --drdr --jobs 2 --package "${dependents[@]}"
+  "${test[@]}" "${dependents[@]}"
   racket examples/core-with-polars.rkt
 fi

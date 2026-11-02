@@ -31,10 +31,11 @@
             src = source pkgs;
             nativeBuildInputs = [ pkgs.racket ];
             RKT_POLARS_COMPAT_LIB_PATH = if full then "${native}" else "";
-            FONTCONFIG_FILE = pkgs.makeFontsConf { fontDirectories = [ pkgs.dejavu_fonts ]; };
+            FONTCONFIG_FILE = if full then pkgs.makeFontsConf { fontDirectories = [ pkgs.dejavu_fonts ]; } else "";
             buildPhase = ''
               runHook preBuild
               export PLTUSERHOME=$TMPDIR/plt
+              export XDG_CACHE_HOME=$TMPDIR
               mkdir -p "$PLTUSERHOME"
               ${pkgs.lib.optionalString full ''
                 raco pkg install --batch --deps fail --copy --no-setup --scope user ${deps}/*/
@@ -54,7 +55,6 @@
             __darwinAllowLocalNetworking = true;
             checkPhase = ''
               runHook preCheck
-              export XDG_CACHE_HOME=$TMPDIR
               bash scripts/check.sh ${if full then "full" else "core"}
               runHook postCheck
             '';
