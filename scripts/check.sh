@@ -13,9 +13,9 @@ if [[ "$mode" == full ]]; then
   raco setup --no-docs --pkgs "${families[@]}"
 fi
 raco setup --check-pkg-deps --unused-pkg-deps --pkgs "$core"
-raco test --timeout 600 -x "$core"
+raco test --drdr --jobs 2 --package "$core"
 if [[ "$mode" == full ]]; then
   raco setup --check-pkg-deps --unused-pkg-deps --pkgs "${dependents[@]}"
-  raco test --timeout 600 -x "${dependents[@]}"
+  raco test --drdr --jobs 2 --package "${dependents[@]}"
   racket examples/core-with-polars.rkt
 fi

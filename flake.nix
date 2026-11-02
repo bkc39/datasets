@@ -31,6 +31,7 @@
             src = source pkgs;
             nativeBuildInputs = [ pkgs.racket ];
             RKT_POLARS_COMPAT_LIB_PATH = if full then "${native}" else "";
+            FONTCONFIG_FILE = pkgs.makeFontsConf { fontDirectories = [ pkgs.dejavu_fonts ]; };
             buildPhase = ''
               runHook preBuild
               export PLTUSERHOME=$TMPDIR/plt
@@ -53,6 +54,7 @@
             __darwinAllowLocalNetworking = true;
             checkPhase = ''
               runHook preCheck
+              export XDG_CACHE_HOME=$TMPDIR
               bash scripts/check.sh ${if full then "full" else "core"}
               runHook postCheck
             '';
