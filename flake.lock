@@ -52,11 +52,11 @@
     },
     "nixpkgs_2": {
       "locked": {
-        "lastModified": 1776329215,
-        "narHash": "sha256-a8BYi3mzoJ/AcJP8UldOx8emoPRLeWqALZWu4ZvjPXw=",
+        "lastModified": 1789632929,
+        "narHash": "sha256-RjR8AyvGlWuw16XRj7C1YDEw4E27ciuyPeB2nDMzgTU=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "b86751bc4085f48661017fa226dee99fab6c651b",
+        "rev": "a32edd7654519351e48e80372a928df336394670",
         "type": "github"
       },
       "original": {
@@ -71,17 +71,17 @@
         "nixpkgs": "nixpkgs_2"
       },
       "locked": {
-        "lastModified": 1788391009,
-        "narHash": "sha256-7NvQk4vmn0hJ/4fDfBs+Ib5jgWYpuU6bv+5+h7kRB5A=",
+        "lastModified": 1793152344,
+        "narHash": "sha256-iIglTkGnmJuYzf5RmF/43s/EJ6cWS3kPH4ybXMV2p70=",
         "owner": "bkc39",
         "repo": "rkt-polars",
-        "rev": "dfe17e1d94356f192fd4a547714324e81b465a7e",
+        "rev": "2b0c382dcac42452be8af14a1a6ab4f085ab67ca",
         "type": "github"
       },
       "original": {
         "owner": "bkc39",
         "repo": "rkt-polars",
-        "rev": "dfe17e1d94356f192fd4a547714324e81b465a7e",
+        "rev": "2b0c382dcac42452be8af14a1a6ab4f085ab67ca",
         "type": "github"
       }
     },
