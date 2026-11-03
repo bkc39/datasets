@@ -9,7 +9,8 @@
          (only-in racket/match match match-define match-lambda)
          (only-in racket/path path-only)
          (only-in racket/port call-with-output-bytes)
-         (only-in racket/string string-contains? string-prefix?))
+         (only-in racket/string string-contains? string-prefix?)
+         (only-in threading ~>))
 (provide (contract-out
           [call-with-upstream-files (-> (listof (list/c string? upstream/c))
                                         (-> (hash/c string? complete-path? #:immutable #t) any)
@@ -17,7 +18,7 @@
           [error-with? (-> symbol? string? ... (-> any/c boolean?))]
           [idx-bytes (->* ((listof exact-nonnegative-integer?) bytes?) (#:magic bytes?) bytes?)]
           [mat-bytes (->* ((listof (list/c string? mat-class/c (non-empty-listof exact-nonnegative-integer?)
-                                           (or/c 'miUINT8 'miDOUBLE 'miINT16) (listof real?))))
+                                           (or/c 'miUINT8 'miDOUBLE 'miINT16) (or/c (listof real?) bytes?))))
                           (#:endianness (or/c 'little 'big) #:compressed? boolean?) bytes?)]
           [png-bytes (->* (exact-positive-integer? exact-positive-integer? bytes?)
                           (#:filters (listof (integer-in 0 4)) #:idat-chunks exact-positive-integer?) bytes?)]
@@ -111,12 +112,15 @@
                big-endian?))
 
 (define (mat-values storage elements big-endian?)
-  (apply bytes-append
-         (for/list ([v (in-list elements)])
-           (match storage
-             ['miUINT8 (bytes v)]
-             ['miINT16 (integer->integer-bytes v 2 #t big-endian?)]
-             ['miDOUBLE (real->floating-point-bytes v 8 big-endian?)]))))
+  (cond
+    [(bytes? elements) elements]
+    [else
+     (apply bytes-append
+            (for/list ([v (in-list elements)])
+              (match storage
+                ['miUINT8 (bytes v)]
+                ['miINT16 (integer->integer-bytes v 2 #t big-endian?)]
+                ['miDOUBLE (real->floating-point-bytes v 8 big-endian?)])))]))
 
 (define (mat-element type data big-endian? #:pad? [pad? #t])
   (define size (bytes-length data))
@@ -149,12 +153,14 @@
                                                      (pixel (- x 1) (- y 1))))
                       (modulo (- (pixel x y) predicted) 256))))))
   (define compressed (zlib-bytes raw))
-  (define piece (quotient (+ (bytes-length compressed) idat-chunks -1) idat-chunks))
+  (define size (bytes-length compressed))
+  (define piece (quotient (+ size idat-chunks -1) idat-chunks))
   (apply bytes-append #"\211PNG\r\n\32\n"
          (png-chunk "IHDR" (bytes-append (u32 width #t) (u32 height #t) (bytes 8 0 0 0 0)))
          (append (for/list ([i (in-range idat-chunks)])
-                   (define (bounded n) (min (bytes-length compressed) n))
-                   (png-chunk "IDAT" (subbytes compressed (bounded (* i piece)) (bounded (* (add1 i) piece)))))
+                   (~> compressed
+                       (subbytes (min size (* i piece)) (min size (* (add1 i) piece)))
+                       (png-chunk "IDAT" _)))
                  (list (png-chunk "IEND" #"")))))
 
 (define (png-predict filter-type a b c)

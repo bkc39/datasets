@@ -9,7 +9,19 @@
          (only-in racket/match match match-define)
          (only-in racket/sequence sequence->list))
 (module+ test
-  (require (only-in rackunit check-eqv? check-equal? check-exn check-not-false check-regexp-match test-case))
+  (require (for-syntax racket/base)
+           (only-in datasets/core-tests/fixture call-with-memory-limit)
+           (only-in datasets/fetch-private/archive inflate-zlib)
+           (only-in datasets/fetch-private/mat mat-array->bytes mat-array-class mat-array-dims mat-array-ref
+                    read-mat)
+           (only-in datasets/fetch-private/png read-png-gray8)
+           (only-in datasets/fetch-tests/fixture mat-bytes png-bytes png-chunk zlib-bytes)
+           (only-in racket/contract/combinator exn:fail:contract:blame?)
+           (only-in racket/file file->bytes)
+           (only-in racket/runtime-path define-runtime-path)
+           (only-in rackunit check-eqv? check-equal? check-exn check-not-false check-regexp-match check-true
+                    test-case)
+           (only-in threading ~>))
   (define (csv-case-rows input specs keywords arguments)
     (sequence->list (keyword-apply csv-rows keywords arguments (list (open-input-string input) specs))))
   (define (csv-error? . needles) (apply error-with? 'csv-rows needles))
@@ -135,20 +147,8 @@
 
   (test-case "digest encodes tagged values"
     (check-equal? (column-digest (vector -7 2.5 "é" dataset-missing))
-                  "25244dfb83471407d64e6575f4436748ef5f6ae22b0835263444c3b67de930d5")))
+                  "25244dfb83471407d64e6575f4436748ef5f6ae22b0835263444c3b67de930d5"))
 
-(module+ test
-  (require (for-syntax racket/base)
-           (only-in datasets/core-tests/fixture call-with-memory-limit)
-           (only-in datasets/fetch-private/archive inflate-zlib)
-           (only-in datasets/fetch-private/mat mat-array-class mat-array-dims mat-array-ref read-mat)
-           (only-in datasets/fetch-private/png read-png-gray8)
-           (only-in datasets/fetch-tests/fixture mat-bytes png-bytes png-chunk zlib-bytes)
-           (only-in racket/contract/combinator exn:fail:contract:blame?)
-           (only-in racket/file file->bytes)
-           (only-in racket/runtime-path define-runtime-path)
-           (only-in rackunit check-true)
-           (only-in threading ~>))
   (define-runtime-path fixtures "fixtures")
 
   (define (mat-summary array)
@@ -202,6 +202,13 @@
       [`(patch ,offset ,replacement) (patched (mat-bytes mat-one) offset replacement)]
       [`(variables ,variables) (mat-bytes variables)]
       [`(keep ,n) (subbytes (mat-bytes mat-one) 0 n)]
+      [`(dims ,raw)
+       (define input (mat-bytes mat-one))
+       (define dims (bytes-append (bytes 5 0 0 0) (integer->integer-bytes (length raw) 4 #f #f) (apply bytes raw)
+                                  (make-bytes (modulo (- (length raw)) 8) 0)))
+       (define body (bytes-append (subbytes input 136 152) dims (subbytes input 168)))
+       (bytes-append (subbytes input 0 128) (bytes 14 0 0 0) (integer->integer-bytes (bytes-length body) 4 #f #f)
+                     body)]
       [`(compressed ,cut ,appended ,flip?)
        (define input (mat-bytes mat-one #:compressed? #t))
        (define body (bytes-append (subbytes input 136 (- (bytes-length input) cut)) (apply bytes appended)))
@@ -221,14 +228,19 @@
                         (zlib-adler (compressed 0 () #t) ("X") inflate-zlib "adler-32 mismatch")
                         (zlib-trailing (compressed 0 (0) #f) ("X") inflate-zlib
                                        "trailing data after the zlib stream")
-                        (missing (variables (("X" uint8 (1) miUINT8 (1)))) ("Z") read-mat "no such variable"
+                        (missing (variables (("X" uint8 (1 1) miUINT8 (1)))) ("Z") read-mat "no such variable"
                                  "name: Z" "variables: (X)")
-                        (duplicate (variables (("X" uint8 (1) miUINT8 (1)) ("X" uint8 (1) miUINT8 (2))))
+                        (duplicate (variables (("X" uint8 (1 1) miUINT8 (1)) ("X" uint8 (1 1) miUINT8 (2))))
                                    ("X") read-mat "duplicate variable" "name: X")
                         (complex (patch 145 (8)) ("X") read-mat "complex arrays are not supported" "name: X")
                         (char (patch 144 (4)) ("X") read-mat "unsupported array class" "name: X" "class: char")
                         (data-size (variables (("X" uint8 (2 3) miUINT8 (1 2 3 4 5)))) ("X") read-mat
-                                   "data size does not match the dimensions" "dimensions: (2 3)" "bytes: 5")))])
+                                   "data size does not match the dimensions" "dimensions: (2 3)" "bytes: 5")
+                        (storage-utf8 (patch 176 (16 0 0 0)) ("X") read-mat "unsupported storage type" "name: X"
+                                      "type: 16")
+                        (no-dims (dims ()) ("X") read-mat "malformed dimensions" "name: X" "bytes: 0")
+                        (six-byte-dims (dims (2 0 0 0 3 0)) ("X") read-mat "malformed dimensions" "bytes: 6")
+                        (one-dim (dims (6 0 0 0)) ("X") read-mat "malformed dimensions" "bytes: 4")))])
       (match-define (list* name edit names who needles) c)
       (check-exn (apply error-with? who needles)
                  (lambda () (~> edit mat-reject-input open-input-bytes (read-mat names)))
@@ -244,13 +256,33 @@
                                   (read-mat (open-input-bytes input) '("X"))))))
     (check-equal? outcome "read-mat: element overruns its container\n  offset: 128"))
 
+  (define (blames-caller? e)
+    (and (exn:fail:contract:blame? e) (regexp-match? #rx"blaming: [^\n]*parsers\\.rkt" (exn-message e))))
+
   (test-case "mat-array-ref blames its caller for an index outside the array"
     (match-define (list array) (read-mat (open-input-bytes (mat-bytes mat-one)) '("X")))
     (for ([index (in-list '(6 -1))])
-      (check-exn (lambda (e) (and (exn:fail:contract:blame? e)
-                                  (regexp-match? #rx"blaming: [^\n]*parsers\\.rkt" (exn-message e))))
-                 (lambda () (mat-array-ref array index))
+      (check-exn blames-caller? (lambda () (mat-array-ref array index))
                  (format "~a" index))))
+
+  (test-case "mat-array->bytes returns one-byte storage column-major and blames a caller with wider storage"
+    (for ([file (in-list '("scipy-mini.mat" "scipy-mini-plain.mat"))])
+      (match-define (list x y) (read-mat (open-input-bytes (file->bytes (build-path fixtures file))) '("X" "y")))
+      (check-equal? (mat-array->bytes x) (apply bytes (for/list ([i (in-range 36)]) (mat-array-ref x i))) file)
+      (check-equal? (mat-array->bytes x) (apply bytes scipy-x) file)
+      (check-exn blames-caller? (lambda () (mat-array->bytes y)) file))
+    (match-define (list labels) (read-mat (open-input-bytes (mat-bytes mat-variables)) '("labels")))
+    (check-equal? (mat-array->bytes labels) (bytes 10 1 7)))
+
+  (test-case "mat-array-ref is cheap: the fastest of three runs of 10^6 calls takes under 1 s of CPU time"
+    (match-define (list array)
+      (read-mat (open-input-bytes (mat-bytes `(("X" uint8 (32 32 3 16) miUINT8 ,(make-bytes 49152 1))))) '("X")))
+    (define fastest
+      (for/fold ([fastest +inf.0]) ([_ (in-range 3)])
+        (define start (current-process-milliseconds))
+        (for ([i (in-range 1000000)]) (mat-array-ref array (bitwise-and i 1023)))
+        (min fastest (- (current-process-milliseconds) start))))
+    (check-true (< fastest 1000) (format "~a ms" fastest)))
 
   (define (read-png-list input)
     (call-with-values (lambda () (read-png-gray8 input)) list))
@@ -318,6 +350,10 @@
       (check-exn (apply error-with? 'read-png-gray8 needles) (lambda () (read-png-list (png-reject-input edit)))
                  (symbol->string name))))
 
+  (test-case "read-png-gray8: Paeth ties on hand-written scanlines go to the left byte, then the up byte"
+    (check-equal? (read-png-list (png-reject-input '(idat (0 20 25 15 4 246 20 84))))
+                  (list 3 2 (bytes 20 25 15 10 30 99))))
+
   (test-case "read-png-gray8 skips ancillary chunks"
     (check-equal? (read-png-list (png-reject-input '(insert "tEXt" (67 0 104 105))))
                   (list 3 2 (bytes 1 2 3 4 5 6))))
@@ -357,4 +393,15 @@
                                 (with-handlers ([exn:fail? exn-message])
                                   (inflate-zlib bomb (* 1024 1024))))))
     (check-true (< (bytes-length bomb) (* 16 1024)) (format "~a bytes compressed" (bytes-length bomb)))
-    (check-equal? outcome (format "inflate-zlib: inflated data exceeds the limit\n  limit: ~a" (* 1024 1024)))))
+    (check-equal? outcome (format "inflate-zlib: inflated data exceeds the limit\n  limit: ~a" (* 1024 1024))))
+
+  (define big-size (* 40 1024 1024))
+  (define big-mat (mat-bytes `(("X" uint8 (1024 ,(quotient big-size 1024)) miUINT8 ,(make-bytes big-size 7)))
+                             #:compressed? #t))
+  (test-case "inflate-zlib and read-mat of a compressed 40 MB array hold at most about twice the inflated size"
+    (for ([c (in-list (list (list (+ big-size 56) (lambda () (bytes-length (inflate-zlib (subbytes big-mat 136)
+                                                                                         (* 2 big-size)))))
+                            (list big-size (lambda () (~> big-mat open-input-bytes (read-mat '("X")) car
+                                                          mat-array->bytes bytes-length)))))])
+      (match-define (list expected thunk) c)
+      (check-equal? (call-with-memory-limit (+ (quotient (* 22 big-size) 10) (* 4 1024 1024)) 60 thunk) expected))))

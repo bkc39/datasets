@@ -1,13 +1,14 @@
 #lang racket/base
 (require (only-in file/gunzip gunzip-through-ports inflate)
          (only-in file/untar untar)
-         (only-in racket/contract/base -> contract-out)
+         (only-in racket/contract/base -> ->* contract-out)
          (only-in racket/port call-with-output-bytes)
          (only-in threading ~>))
 (provide (contract-out
           [gunzip-file (-> path-string? bytes?)]
           [tar-gz-member (-> path-string? string? bytes?)]
-          [inflate-zlib (-> bytes? exact-nonnegative-integer? bytes?)]))
+          [inflate-zlib (-> bytes? exact-nonnegative-integer? bytes?)]
+          [bytes->input-port (->* (bytes?) (exact-nonnegative-integer?) input-port?)]))
 
 (define (gunzip-file path)
   (call-with-input-file path
@@ -26,61 +27,59 @@
 (define (inflate-zlib data limit)
   (define size (bytes-length data))
   (define cmf (and (>= size 2) (bytes-ref data 0)))
-  (define flg (and (>= size 2) (bytes-ref data 1)))
-  (unless cmf
-    (error 'inflate-zlib "truncated zlib stream"))
-  (when (or (not (= (bitwise-and cmf 15) 8))
-            (> (arithmetic-shift cmf -4) 7)
-            (not (zero? (modulo (+ (* cmf 256) flg) 31))))
-    (error 'inflate-zlib "not a zlib stream"))
-  (when (bitwise-bit-set? flg 5)
-    (error 'inflate-zlib "preset dictionary not supported"))
-  (inflate-zlib-body data limit))
-
-(define (inflate-zlib-body data limit)
-  (define in (open-input-bytes data))
-  (void (read-bytes 2 in))
-  (define eof-seen? (box #f))
-  (define out (open-output-bytes))
+  (define flg (and cmf (bytes-ref data 1)))
+  (define zlib? (and cmf (= (bitwise-and cmf 15) 8) (<= (arithmetic-shift cmf -4) 7)
+                     (zero? (modulo (+ (* cmf 256) flg) 31))))
+  (define dictionary? (and zlib? (bitwise-bit-set? flg 5)))
+  (define in (bytes->input-port data (min size 2)))
+  (define-values (out output) (collecting-output-port limit))
   (define outcome
-    (let/ec escape
-      (with-handlers ([exn:fail? (lambda (e) (exn-message e))])
-        (inflate (eof-watching-port in eof-seen?) (limited-output-port out limit (lambda () (escape 'over))))
-        'done)))
-  (define trailer (- (bytes-length data) (file-position in)))
-  (when (eq? outcome 'over)
-    (error 'inflate-zlib "inflated data exceeds the limit\n  limit: ~a" limit))
-  (when (or (unbox eof-seen?) (< trailer 4))
-    (error 'inflate-zlib "truncated zlib stream"))
-  (when (string? outcome)
-    (error 'inflate-zlib "invalid deflate data\n  detail: ~a" outcome))
-  (when (> trailer 4)
-    (error 'inflate-zlib "trailing data after the zlib stream"))
-  (checked-output (get-output-bytes out #t) (integer-bytes->integer (read-bytes 4 in) #f #t)))
-
-(define (checked-output output expected)
+    (and zlib? (not dictionary?)
+         (let/ec escape
+           (with-handlers ([exn:fail? exn-message])
+             (inflate in (out (lambda () (escape 'over))))
+             'done))))
+  (define trailer (- size 2 (file-position in)))
+  (define inflated (and (eq? outcome 'done) (output)))
   (cond
-    [(= (adler-32 output) expected) output]
+    [(not cmf) (error 'inflate-zlib "truncated zlib stream")]
+    [(not zlib?) (error 'inflate-zlib "not a zlib stream")]
+    [dictionary? (error 'inflate-zlib "preset dictionary not supported")]
+    [(eq? outcome 'over) (error 'inflate-zlib "inflated data exceeds the limit\n  limit: ~a" limit)]
+    [(< trailer 4) (error 'inflate-zlib "truncated zlib stream")]
+    [(string? outcome) (error 'inflate-zlib "invalid deflate data\n  detail: ~a" outcome)]
+    [(> trailer 4) (error 'inflate-zlib "trailing data after the zlib stream")]
+    [(= (adler-32 inflated) (integer-bytes->integer data #f #t (- size 4) size)) inflated]
     [else (error 'inflate-zlib "adler-32 mismatch")]))
 
-(define (eof-watching-port in eof-seen?)
-  (define (noted result)
-    (when (eof-object? result) (set-box! eof-seen? #t))
-    result)
-  (make-input-port 'inflate-zlib
-                   (lambda (buffer) (noted (read-bytes-avail!* buffer in)))
-                   (lambda (buffer skip _progress) (noted (peek-bytes-avail!* buffer skip #f in)))
+(define (bytes->input-port data [start 0])
+  (define size (bytes-length data))
+  (define position start)
+  (define (copy! buffer skip advance?)
+    (define from (min size (+ position skip)))
+    (define n (min (bytes-length buffer) (- size from)))
+    (bytes-copy! buffer 0 data from (+ from n))
+    (cond
+      [(zero? n) eof]
+      [else (set! position (+ position (if advance? n 0))) n]))
+  (make-input-port 'bytes
+                   (lambda (buffer) (copy! buffer 0 #t))
+                   (lambda (buffer skip _progress) (copy! buffer skip #f))
                    void))
 
-(define (limited-output-port out limit over)
+(define (collecting-output-port limit)
   (define written 0)
-  (make-output-port 'inflate-zlib always-evt
-                    (lambda (buffer start end _non-blocking? _breakable?)
-                      (set! written (+ written (- end start)))
-                      (cond
-                        [(> written limit) (over)]
-                        [else (write-bytes buffer out start end)]))
-                    void))
+  (define chunks '())
+  (values (lambda (over)
+            (make-output-port 'inflate-zlib always-evt
+                              (lambda (buffer start end _non-blocking? _breakable?)
+                                (set! written (+ written (- end start)))
+                                (cond
+                                  [(> written limit) (over)]
+                                  [else (set! chunks (cons (subbytes buffer start end) chunks))
+                                        (- end start)]))
+                              void))
+          (lambda () (apply bytes-append (reverse chunks)))))
 
 (define adler-block 5552)
 

@@ -2,7 +2,7 @@
 (require (only-in datasets/fetch-private/archive inflate-zlib)
          (only-in racket/contract/base -> contract-out)
          (only-in racket/list splitf-at)
-         (only-in racket/match match))
+         (only-in racket/match match match-define))
 (provide (contract-out
           [read-png-gray8 (-> bytes? (values exact-positive-integer? exact-positive-integer? bytes?))]))
 
@@ -38,17 +38,15 @@
 (define (checked-header header)
   (define width (integer-bytes->integer header #f #t 0 4))
   (define height (integer-bytes->integer header #f #t 4 8))
-  (match (bytes->list (subbytes header 8 13))
-    [(list depth colour compression filter interlace)
-     (unless (and (= depth 8) (= colour 0) (= compression 0) (= filter 0) (= interlace 0))
-       (error 'read-png-gray8
-              "unsupported image\n  bit depth: ~a\n  colour type: ~a\n  interlace: ~a"
-              depth colour interlace))
-     (when (or (zero? width) (zero? height))
-       (error 'read-png-gray8 "empty image\n  width: ~a\n  height: ~a" width height))
-     (when (> (* width height) pixel-budget)
-       (error 'read-png-gray8 "image too large\n  width: ~a\n  height: ~a" width height))
-     (values width height)]))
+  (match-define (list depth colour compression filter interlace) (bytes->list (subbytes header 8 13)))
+  (cond
+    [(not (and (= depth 8) (= colour 0) (= compression 0) (= filter 0) (= interlace 0)))
+     (error 'read-png-gray8 "unsupported image\n  bit depth: ~a\n  colour type: ~a\n  interlace: ~a"
+            depth colour interlace)]
+    [(or (zero? width) (zero? height))
+     (error 'read-png-gray8 "empty image\n  width: ~a\n  height: ~a" width height)]
+    [(<= (* width height) pixel-budget) (values width height)]
+    [else (error 'read-png-gray8 "image too large\n  width: ~a\n  height: ~a" width height)]))
 
 (define (image-data chunks)
   (define kept (filter (lambda (c) (critical? (chunk-type c))) chunks))
@@ -64,13 +62,14 @@
 
 (define (unfilter raw width height)
   (define expected (* height (add1 width)))
-  (define pixels (make-bytes (* width height)))
-  (unless (= (bytes-length raw) expected)
-    (error 'read-png-gray8 "image data size mismatch\n  expected: ~a\n  given: ~a"
-           expected (bytes-length raw)))
-  (for ([row (in-range height)])
-    (unfilter-row! pixels raw row width))
-  pixels)
+  (cond
+    [(= (bytes-length raw) expected)
+     (define pixels (make-bytes (* width height)))
+     (for ([row (in-range height)])
+       (unfilter-row! pixels raw row width))
+     pixels]
+    [else (error 'read-png-gray8 "image data size mismatch\n  expected: ~a\n  given: ~a"
+                 expected (bytes-length raw))]))
 
 (define (unfilter-row! pixels raw row width)
   (define filter-type (bytes-ref raw (* row (add1 width))))
