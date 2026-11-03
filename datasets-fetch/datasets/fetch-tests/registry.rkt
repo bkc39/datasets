@@ -4,6 +4,7 @@
          (only-in datasets/core-tests/fixture call-with-environment call-with-temporary-fixture)
          (only-in datasets/fetch-private/convert idx-file-names)
          (only-in file/sha1 bytes->hex-string)
+         (only-in racket/list make-list)
          (only-in racket/match match-define match-lambda)
          (only-in racket/string string-join)
          (only-in threading ~>))
@@ -55,7 +56,14 @@
        (("flights.csv"
          "https://raw.githubusercontent.com/vincentarelbundock/Rdatasets/cc03c29690889dbe83089f5206e2422db8c3f71f/csv/nycflights13/flights.csv"
          "b791a2590c9167aa0bd3cb45af3f64101180878cf088c183eae4011e3a654f42"))
-       "csv-header-rows" "CC0-1.0")))
+       "csv-header-rows" "CC0-1.0")
+      (zip
+       9298 ,(append '("digit") (for/list ([k (in-range 1 257)]) (format "pixel~a" k)) '("split"))
+       (("zip.train.gz" "https://hastie.su.domains/ElemStatLearn/datasets/zip.train.gz"
+                        "66ebf231ab51f2cf6ac1a892d0f98ccffee1079d7a5db638c1f11f366046ca16")
+        ("zip.test.gz" "https://hastie.su.domains/ElemStatLearn/datasets/zip.test.gz"
+                       "8dacc3c6e136af6c3488de9e5113a7daf140c8c2f1f0b61c54ee02f03f1a962f"))
+       "esl-zip-rows" "NOASSERTION")))
   (define (sha256-hex s) (~> s string->bytes/utf-8 sha256-bytes bytes->hex-string))
 
   (test-case "the datasets-fetch registry: shapes, pins, converters, terms"
@@ -85,7 +93,14 @@
     (for ([name (in-list '(mnist fashion-mnist))])
       (check-equal? (map car (catalog-column-rows (hash-ref (dataset-info name) "columns")))
                     '("pixel1 … pixel784" "label" "split")
-                    (symbol->string name))))
+                    (symbol->string name)))
+    (check-equal? (map car (catalog-column-rows (hash-ref (dataset-info 'zip) "columns")))
+                  '("digit" "pixel1 … pixel256" "split")))
+
+  (test-case "zip types: digit integer, pixels real, split categorical train then test"
+    (check-equal? (for/list ([column (in-list (hash-ref (dataset-info 'zip) "columns"))])
+                    (list (hash-ref column "type") (hash-ref column "levels")))
+                  `(("integer" ()) ,@(make-list 256 '("real" ())) ("categorical" ("train" "test")))))
 
   (test-case "queries load no converter"
     (call-with-temporary-fixture
@@ -97,6 +112,8 @@
              (for ([form (in-list '((dataset-names)
                                     (dataset-info 'covtype)
                                     (dataset-cached? 'covtype)
+                                    (dataset-info 'zip)
+                                    (dataset-cached? 'zip)
                                     (with-handlers ([exn:fail? exn-message])
                                       (load-dataset-table 'covtype #:download? #f))))])
                (eval form))

@@ -27,7 +27,8 @@ Learning Repository, to the core catalog; @tt{datasets} adds the
 convenient loaders and adapters to the same collection. The Polars package
 supplies its native library. With Nix, @tt{nix develop} prepares an isolated
 environment containing the packages and that library.
-@tt{datasets-islr} adds the datasets of ISLR2; see @secref["datasets-islr-guide"].
+@tt{datasets-islr} adds the datasets of ISLR2 and four of ESL; see
+@secref["datasets-islr-guide"] and @secref["datasets-esl-guide"].
 @tt{datasets-fetch} adds sets such as @tt{covtype} and @tt{mnist} that are
 downloaded and converted on first load.
 
@@ -146,7 +147,7 @@ book, are the first column of @racket['hitters]:
  (for/sum ([salary (in-vector (dataset-table-column hitters "salary"))])
    (if (dataset-missing? salary) 1 0))]
 
-The @tt{islr2-chapters} key of each dataset's metadata lists the chapters whose
+The @tt{islr2-chapters} key of each ISLR2 dataset's metadata lists the chapters whose
 text and labs, and whose exercises, use it:
 
 @examples[#:eval ev
@@ -160,6 +161,21 @@ describes the columns and provenance of each dataset.
 @(tabular #:sep (hspace 2)
   (cons (list "Chapter" "Text and labs" "Exercises")
         (islr-chapter-cells (lambda (id) (racketvalfont (format "'~a" id))))))
+
+@section[#:tag "datasets-esl-guide"]{Datasets from ESL}
+
+@tt{datasets-islr} also bundles @racket['prostate], @racket['sa-heart],
+@racket['vowel] and @racket['ozone] from
+@hyperlink["https://hastie.su.domains/ElemStatLearn/"]{The Elements of Statistical
+Learning}. The ZIP code digits, @racket['zip], are in @tt{datasets-fetch} and are
+downloaded on first load. A train/test partition is a final @tt{split} column:
+
+@examples[#:eval ev
+ (define vowel (load-dataset 'vowel #:format 'table))
+ (dataset-table-names vowel)
+ (hash-ref (dataset-info 'zip) "tier")]
+
+ESL's spam data is @racket['spambase] in @tt{datasets-uci}.
 
 @section[#:tag "datasets-matrices-guide"]{Preparing a numeric matrix}
 

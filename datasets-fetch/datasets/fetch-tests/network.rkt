@@ -3,10 +3,10 @@
          (only-in datasets/core dataset-cache-directory dataset-info dataset-missing? dataset-names
                   dataset-table-column dataset-table-names dataset-table-row-count fetch-dataset
                   load-dataset-table)
-         (only-in datasets/fetch-tests/digest expect parity-problems)
+         (only-in datasets/fetch-tests/digest expect expect-= parity-problems)
          (only-in file/sha1 bytes->hex-string)
          (only-in net/url call/input-url get-pure-port string->url)
-         (only-in racket/list append* append-map)
+         (only-in racket/list append* append-map remove-duplicates)
          (only-in racket/string string-join)
          (only-in racket/vector vector-count)
          (only-in threading ~>))
@@ -118,11 +118,34 @@
                     (load-rows (quotient text-size 2))
                     'killed-at-the-memory-limit)))
 
+  (define (zip-problems)
+    (define table (load-dataset-table 'zip #:download? #f))
+    (define (column name) (dataset-table-column table name))
+    (define (cells i names) (for/list ([name (in-list names)]) (vector-ref (column name) i)))
+    (define digits (column "digit"))
+    (define split (column "split"))
+    (define negative-zero-rows
+      (for*/list ([name (in-list (dataset-table-names table))]
+                  [(v i) (in-parallel (column name) (in-naturals))]
+                  #:when (eqv? v -0.0))
+        i))
+    (append (expect '(zip "row 0") (cells 0 '("digit" "pixel8" "pixel9" "pixel10")) '(6 -0.631 0.862 -0.167))
+            (expect '(zip "row 9297") (cells 9297 '("digit" "split")) '(1 "test"))
+            (expect '(zip "digit counts")
+                    (for/list ([d (in-range 10)]) (vector-count (lambda (v) (= v d)) digits))
+                    '(1553 1269 929 824 852 716 834 792 708 821))
+            (expect '(zip "digit sum") (for/sum ([v (in-vector digits)]) v) 36188)
+            (expect-= '(zip "pixel1 sum") (for/sum ([v (in-vector (column "pixel1"))]) v) -9265.046 1e-6)
+            (expect '(zip "negative zeros") (length negative-zero-rows) 170)
+            (expect '(zip "splits of the negative zeros")
+                    (remove-duplicates (for/list ([i (in-list negative-zero-rows)]) (vector-ref split i)))
+                    '("train"))))
+
   (printf "DATASETS_HOME ~a\n" (dataset-cache-directory))
   (define names (dataset-names #:package "datasets-fetch"))
   (define problems
     (append (append-map pinned-bytes-problems names) (append-map table-problems names)
-            (bounded-load-problems 'fashion-mnist)))
+            (bounded-load-problems 'fashion-mnist) (zip-problems)))
   (if (null? problems)
       (printf "network checks hold for ~a\n" names)
       (error (string-join problems "\n" #:before-first "network checks failed:\n"))))

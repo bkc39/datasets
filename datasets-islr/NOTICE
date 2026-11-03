@@ -8,6 +8,13 @@ Bundled observations are distributed separately under the upstream terms:
   Second Edition (Springer, 2021), https://www.statlearning.com. Original
   data sources are cited in datasets/islr-data/provenance/*.Rd.
   https://CRAN.R-project.org/package=ISLR2
+- prostate, sa-heart, vowel and ozone from ElemStatLearn 2015.6.26.2:
+  GPL-2.0-or-later. Material from the book's web page, R port and packaging
+  by Kjetil B. Halvorsen; Trevor Hastie, Robert Tibshirani and Jerome
+  Friedman, The Elements of Statistical Learning, Second Edition (Springer,
+  2009), https://hastie.su.domains/ElemStatLearn/. Original data sources are
+  cited in datasets/islr-data/provenance/*.Rd.
+  https://cran.r-project.org/src/contrib/Archive/ElemStatLearn/ElemStatLearn_2015.6.26.2.tar.gz
 
 This records the accepted upstream redistribution basis, and does not assert
 independent original-owner permission. These authors do not endorse this work.
@@ -20,7 +27,11 @@ dropped; khan's list joined into one wide table with a split column; nci60's
 list joined into one wide table with a label column; nyse's logical train
 column rendered as 1 and 0; character columns nyse day-of-week and
 publication mech declared categorical. Boston is ISLR2's version, without the
-black column of MASS::Boston. Source row order and numeric precision retained.
+black column of MASS::Boston. A train/test partition is a final split column
+with levels train and test, the training rows first where the source has two
+tables: prostate's logical train column becomes split, and vowel joins
+vowel.train and vowel.test; vowel's x.1 to x.10 are named x1 to x10; the
+numeric row names of prostate, sa-heart, vowel and ozone are dropped. Source row order and numeric precision retained.
 Source version, archive and normalized SHA-256 hashes, variable descriptions,
 and dataset-specific notes are in the registry
 (datasets/islr-data/registry.rktd). Upstream documentation is retained in

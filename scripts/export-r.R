@@ -12,9 +12,7 @@ if (package == 'nycflights13') {
   quit(save='no')
 }
 if (package == 'datasets-islr') {
-  islr <- new.env()
-  for (f in list.files(file.path(root,'ISLR2/data'),full.names=TRUE)) load(f,envir=islr)
-  with(islr, {
+  with(load.RData(file.path(root,'ISLR2/data')), {
     stopifnot(!anyDuplicated(rownames(College)), !anyDuplicated(rownames(Hitters)))
     sorted.factor <- function(x) factor(x, levels=sort(unique(x), method='radix'))
     genes <- function(x) { colnames(x) <- seq_len(ncol(x)); as.data.frame(x, check.names=FALSE) }
@@ -22,8 +20,7 @@ if (package == 'datasets-islr') {
       auto=Auto, bikeshare=Bikeshare, boston=Boston, 'brain-cancer'=BrainCancer, caravan=Caravan,
       carseats=Carseats, college=cbind(name=rownames(College), College), credit=Credit,
       default=Default, fund=Fund, hitters=cbind(player=rownames(Hitters), Hitters),
-      khan=cbind(split=factor(rep(c('train','test'), c(nrow(Khan$xtrain), nrow(Khan$xtest))),
-                              levels=c('train','test')),
+      khan=cbind(split=train.test(nrow(Khan$xtrain), nrow(Khan$xtest)),
                  y=c(Khan$ytrain, Khan$ytest), genes(rbind(Khan$xtrain, Khan$xtest))),
       nci60=cbind(label=sorted.factor(NCI60$labs), genes(NCI60$data)),
       nyse=transform(NYSE, day_of_week=factor(day_of_week, levels=c('mon','tues','wed','thur','fri')),
@@ -32,6 +29,31 @@ if (package == 'datasets-islr') {
       smarket=Smarket, wage=Wage, weekly=Weekly)
     for (id in names(sets)) export(sets[[id]], id)
   })
+  quit(save='no')
+}
+if (package == 'esl') {
+  objects <- c('prostate','SAheart','vowel.train','vowel.test','ozone','spam')
+  with(load.RData(file.path(root,'ElemStatLearn/data'), paste0(objects,'.RData')), {
+    prostate$train <- factor(ifelse(prostate$train, 'train', 'test'), levels=c('train','test'))
+    names(prostate)[names(prostate) == 'train'] <- 'split'
+    export(prostate, 'prostate')
+    export(SAheart, 'sa-heart')
+    export(cbind(rbind(vowel.train, vowel.test), split=train.test(nrow(vowel.train), nrow(vowel.test))), 'vowel')
+    export(ozone, 'ozone')
+    export(spam, 'esl-spam')
+  })
+  quit(save='no')
+}
+if (package == 'esl-zip') {
+  esl <- load.RData(file.path(root,'ElemStatLearn/data'), c('zip.train.RData','zip.test.RData'))
+  book <- lapply(c('zip.train','zip.test'), function(f) as.matrix(read.table(gzfile(file.path(args[4],paste0(f,'.gz'))))))
+  stopifnot(all(book[[1]] == esl$zip.train), all(book[[2]] == esl$zip.test))
+  pixels <- rbind(book[[1]], book[[2]])
+  stopifnot(all(pixels[,1] == round(pixels[,1])))
+  d <- data.frame(digit=as.integer(pixels[,1]), pixels[,-1])
+  names(d) <- c('digit', paste0('pixel', seq_len(ncol(pixels)-1)))
+  d$split <- train.test(nrow(book[[1]]), nrow(book[[2]]))
+  export(d, 'zip')
   quit(save='no')
 }
 if (package == 'datasets-r') {

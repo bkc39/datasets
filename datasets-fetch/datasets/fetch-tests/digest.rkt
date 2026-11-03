@@ -4,7 +4,7 @@
                   dataset-table-row-count dataset-table?)
          (only-in file/sha1 bytes->hex-string)
          (only-in json read-json)
-         (only-in racket/contract/base -> any/c contract-out listof)
+         (only-in racket/contract/base -> >=/c any/c contract-out listof)
          (only-in racket/list append*)
          (only-in racket/match match)
          (only-in racket/port call-with-output-bytes)
@@ -12,6 +12,7 @@
          (only-in threading ~>))
 (provide (contract-out [column-digest (-> vector? string?)]
                        [expect (-> any/c any/c any/c (listof string?))]
+                       [expect-= (-> any/c real? real? (>=/c 0) (listof string?))]
                        [parity-problems (-> symbol? dataset-table? (listof string?))]
                        [parity-reference (-> symbol? hash?)]))
 (define-runtime-path parity-file "fixtures/parity.json")
@@ -35,6 +36,11 @@
 
 (define (expect what actual expected)
   (if (equal? actual expected) '() (list (format "~a: expected ~s, actual ~s" what expected actual))))
+
+(define (expect-= what actual expected epsilon)
+  (if (<= (abs (- actual expected)) epsilon)
+      '()
+      (list (format "~a: expected ~s within ~s, actual ~s" what expected epsilon actual))))
 
 (define (parity-reference name)
   (hash-ref parity name))

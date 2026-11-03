@@ -2,18 +2,22 @@
 (require (only-in datasets/fetch-private/archive gunzip-file tar-gz-member)
          (only-in datasets/fetch-private/csv csv-rows info->column-specs)
          (only-in datasets/fetch-private/idx read-idx)
-         (only-in racket/contract/base -> and/c contract-out flat-named-contract hash/c listof)
+         (only-in racket/contract/base -> and/c contract-out flat-named-contract hash/c integer-in listof)
          (only-in racket/file file->bytes)
          (only-in racket/flonum fl/)
          (only-in racket/match match match* match-define)
          (only-in racket/sequence sequence-append sequence-map)
+         (only-in racket/stream for/stream)
+         (only-in racket/string string-split)
          (only-in threading ~>))
 (provide (contract-out
           [covtype-rows converter/c]
           [california-housing-rows converter/c]
           [idx-file-names (listof string?)]
           [idx-image-rows converter/c]
-          [csv-header-rows converter/c]))
+          [csv-header-rows converter/c]
+          [esl-zip-file-names (listof string?)]
+          [esl-zip-rows converter/c]))
 
 (define converter-files/c
   (flat-named-contract 'converter-files (hash/c string? complete-path? #:immutable #t)))
@@ -85,3 +89,31 @@
   (match (hash-values files)
     [(list path) (~> path file->bytes open-input-bytes (csv-rows (info->column-specs info)))]
     [paths (error 'csv-header-rows "expected one file\n  given: ~a" (length paths))]))
+
+(define esl-zip-file-names '("zip.train.gz" "zip.test.gz"))
+
+(define decimal-rx #px"^[-+]?([0-9]+[.]?[0-9]*|[.][0-9]+)([eE][-+]?[0-9]+)?$")
+
+(define (esl-zip-rows files info)
+  (match-define (list train test) esl-zip-file-names)
+  (define width (sub1 (hash-ref info "column-count")))
+  (sequence-append (esl-zip-split-rows files train "train" width)
+                   (esl-zip-split-rows files test "test" width)))
+
+(define (esl-zip-split-rows files name split width)
+  (for/stream ([line (in-lines (~> (hash-ref files name) gunzip-file open-input-bytes))]
+               [number (in-naturals 1)])
+    (match (string-split line)
+      [tokens #:when (not (= (length tokens) width))
+       (error 'esl-zip-rows "wrong number of tokens\n  file: ~a\n  line: ~a\n  expected: ~a\n  given: ~a"
+              name number width (length tokens))]
+      [(list _ ... (and (not (regexp decimal-rx)) token) _ ...)
+       (error 'esl-zip-rows "not a number\n  file: ~a\n  line: ~a\n  token: ~a" name number token)]
+      [(cons (app (lambda (token) (string->number token 10 'number-or-false 'decimal-as-exact))
+                  (? (integer-in 0 9) digit))
+             pixels)
+       (cons digit
+             (append (map (lambda (pixel) (string->number (string-append "#i" pixel) 10)) pixels) (list split)))]
+      [(cons token _)
+       (error 'esl-zip-rows "digit is not a whole number from 0 to 9\n  file: ~a\n  line: ~a\n  token: ~a"
+              name number token)])))

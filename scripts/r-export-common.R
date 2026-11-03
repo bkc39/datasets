@@ -25,3 +25,9 @@ export <- function(d, id) {
   write.csv.file(data.frame(column=names(d), type=vapply(d, function(x) if (is.factor(x)) 'factor' else typeof(x), '')),
                  paste0(id, '.types'))
 }
+load.RData <- function(dir, files=list.files(dir)) {
+  e <- new.env()
+  for (f in files) load(file.path(dir, f), envir=e)
+  e
+}
+train.test <- function(n.train, n.test) factor(rep(c('train','test'), c(n.train, n.test)), levels=c('train','test'))

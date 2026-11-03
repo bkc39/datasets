@@ -39,6 +39,8 @@
           [call-with-environment (-> (hash/c string? (or/c #f string?)) (-> any) any)]
           [call-with-artifact-url (-> bytes? (-> string? any) any)]
           [cache-files (-> path? (listof string?))]
+          [conjuncts (-> (or/c symbol? pair?) (listof string?))]
+          [license-ids (-> string? (listof string?))]
           [wait-until (-> (and/c real? positive?) (-> any/c) boolean?)]
           [call-with-timeout (-> (and/c real? positive?) (-> any/c) any/c)]
           [call-with-memory-limit (-> exact-positive-integer? (and/c real? positive?) (-> any/c) any/c)]
@@ -302,3 +304,22 @@
              "columns" (for/list ([j (in-range m)])
                          (hash "name" (format "c~a" j) "original-name" (format "c~a" j) "type" "integer"
                                "levels" '() "unit" #f "description" "c" "missing-count" 0))))
+
+(define (license-ids license)
+  (regexp-split #px" (?:AND|OR) " (regexp-replace* #rx"[()]" license "")))
+
+(define (conjuncts expression)
+  (match expression
+    [(list left 'AND right) (append (conjuncts left) (conjuncts right))]
+    [_ (list (expression->string expression))]))
+
+(define (expression->string expression)
+  (match expression
+    [(list left operator right)
+     (format "~a ~a ~a" (operand->string left) operator (operand->string right))]
+    [(? symbol?) (symbol->string expression)]))
+
+(define (operand->string expression)
+  (match expression
+    [(? pair?) (format "(~a)" (expression->string expression))]
+    [_ (expression->string expression)]))
