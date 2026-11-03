@@ -21,20 +21,6 @@ cli.add_argument('--package', default='datasets-core')
 cli.add_argument('--target', type=Path)
 cli.add_argument('--provenance', type=Path)
 cli.add_argument('archive_dir', type=Path)
-args = cli.parse_args()
-if args.package not in DEFAULTS: sys.exit(f'No import recipes for package {args.package}')
-PACKAGE = args.package
-OUT = args.target or ROOT/DEFAULTS[PACKAGE][0]
-PROVENANCE = args.provenance or ROOT/DEFAULTS[PACKAGE][1]
-PRIVATE = args.target/'r-private' if args.target else ROOT/'datasets-r/datasets/r-private'
-(OUT/'data').mkdir(parents=True,exist_ok=True); PROVENANCE.mkdir(parents=True,exist_ok=True)
-SOURCES = {k:s for k,s in json.loads((ROOT/'scripts/sources.json').read_text()).items() if PACKAGE in s.get('packages',[s.get('package','datasets-core')])}
-fetch = args.fetch
-cache = args.archive_dir; cache.mkdir(parents=True,exist_ok=True)
-for s in SOURCES.values():
-    p=cache/s['file']
-    if fetch and not p.exists(): urllib.request.urlretrieve(s['url'],p)
-    if hashlib.sha256(p.read_bytes()).hexdigest()!=s['sha256']: raise ValueError('Source checksum mismatch: '+str(p))
 def sexp(x):
     if x is None: return 'missing'
     if isinstance(x,bool): return '#t' if x else '#f'
@@ -600,8 +586,25 @@ def import_uci():
             if not present<=set(levels[n]): raise ValueError(f'{id}: {n} values {present-set(levels[n])} outside levels')
             levels[n]=[l for l in levels[n] if l in present]
         add(id,original,rows,source,names=names,levels=levels,**kw)
-for step in {'datasets-core':[import_core],'datasets-r':[import_r],'datasets-uci':[import_uci],'datasets-islr':[import_islr,import_esl]}[PACKAGE]: step()
-(OUT/'registry.rktd').write_text(sexp(dict(sorted(registry.items())))+'\n')
-for stale in (OUT/'data').iterdir():
-    if stale.name not in {f'{id}.rktd.gz' for id in registry}: stale.unlink()
-print('Imported',len(registry),'datasets')
+def main():
+    global PACKAGE, OUT, PROVENANCE, PRIVATE, SOURCES, cache
+    args = cli.parse_args()
+    if args.package not in DEFAULTS: sys.exit(f'No import recipes for package {args.package}')
+    PACKAGE = args.package
+    OUT = args.target or ROOT/DEFAULTS[PACKAGE][0]
+    PROVENANCE = args.provenance or ROOT/DEFAULTS[PACKAGE][1]
+    PRIVATE = args.target/'r-private' if args.target else ROOT/'datasets-r/datasets/r-private'
+    (OUT/'data').mkdir(parents=True,exist_ok=True); PROVENANCE.mkdir(parents=True,exist_ok=True)
+    SOURCES = {k:s for k,s in json.loads((ROOT/'scripts/sources.json').read_text()).items() if PACKAGE in s.get('packages',[s.get('package','datasets-core')])}
+    cache = args.archive_dir; cache.mkdir(parents=True,exist_ok=True)
+    for s in SOURCES.values():
+        p=cache/s['file']
+        if args.fetch and not p.exists(): urllib.request.urlretrieve(s['url'],p)
+        if hashlib.sha256(p.read_bytes()).hexdigest()!=s['sha256']: raise ValueError('Source checksum mismatch: '+str(p))
+    for step in {'datasets-core':[import_core],'datasets-r':[import_r],'datasets-uci':[import_uci],'datasets-islr':[import_islr,import_esl]}[PACKAGE]: step()
+    (OUT/'registry.rktd').write_text(sexp(dict(sorted(registry.items())))+'\n')
+    for stale in (OUT/'data').iterdir():
+        if stale.name not in {f'{id}.rktd.gz' for id in registry}: stale.unlink()
+    print('Imported',len(registry),'datasets')
+
+if __name__ == '__main__': main()

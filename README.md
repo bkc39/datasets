@@ -188,7 +188,11 @@ preview screenshots stay untracked.
 nix develop .#maintainer
 python3 scripts/import-data.py --fetch /tmp/datasets-sources
 python3 scripts/import-data.py /tmp/datasets-sources  # subsequent offline import
+python3 -I -m unittest discover -s scripts/tests -t scripts/tests  # importer readers
 ```
+
+`nix flake check` runs the importer's unit tests; their spreadsheet fixtures are
+written by `scripts/tests/make_fixtures.py`.
 
 Python and R evaluate the hash-pinned R 4.3.3 source dataset definitions and
 lars 1.3 archive; R's numeric export uses 17 significant digits for binary64
