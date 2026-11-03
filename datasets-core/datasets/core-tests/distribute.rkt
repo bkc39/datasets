@@ -9,7 +9,7 @@
 (define-runtime-path collection "..")
 (module+ test
   (require (only-in compiler/find-exe find-exe)
-           (only-in rackunit check-equal? check-pred test-case)
+           (only-in rackunit check-equal? check-pred fail test-case)
            (only-in setup/cross-system cross-system-type))
   (define distribute-runs?
     (or (not (eq? (cross-system-type) 'unix))
@@ -69,6 +69,9 @@
             (define-values (registry-dir _name _dir?) (split-path registry))
             (check-pred file-exists? (build-path registry-dir "data" "iris.rktd.gz")))
           (check-equal? (run-isolated (build-path dist "bin" "main") home) '(0 "150")))))]
+    [(getenv "DATASETS_REQUIRE_DISTRIBUTE")
+     (test-case "DATASETS_REQUIRE_DISTRIBUTE: raco distribute runs on this platform"
+       (fail "raco distribute cannot patch this non-ELF executable"))]
     [else
      (displayln
       "distribute.rkt: skipped; raco distribute patches this non-ELF executable as ELF")]))
