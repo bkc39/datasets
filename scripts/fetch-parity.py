@@ -3,6 +3,7 @@
 scripts/fetch-parity.sh
 nix develop .#maintainer -c python3 -I scripts/fetch-parity.py nycflights13 ARCHIVE_DIR
 nix develop .#maintainer -c python3 -I scripts/fetch-parity.py esl-zip ARCHIVE_DIR
+nix develop .#maintainer -c python3 -I scripts/fetch-parity.py ggplot2 ARCHIVE_DIR
 """
 import hashlib
 import json
@@ -22,6 +23,8 @@ ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "datasets-fetch/datasets/fetch-tests/fixtures/parity.json"
 FETCH_REGISTRY = ROOT / "datasets-fetch/datasets/fetch-data/registry.rktd"
 NYCFLIGHTS13_TABLES = ["airlines", "airports", "flights", "planes", "weather"]
+GGPLOT2_SETS = ["diamonds", "economics", "economics-long", "faithfuld", "luv-colours", "midwest", "mpg", "msleep",
+                "presidential", "seals", "txhousing"]
 
 CALIFORNIA = {"MedInc": "med-inc", "HouseAge": "house-age", "AveRooms": "ave-rooms",
               "AveBedrms": "ave-bedrms", "Population": "population", "AveOccup": "ave-occup",
@@ -132,6 +135,8 @@ match sys.argv[1:]:
     case ["nycflights13", archive_dir]:
         versions, tables = r_references(archive_dir, "nycflights13", "nycflights13",
                                         [f"nycflights13-{t}" for t in NYCFLIGHTS13_TABLES])
+    case ["ggplot2", archive_dir]:
+        versions, tables = r_references(archive_dir, "ggplot2", "ggplot2", GGPLOT2_SETS)
     case ["esl-zip", archive_dir]:
         versions, tables = r_references(archive_dir, "ElemStatLearn", "esl-zip", ["zip"],
                                         read_rktd(FETCH_REGISTRY, "zip", "fetch", "files"))
