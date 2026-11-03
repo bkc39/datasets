@@ -5,8 +5,9 @@
          (only-in racket/contract/base -> and/c contract-out flat-named-contract hash/c integer-in listof)
          (only-in racket/file file->bytes)
          (only-in racket/flonum fl/)
+         (only-in racket/list split-at)
          (only-in racket/match match match* match-define)
-         (only-in racket/sequence sequence-append sequence-map)
+         (only-in racket/sequence sequence->list sequence-append sequence-map)
          (only-in racket/stream for/stream)
          (only-in racket/string string-split)
          (only-in threading ~>))
@@ -17,7 +18,9 @@
           [idx-image-rows converter/c]
           [csv-header-rows converter/c]
           [esl-zip-file-names (listof string?)]
-          [esl-zip-rows converter/c]))
+          [esl-zip-rows converter/c]
+          [linnerud-file-names (listof string?)]
+          [linnerud-rows converter/c]))
 
 (define converter-files/c
   (flat-named-contract 'converter-files (hash/c string? complete-path? #:immutable #t)))
@@ -117,3 +120,18 @@
       [(cons token _)
        (error 'esl-zip-rows "digit is not a whole number from 0 to 9\n  file: ~a\n  line: ~a\n  token: ~a"
               name number token)])))
+
+(define linnerud-file-names '("linnerud_exercise.csv" "linnerud_physiological.csv"))
+
+(define (linnerud-rows files info)
+  (match-define (list exercise physiological) linnerud-file-names)
+  (define-values (exercise-specs physiological-specs) (split-at (info->column-specs info) 3))
+  (define (file-rows name specs)
+    (~> (hash-ref files name) file->bytes open-input-bytes (csv-rows specs #:separator #\space)
+        sequence->list))
+  (define exercise-rows (file-rows exercise exercise-specs))
+  (define physiological-rows (file-rows physiological physiological-specs))
+  (cond
+    [(= (length exercise-rows) (length physiological-rows)) (map append exercise-rows physiological-rows)]
+    [else (error 'linnerud-rows "files differ in row count\n  ~a: ~a\n  ~a: ~a" exercise
+                 (length exercise-rows) physiological (length physiological-rows))]))

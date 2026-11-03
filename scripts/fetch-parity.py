@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 scripts/fetch-parity.sh
+scripts/fetch-parity.sh linnerud
 nix develop .#maintainer -c python3 -I scripts/fetch-parity.py nycflights13 ARCHIVE_DIR
 nix develop .#maintainer -c python3 -I scripts/fetch-parity.py esl-zip ARCHIVE_DIR
 """
@@ -77,6 +78,15 @@ def images(loader, root):
     return len(labels), columns
 
 
+def linnerud_references():
+    import sklearn
+    from sklearn import datasets
+    frame = datasets.load_linnerud(as_frame=True).frame
+    return {"scikit-learn": sklearn.__version__}, {
+        "linnerud": (len(frame), {n.lower(): integers(frame[n].to_numpy()) for n in frame.columns}),
+    }
+
+
 def loader_references():
     import sklearn
     import torchvision
@@ -87,7 +97,8 @@ def loader_references():
     names = [n.lower().replace("_", "-") for n in bunch.feature_names + bunch.target_names]
     columns = [bunch.data[:, k] for k in range(bunch.data.shape[1])] + [bunch.target]
     frame = datasets.fetch_california_housing(as_frame=True).frame
-    return {"scikit-learn": sklearn.__version__, "torchvision": torchvision.__version__}, {
+    _, linnerud = linnerud_references()
+    return {"scikit-learn": sklearn.__version__, "torchvision": torchvision.__version__}, linnerud | {
         "covtype": (len(bunch.target), {n: integers(c) for n, c in zip(names, columns)}),
         "california-housing": (len(frame), {CALIFORNIA[n]: reals(frame[n].to_numpy()) for n in frame.columns}),
         "mnist": images(MNIST, root),
@@ -129,6 +140,8 @@ def r_references(archive_dir, package, target, ids, files=()):
 match sys.argv[1:]:
     case []:
         versions, tables = loader_references()
+    case ["linnerud"]:
+        versions, tables = linnerud_references()
     case ["nycflights13", archive_dir]:
         versions, tables = r_references(archive_dir, "nycflights13", "nycflights13",
                                         [f"nycflights13-{t}" for t in NYCFLIGHTS13_TABLES])

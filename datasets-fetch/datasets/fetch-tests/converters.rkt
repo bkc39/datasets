@@ -5,7 +5,7 @@
          (only-in datasets/core-tests/fixture cache-files call-with-fetch-fixture rebuild
                   rows->rktd-bytes)
          (only-in datasets/fetch-private/convert california-housing-rows covtype-rows csv-header-rows
-                  esl-zip-file-names esl-zip-rows idx-file-names idx-image-rows)
+                  esl-zip-file-names esl-zip-rows idx-file-names idx-image-rows linnerud-rows)
          (only-in datasets/fetch-tests/fixture call-with-upstream-files error-with?)
          (only-in file/sha1 bytes->hex-string)
          (only-in net/url path->url url->string)
@@ -84,6 +84,11 @@
       (fashion-mnist ,idx-image-rows ,(idx-upstream idx-contents) ,(dataset-info 'fashion-mnist)
                      ,idx-expected)
       (zip ,esl-zip-rows ,(zip-upstream zip-train zip-test) ,zip-info ,zip-expected)
+      (linnerud ,linnerud-rows
+                (("linnerud_exercise.csv" (plain "Chins Situps Jumps\n5 162 60\n2 110 60\n"))
+                 ("linnerud_physiological.csv" (plain "Weight Waist Pulse\n191 36 50\n189 37 52\n")))
+                ,(dataset-info 'linnerud)
+                ((5 162 60 191 36 50) (2 110 60 189 37 52)))
       (nycflights13-flights ,csv-header-rows (("flights.csv" (plain ,(fixture "flights-mini.csv"))))
                             ,(dataset-info 'nycflights13-flights)
                             ,flights-expected)))
@@ -117,7 +122,13 @@
                                                  ,(dataset-info 'california-housing)
                                                  tar-gz-member "no such member")
                         (,csv-header-rows (("a.csv" (plain "y\n")) ("b.csv" (plain "y\n"))) ,csv-info
-                                          csv-header-rows "expected one file")))])
+                                          csv-header-rows "expected one file")
+                        (,linnerud-rows (("linnerud_exercise.csv" (plain "Chins Situps Jumps\n5 162 60\n"))
+                                         ("linnerud_physiological.csv" (plain "Weight Waist Pulse\n")))
+                                        ,(dataset-info 'linnerud) linnerud-rows "differ in row count")
+                        (,linnerud-rows (("linnerud_exercise.csv" (plain "Chins Situps Jumps\n5,162,60\n"))
+                                         ("linnerud_physiological.csv" (plain "Weight Waist Pulse\n191 36 50\n")))
+                                        ,(dataset-info 'linnerud) csv-rows "wrong number of fields")))])
       (match-define (list converter upstream info who needle) c)
       (call-with-upstream-files upstream
         (lambda (files)

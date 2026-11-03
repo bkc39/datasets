@@ -141,11 +141,22 @@
                     (remove-duplicates (for/list ([i (in-list negative-zero-rows)]) (vector-ref split i)))
                     '("train"))))
 
+  (define (linnerud-problems)
+    (define table (load-dataset-table 'linnerud #:download? #f))
+    (define names (dataset-table-names table))
+    (define (row i) (for/list ([name (in-list names)]) (vector-ref (dataset-table-column table name) i)))
+    (append (expect '(linnerud "row 0") (row 0) '(5 162 60 191 36 50))
+            (expect '(linnerud "row 19") (row 19) '(2 110 43 138 33 68))
+            (expect '(linnerud "column sums")
+                    (for/list ([name (in-list names)])
+                      (for/sum ([v (in-vector (dataset-table-column table name))]) v))
+                    '(189 2911 1406 3572 708 1122))))
+
   (printf "DATASETS_HOME ~a\n" (dataset-cache-directory))
   (define names (dataset-names #:package "datasets-fetch"))
   (define problems
     (append (append-map pinned-bytes-problems names) (append-map table-problems names)
-            (bounded-load-problems 'fashion-mnist) (zip-problems)))
+            (bounded-load-problems 'fashion-mnist) (zip-problems) (linnerud-problems)))
   (if (null? problems)
       (printf "network checks hold for ~a\n" names)
       (error (string-join problems "\n" #:before-first "network checks failed:\n"))))

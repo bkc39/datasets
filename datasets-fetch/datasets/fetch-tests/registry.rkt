@@ -41,6 +41,16 @@
                      "346e55b948d973a97e58d2351dde16a484bd415d4595297633bb08f03db6a073"
                      "67da17c76eaffca5446c3361aaab5c3cd6d1c2608764d35dfb1850b086bf8dd5"))
        "idx-image-rows" "MIT")
+      (linnerud
+       20 ("chins" "situps" "jumps" "weight" "waist" "pulse")
+       ,(for/list ([name (in-list '("linnerud_exercise.csv" "linnerud_physiological.csv"))]
+                   [sha (in-list '("cb8d8c24937643fa2459682efb86c5e667bcd6dd93109eef81964d9e9f11bf8c"
+                                   "2bf7e05c1cd7d0adf0eca1e456941f624bed0a4fc96694d60d0ff7853ec5fcf7"))])
+          (list name
+                (string-append "https://raw.githubusercontent.com/scikit-learn/scikit-learn/"
+                               "646da0f072a8afef6a980aa427a710311e67eb9d/sklearn/datasets/data/" name)
+                sha))
+       "linnerud-rows" "NOASSERTION")
       (mnist
        70000 ,image-columns
        ,(idx-files "https://ossci-datasets.s3.amazonaws.com/mnist/"
