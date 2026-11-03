@@ -3,7 +3,9 @@
   "scikit-learn": "1.8.0",
   "torchvision": "0.27.0",
   "nycflights13": "1.0.2",
-  "ElemStatLearn": "2015.6.26.2"
+  "ElemStatLearn": "2015.6.26.2",
+  "pillow": "12.2.0",
+  "scipy": "1.17.1"
  },
  "covtype": {
   "rows": 581012,
@@ -2001,5 +2003,29 @@
    "pixel256": "b1dbed4e91994e97420b7dd6a36f1bdbdba49c3ff48662f824174358ff947c4a",
    "split": "f12db838fe2d262fd1448eddce8cdef0bd64cad67db4c4cf7508b6be6fa97255"
   }
+ },
+ "cifar-10": {
+  "rows": 60000,
+  "canonical-sha256": "ebb814df1ff5b4c10c714b547f63221c1c6da14ba2659b442a8fd4c538b1ceb3"
+ },
+ "cifar-100": {
+  "rows": 60000,
+  "canonical-sha256": "729825a2c580b5e92ff53a095048448c2bfacb9dd3f880e186b9cfb977f1e41d"
+ },
+ "kmnist": {
+  "rows": 70000,
+  "canonical-sha256": "d24f496bf568433970deaddcf0990655331b199041b1f0fd3bb28cf36721101e"
+ },
+ "emnist-balanced": {
+  "rows": 131600,
+  "canonical-sha256": "b842fe4a65907c576e74cf291951b4b262b0649c6e3b4608dc809672da6e8314"
+ },
+ "emnist-letters": {
+  "rows": 145600,
+  "canonical-sha256": "1a000a767f2ab1a5d20ba5ecaa48b625073dac568ed247afe400a0ac684ded5d"
+ },
+ "emnist-digits": {
+  "rows": 280000,
+  "canonical-sha256": "9ea832036d0914c6013b0c4b6b81218e140ea055ed41d95cf112523cc43fe986"
  }
 }

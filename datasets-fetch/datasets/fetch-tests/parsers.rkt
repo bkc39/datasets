@@ -1,11 +1,15 @@
 #lang racket/base
 (require (only-in datasets/core dataset-missing)
-         (only-in datasets/fetch-private/archive gunzip-file tar-gz-member)
+         (only-in datasets/core-tests/fixture gzip-bytes)
+         (only-in datasets/fetch-private/archive gunzip-bytes gunzip-file tar-gz-member tar-gz-members
+                  zip-members)
          (only-in datasets/fetch-private/csv csv-rows info->column-specs)
          (only-in datasets/fetch-private/idx read-idx)
          (only-in datasets/fetch-tests/digest column-digest)
          (only-in datasets/fetch-tests/fixture call-with-upstream-files error-with? idx-bytes)
          (only-in racket/list make-list range)
+         (only-in racket/random crypto-random-bytes)
+         (only-in racket/file file->bytes)
          (only-in racket/match match match-define)
          (only-in racket/sequence sequence->list))
 (module+ test
@@ -132,6 +136,46 @@
          (check-exn (error-with? 'tar-gz-member "no such member" (path->string (hash-ref files "b.tgz"))
                                  member)
                     (lambda () (tar-gz-member (hash-ref files "b.tgz") member)))))))
+
+  (define archive-members
+    `(("Dir/one.txt" #"first") ("Dir/two.data" #"second\n") ("empty" #"")
+      ("noise.bin" ,(crypto-random-bytes 4096)) ("text.txt" ,(apply bytes-append (make-list 400 #"repeated ")))))
+  (define (local-header-methods zip)
+    (for/list ([m (in-list (regexp-match-positions* #rx#"PK\3\4" zip))])
+      (integer-bytes->integer zip #f #f (+ (car m) 8) (+ (car m) 10))))
+
+  (test-case "gunzip-bytes inverts gzip"
+    (for ([data (in-list (list #"" #"plain text\n" (crypto-random-bytes 70000)))])
+      (check-equal? (gunzip-bytes (gzip-bytes data)) data)))
+
+  (test-case "tar-gz-members and zip-members return members in request order, matched by exact path"
+    (call-with-upstream-files
+     `(("a.tgz" (tgz ,archive-members)) ("a.zip" (zip ,archive-members)))
+     (lambda (files)
+       (define requests '(("text.txt" "Dir/one.txt" "noise.bin" "empty" "Dir/two.data") ("empty" "empty") ()))
+       (define (expected names) (for/list ([name (in-list names)]) (cadr (assoc name archive-members))))
+       (for* ([request (in-list requests)] [read-members (in-list (list tar-gz-members zip-members))])
+         (check-equal? (read-members (hash-ref files (if (eq? read-members zip-members) "a.zip" "a.tgz")) request)
+                       (expected request) (format "~a" request)))
+       (check-equal? (tar-gz-members (hash-ref files "a.tgz") '("Dir/one.txt" "Dir/two.data" "empty"))
+                     (for/list ([name (in-list '("Dir/one.txt" "Dir/two.data" "empty"))])
+                       (tar-gz-member (hash-ref files "a.tgz") name)))
+       (check-equal? (sort (local-header-methods (file->bytes (hash-ref files "a.zip"))) <) '(0 0 0 0 8))
+       (for* ([c (in-list '(("a.tgz" tar-gz-member) ("a.zip" zip-members)))]
+              [member (in-list '("Dir" "Dir/three" "two.data" "dir/one.txt"))])
+         (match-define (list archive who) c)
+         (define read-members (if (eq? who 'zip-members) zip-members tar-gz-members))
+         (check-exn (error-with? who "no such member" (format "archive: ~a" (hash-ref files archive))
+                                 (format "member: ~a" member))
+                    (lambda () (read-members (hash-ref files archive) (list "empty" member)))
+                    (format "~a ~a" archive member))))))
+
+  (test-case "tar-gz-members raises the gunzip error of a corrupt archive, not the tar reader's"
+    (call-with-upstream-files
+     '(("bad.tgz" (bytes #"\37\213\10\0\0\0\0\0\0\3\377\377\377\377")))
+     (lambda (files)
+       (check-exn (lambda (e) (and (exn:fail? e) (not (regexp-match? #rx"^untar" (exn-message e)))))
+                  (lambda () (tar-gz-members (hash-ref files "bad.tgz") '("x")))))))
 
   (test-case "digest encodes tagged values"
     (check-equal? (column-digest (vector -7 2.5 "é" dataset-missing))

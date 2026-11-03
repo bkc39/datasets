@@ -2,19 +2,21 @@
 (require (for-syntax racket/base)
          (only-in datasets/core dataset-info dataset-missing dataset-table-columns fetch-dataset
                   load-dataset-table)
-         (only-in datasets/core-tests/fixture cache-files call-with-fetch-fixture rebuild
+         (only-in datasets/core-tests/fixture cache-files call-with-fetch-fixture gzip-bytes rebuild
                   rows->rktd-bytes)
-         (only-in datasets/fetch-private/convert california-housing-rows covtype-rows csv-header-rows
+         (only-in datasets/fetch-private/convert california-housing-rows cifar-10-rows cifar-100-rows
+                  covtype-rows csv-header-rows emnist-balanced-rows emnist-digits-rows emnist-letters-rows
                   esl-zip-file-names esl-zip-rows idx-file-names idx-image-rows)
-         (only-in datasets/fetch-tests/fixture call-with-upstream-files error-with?)
+         (only-in datasets/fetch-tests/fixture call-with-upstream-files error-with? idx-bytes)
          (only-in file/sha1 bytes->hex-string)
          (only-in net/url path->url url->string)
          (only-in racket/file file->string)
          (only-in racket/flonum fl/)
-         (only-in racket/list last make-list take)
-         (only-in racket/match == match match-define match-lambda)
+         (only-in racket/list append* last make-list take)
+         (only-in racket/match == match match* match-define match-lambda)
          (only-in racket/runtime-path define-runtime-path)
          (only-in racket/sequence sequence->list)
+         (only-in racket/string string-join)
          (only-in threading ~>))
 (define-runtime-path fixtures "fixtures")
 (module+ test
@@ -69,6 +71,70 @@
                "sha256" (~> expected rows->rktd-bytes sha256-bytes bytes->hex-string)
                "fetch" (hash-set (hash-ref info "fetch") "files"
                                  (map (match-lambda [(list file _) (file-entry files file)]) upstream))))
+  (define (image-info name shape)
+    (match-define (list _ h w) shape)
+    (define info (dataset-info name))
+    (define columns
+      (for/list ([c (in-list (hash-ref info "columns"))]
+                 #:unless (match (regexp-match #px"^(?:pixel|red|green|blue)([0-9]+)$" (hash-ref c "name"))
+                            [(list _ k) (> (string->number k) (* h w))]
+                            [#f #f]))
+        c))
+    (hash-set* info "image-shape" shape "column-count" (length columns) "columns" columns))
+  (define (cifar-pixels g) (for/list ([k (in-range 6)]) (+ (* 40 g) k)))
+  (define (record-bytes records) (apply bytes (append* records)))
+  (define cifar-10-names
+    (append (for/list ([k (in-range 1 6)]) (format "cifar-10-batches-bin/data_batch_~a.bin" k))
+            '("cifar-10-batches-bin/test_batch.bin")))
+  (define cifar-10-splits '("train" "train" "train" "train" "train" "test"))
+  (define cifar-10-groups '((0) (1) (2 3) (4) (5) (6)))
+  (define (cifar-10-label g) (modulo (+ 3 (* 7 g)) 10))
+  (define (cifar-10-record g) (cons (cifar-10-label g) (cifar-pixels g)))
+  (define (cifar-10-members [record cifar-10-record] #:groups [groups cifar-10-groups])
+    (for/list ([name (in-list cifar-10-names)] [group (in-list groups)])
+      (list name (record-bytes (map record group)))))
+  (define (cifar-10-upstream members)
+    `(("cifar-10-binary.tar.gz"
+       (tgz ,(for*/list ([k (in-list '(2 0 5 4 1 3))] [m (in-list members)]
+                         #:when (equal? (car m) (list-ref cifar-10-names k)))
+               m)))))
+  (define cifar-10-expected
+    (for*/list ([(group split) (in-parallel cifar-10-groups cifar-10-splits)] [g (in-list group)])
+      (append (cifar-pixels g) (list (cifar-10-label g) split))))
+  (define cifar-100-names '("cifar-100-binary/train.bin" "cifar-100-binary/test.bin"))
+  (define (cifar-100-record g) (list* (+ 2 g) (+ 90 g) (cifar-pixels g)))
+  (define (cifar-100-members [record cifar-100-record])
+    (list (list "cifar-100-binary/fine_label_names.txt" #"apple\n")
+          (list (cadr cifar-100-names) (record-bytes (list (record 2))))
+          (list (car cifar-100-names) (record-bytes (map record '(0 1))))))
+  (define (cifar-100-upstream members) `(("cifar-100-binary.tar.gz" (tgz ,members))))
+  (define cifar-100-expected
+    (for/list ([g (in-range 3)] [split (in-list '("train" "train" "test"))])
+      (append (cifar-pixels g) (list (+ 90 g) (+ 2 g) split))))
+  (define emnist-splits '("balanced" "letters" "digits"))
+  (define emnist-parts '("train-images-idx3" "train-labels-idx1" "test-images-idx3" "test-labels-idx1"))
+  (define (emnist-base split) (* 3 (length (member split emnist-splits))))
+  (define (emnist-idx split)
+    (define base (emnist-base split))
+    `(((2 28 28) ,(image-bytes base 2)) ((2) ,(bytes (+ base 1) (+ base 2)))
+      ((1 28 28) ,(image-bytes (+ base 2) 1)) ((1) ,(bytes (+ base 3)))))
+  (define (emnist-members split contents)
+    (for/list ([part (in-list emnist-parts)] [content (in-list contents)])
+      (list (format "gzip/emnist-~a-~a-ubyte.gz" split part) (gzip-bytes (apply idx-bytes content)))))
+  (define (emnist-upstream split [contents (emnist-idx split)])
+    `(("gzip.zip"
+       (zip ,(append* (list (list (format "gzip/emnist-~a-mapping.txt" split) #"0 48\n"))
+                      (for/list ([s (in-list (reverse emnist-splits))])
+                        (emnist-members s (if (equal? s split) contents (emnist-idx s)))))))))
+  (define (emnist-expected split)
+    (define base (emnist-base split))
+    (for/list ([i (in-range base (+ base 3))] [split (in-list '("train" "train" "test"))])
+      (append (for/list ([k (in-range pixels)]) (pixel i k)) (list (add1 i) split))))
+  (define emnist-cases
+    (for/list ([split (in-list emnist-splits)]
+               [converter (in-list (list emnist-balanced-rows emnist-letters-rows emnist-digits-rows))])
+      (define name (string->symbol (format "emnist-~a" split)))
+      (list name converter (emnist-upstream split) (dataset-info name) (emnist-expected split))))
   (define csv-info
     (hash "columns" (map (match-lambda [(list name type) (hash "name" name "original-name" name "type" type)])
                          '(("y" "real") ("name" "string") ("x" "integer")))))
@@ -86,7 +152,13 @@
       (zip ,esl-zip-rows ,(zip-upstream zip-train zip-test) ,zip-info ,zip-expected)
       (nycflights13-flights ,csv-header-rows (("flights.csv" (plain ,(fixture "flights-mini.csv"))))
                             ,(dataset-info 'nycflights13-flights)
-                            ,flights-expected)))
+                            ,flights-expected)
+      (cifar-10 ,cifar-10-rows ,(cifar-10-upstream (cifar-10-members)) ,(image-info 'cifar-10 '(3 1 2))
+                ,cifar-10-expected)
+      (cifar-100 ,cifar-100-rows ,(cifar-100-upstream (cifar-100-members)) ,(image-info 'cifar-100 '(3 1 2))
+                 ,cifar-100-expected)
+      (kmnist ,idx-image-rows ,(idx-upstream idx-contents) ,(dataset-info 'kmnist) ,idx-expected)
+      ,@emnist-cases))
   (define converter-cases
     `(,@registry-cases
       (csv-header ,csv-header-rows (("data.csv" (plain ,(fixture "rdatasets-mini.csv")))) ,csv-info
@@ -162,6 +234,75 @@
                      (lambda () (sequence->list (idx-image-rows files (dataset-info 'mnist))))
                      name)))))
 
+  (define ((cifar-10-label-record label) g) (cons (if (= g 5) label (cifar-10-label g)) (cifar-pixels g)))
+  (define ((cifar-100-label-record coarse fine) g)
+    (if (= g 2) (list* coarse fine (cifar-pixels g)) (cifar-100-record g)))
+  (define (emnist-labels split labels)
+    (match-define (list images _ test-images test-labels) (emnist-idx split))
+    (list images `((,(bytes-length labels)) ,labels) test-images test-labels))
+  (define cifar-10-info (image-info 'cifar-10 '(3 1 2)))
+  (define cifar-100-info (image-info 'cifar-100 '(3 1 2)))
+  (define (misshapen info) (hash-set info "image-shape" '(3 1 3)))
+  (define image-error-cases
+    `((,cifar-10-rows ,(cifar-10-upstream
+                        (for/list ([m (in-list (cifar-10-members))])
+                          (if (regexp-match? #rx"test" (car m)) (list (car m) (make-bytes 9 0)) m)))
+                      ,cifar-10-info cifar-10-rows "member is not a whole number of records"
+                      "member: cifar-10-batches-bin/test_batch.bin" "record bytes: 7" "given bytes: 9")
+      (,cifar-10-rows ,(cifar-10-upstream (cifar-10-members #:groups '((0) () (2 3) (4) (5) (6))))
+                      ,cifar-10-info cifar-10-rows "member is not a whole number of records"
+                      "member: cifar-10-batches-bin/data_batch_2.bin" "record bytes: 7" "given bytes: 0")
+      (,cifar-10-rows ,(cifar-10-upstream (cifar-10-members (cifar-10-label-record 10))) ,cifar-10-info
+                      cifar-10-rows "label out of range" "member: cifar-10-batches-bin/data_batch_5.bin"
+                      "record: 1" "label: 10" "expected: 0 to 9")
+      (,cifar-10-rows ,(cifar-10-upstream (cdr (cifar-10-members))) ,cifar-10-info
+                      tar-gz-member "no such member" "member: cifar-10-batches-bin/data_batch_1.bin")
+      (,cifar-10-rows ,(cifar-10-upstream (cifar-10-members)) ,(misshapen cifar-10-info)
+                      cifar-10-rows "image size does not match the column count" "image-shape: (3 1 3)"
+                      "column-count: 8")
+      (,cifar-100-rows ,(cifar-100-upstream (cifar-100-members (cifar-100-label-record 4 100))) ,cifar-100-info
+                       cifar-100-rows "label out of range" "member: cifar-100-binary/test.bin" "record: 1"
+                       "label: 100" "expected: 0 to 99")
+      (,cifar-100-rows ,(cifar-100-upstream (cifar-100-members (cifar-100-label-record 20 92))) ,cifar-100-info
+                       cifar-100-rows "coarse label out of range" "member: cifar-100-binary/test.bin"
+                       "label: 20" "expected: 0 to 19")
+      (,cifar-100-rows ,(cifar-100-upstream `((,(car cifar-100-names) ,(make-bytes 6 0))
+                                              (,(cadr cifar-100-names) ,(make-bytes 8 0))))
+                       ,cifar-100-info
+                       cifar-100-rows "member is not a whole number of records" "record bytes: 8" "given bytes: 6")
+      (,cifar-100-rows ,(cifar-100-upstream (take (cifar-100-members) 2)) ,cifar-100-info
+                       tar-gz-member "no such member" "member: cifar-100-binary/train.bin")
+      (,cifar-100-rows ,(cifar-100-upstream (cifar-100-members)) ,(misshapen cifar-100-info)
+                       cifar-100-rows "image size does not match the column count" "column-count: 9")
+      ,@(append*
+         (for/list ([split (in-list emnist-splits)]
+                    [converter (in-list (list emnist-balanced-rows emnist-letters-rows emnist-digits-rows))])
+           (define info (dataset-info (string->symbol (format "emnist-~a" split))))
+           `((,converter ,(emnist-upstream split (emnist-labels split (bytes 1 2 3))) ,info
+                         idx-image-rows "image and label counts differ" "split: train" "images: 2" "labels: 3")
+             (,converter ,(emnist-upstream split) ,(hash-set info "image-shape" '(1 28 29))
+                         idx-image-rows "image size does not match the column count" "image-shape: (1 28 29)"
+                         "column-count: 786")
+             (,converter (("gzip.zip" (zip ,(cdr (emnist-members split (emnist-idx split)))))) ,info
+                         zip-members "no such member"
+                         ,(format "member: gzip/emnist-~a-train-images-idx3-ubyte.gz" split)))))))
+
+  (test-case "image converters reject malformed members and registry shapes"
+    (for ([c (in-list image-error-cases)])
+      (match-define (list* converter upstream info who needles) c)
+      (call-with-upstream-files upstream
+        (lambda (files)
+          (check-exn (apply error-with? who needles) (lambda () (sequence->list (converter files info)))
+                     (string-join needles " "))))))
+
+  (test-case "cifar converters read lazily: rows before a bad record come out, the bad record raises when reached"
+    (define seen (box 0))
+    (call-with-upstream-files (cifar-10-upstream (cifar-10-members (cifar-10-label-record 10)))
+      (lambda (files)
+        (check-exn (error-with? 'cifar-10-rows "label out of range")
+                   (lambda () (for ([_ (cifar-10-rows files cifar-10-info)]) (set-box! seen (add1 (unbox seen))))))
+        (check-equal? (unbox seen) 5))))
+
   (define (written v) (if (eq? v dataset-missing) 'missing v))
   (define (peak-growth rows every)
     (collect-garbage)
@@ -179,6 +320,31 @@
       (lambda (files)
         (define growth (peak-growth (idx-image-rows files (dataset-info 'mnist)) 2000))
         (check-true (< growth (* 64 1024 1024)) (format "live growth ~a bytes" growth)))))
+
+  (test-case "the image converters keep no row they have produced"
+    (define n 20000)
+    (define gray (* 28 28))
+    (define cifar-10-big
+      (for/list ([name (in-list cifar-10-names)] [k (in-naturals)])
+        (list name (make-bytes (* (if (zero? k) n 1) (+ 1 (* 3 gray))) 0))))
+    (define emnist-big `(((,n 28 28) ,(make-bytes (* n gray) 0)) ((,n) ,(make-bytes n 0))
+                         ((1 28 28) ,(make-bytes gray 0)) ((1) ,(bytes 0))))
+    (for ([c (in-list
+              `((cifar-10 ,cifar-10-rows ,(cifar-10-upstream cifar-10-big) ,(image-info 'cifar-10 '(3 28 28)))
+                (cifar-100 ,cifar-100-rows
+                           ,(cifar-100-upstream
+                             (list (list (car cifar-100-names) (make-bytes (* n (+ 2 (* 3 gray))) 0))
+                                   (list (cadr cifar-100-names) (make-bytes (+ 2 (* 3 gray)) 0))))
+                           ,(image-info 'cifar-100 '(3 28 28)))
+                ,@(for/list ([c (in-list emnist-cases)])
+                    (match-define (list name converter _ info _) c)
+                    (define split (cadr (regexp-match #rx"emnist-(.*)" (symbol->string name))))
+                    `(,name ,converter (("gzip.zip" (zip ,(emnist-members split emnist-big)))) ,info))))])
+      (match-define (list name converter upstream info) c)
+      (call-with-upstream-files upstream
+        (lambda (files)
+          (define growth (peak-growth (converter files info) 2000))
+          (check-true (< growth (* 64 1024 1024)) (format "~a live growth ~a bytes" name growth))))))
 
   (test-case "esl-zip-rows keeps no row it has produced"
     (define n 12000)

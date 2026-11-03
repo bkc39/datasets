@@ -1,5 +1,6 @@
 #lang racket/base
-(require (only-in datasets/fetch-private/archive gunzip-file tar-gz-member)
+(require (only-in datasets/fetch-private/archive gunzip-bytes gunzip-file tar-gz-member tar-gz-members
+                  zip-members)
          (only-in datasets/fetch-private/csv csv-rows info->column-specs)
          (only-in datasets/fetch-private/idx read-idx)
          (only-in racket/contract/base -> and/c contract-out flat-named-contract hash/c integer-in listof)
@@ -15,6 +16,11 @@
           [california-housing-rows converter/c]
           [idx-file-names (listof string?)]
           [idx-image-rows converter/c]
+          [cifar-10-rows converter/c]
+          [cifar-100-rows converter/c]
+          [emnist-balanced-rows converter/c]
+          [emnist-letters-rows converter/c]
+          [emnist-digits-rows converter/c]
           [csv-header-rows converter/c]
           [esl-zip-file-names (listof string?)]
           [esl-zip-rows converter/c]))
@@ -52,14 +58,14 @@
     "t10k-labels-idx1-ubyte.gz"))
 
 (define (idx-image-rows files info)
-  (match-define (list train-images train-labels test-images test-labels) idx-file-names)
-  (define width (- (hash-ref info "column-count") 2))
-  (sequence-append (idx-split-rows files train-images train-labels "train" width)
-                   (idx-split-rows files test-images test-labels "test" width)))
+  (idx-rows (lambda (k) (idx-file files (list-ref idx-file-names k))) (- (hash-ref info "column-count") 2)))
 
-(define (idx-split-rows files images-file labels-file split width)
-  (define-values (image-dims images) (idx-file files images-file))
-  (define-values (label-dims labels) (idx-file files labels-file))
+(define (idx-rows read-part width)
+  (sequence-append (idx-split-rows read-part 0 1 "train" width) (idx-split-rows read-part 2 3 "test" width)))
+
+(define (idx-split-rows read-part images-part labels-part split width)
+  (define-values (image-dims images) (read-part images-part))
+  (define-values (label-dims labels) (read-part labels-part))
   (sequence-map (lambda (i) (idx-row images labels i width split))
                 (in-range (idx-image-count image-dims label-dims split width))))
 
@@ -84,6 +90,72 @@
 
 (define (idx-file files name)
   (~> (hash-ref files name) gunzip-file open-input-bytes read-idx))
+
+(define (image-width who info extra-columns)
+  (define shape (hash-ref info "image-shape"))
+  (define width (apply * shape))
+  (define count (hash-ref info "column-count"))
+  (cond
+    [(= count (+ width extra-columns)) width]
+    [else (error who "image size does not match the column count\n  image-shape: ~a\n  column-count: ~a"
+                 shape count)]))
+
+(define ((emnist-rows split) files info)
+  (define width (image-width 'idx-image-rows info 2))
+  (define members
+    (zip-members (hash-ref files "gzip.zip")
+                 (for/list ([part (in-list '("train-images-idx3" "train-labels-idx1" "test-images-idx3"
+                                             "test-labels-idx1"))])
+                   (format "gzip/emnist-~a-~a-ubyte.gz" split part))))
+  (idx-rows (lambda (k) (~> (list-ref members k) gunzip-bytes open-input-bytes read-idx)) width))
+
+(define emnist-balanced-rows (emnist-rows "balanced"))
+(define emnist-letters-rows (emnist-rows "letters"))
+(define emnist-digits-rows (emnist-rows "digits"))
+
+(define cifar-10-members
+  (append (for/list ([k (in-range 1 6)]) (format "cifar-10-batches-bin/data_batch_~a.bin" k))
+          '("cifar-10-batches-bin/test_batch.bin")))
+(define cifar-100-members '("cifar-100-binary/train.bin" "cifar-100-binary/test.bin"))
+
+(define (cifar-10-rows files info)
+  (cifar-rows 'cifar-10-rows (hash-ref files "cifar-10-binary.tar.gz") info cifar-10-members
+              '("train" "train" "train" "train" "train" "test") '((0 10 "label"))))
+
+(define (cifar-100-rows files info)
+  (cifar-rows 'cifar-100-rows (hash-ref files "cifar-100-binary.tar.gz") info cifar-100-members
+              '("train" "test") '((1 100 "label") (0 20 "coarse label"))))
+
+(define (cifar-rows who archive info members splits labels)
+  (define width (image-width who info (add1 (length labels))))
+  (define record-bytes (+ (length labels) width))
+  (~> (for/list ([member (in-list members)] [data (in-list (tar-gz-members archive members))]
+                 [split (in-list splits)])
+        (sequence-map (lambda (record) (cifar-row who member data record record-bytes labels split))
+                      (in-range (cifar-record-count who member data record-bytes))))
+      (apply sequence-append _)))
+
+(define (cifar-record-count who member data record-bytes)
+  (define size (bytes-length data))
+  (cond
+    [(and (positive? size) (zero? (remainder size record-bytes))) (quotient size record-bytes)]
+    [else (error who "member is not a whole number of records\n  member: ~a\n  record bytes: ~a\n  given bytes: ~a"
+                 member record-bytes size)]))
+
+(define (cifar-row who member data record record-bytes labels split)
+  (define start (* record record-bytes))
+  (define label-values
+    (for/list ([label (in-list labels)])
+      (match-define (list offset classes name) label)
+      (define value (bytes-ref data (+ start offset)))
+      (cond
+        [(< value classes) value]
+        [else (error who "~a out of range\n  member: ~a\n  record: ~a\n  label: ~a\n  expected: 0 to ~a"
+                     name member (add1 record) value (sub1 classes))])))
+  (~> data
+      (subbytes (+ start (length labels)) (+ start record-bytes))
+      bytes->list
+      (append _ label-values (list split))))
 
 (define (csv-header-rows files info)
   (match (hash-values files)

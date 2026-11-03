@@ -65,39 +65,83 @@ def reals(values):
     return tagged(b"f", "<f8", values.astype(np.float64))
 
 
-def images(loader, root):
+def image_splits(loader, root, layout=lambda data: data.reshape(len(data), -1)):
     import numpy as np
     splits = [loader(root, train=train, download=True) for train in (True, False)]
-    pixels = np.concatenate([s.data.numpy().reshape(-1, 784) for s in splits])
-    labels = np.concatenate([s.targets.numpy() for s in splits])
+    pixels = np.concatenate([layout(np.asarray(s.data)) for s in splits])
+    labels = np.concatenate([np.asarray(s.targets) for s in splits])
     split = ["train"] * len(splits[0].targets) + ["test"] * len(splits[1].targets)
-    columns = {f"pixel{k + 1}": integers(pixels[:, k]) for k in range(784)}
+    return pixels, [labels], split
+
+
+def images(loader, root):
+    pixels, [labels], split = image_splits(loader, root)
+    columns = {f"pixel{k + 1}": integers(pixels[:, k]) for k in range(pixels.shape[1])}
     columns["label"] = integers(labels)
     columns["split"] = cells(split)
     return len(labels), columns
 
 
+def canonical(pixels, labels, split):
+    numbers = [str(i).encode() for i in range(256)]
+    h = hashlib.sha256(b"(\n")
+    for i, row in enumerate(pixels):
+        tail = [str(int(label[i])).encode() for label in labels] + [json.dumps(split[i]).encode()]
+        h.update(b"  (" + b" ".join(list(map(numbers.__getitem__, row.tolist())) + tail) + b")\n")
+    h.update(b")\n")
+    return {"rows": len(pixels), "canonical-sha256": h.hexdigest()}
+
+
+def cifar_planes(data):
+    return data.transpose(0, 3, 1, 2).reshape(len(data), -1)
+
+
+def cifar_100(root):
+    import pickle
+    from torchvision.datasets import CIFAR100
+    pixels, [labels], split = image_splits(CIFAR100, root, cifar_planes)
+    coarse = []
+    for part in ("train", "test"):
+        with open(Path(root) / "cifar-100-python" / part, "rb") as f:
+            coarse += pickle.load(f, encoding="latin1")["coarse_labels"]
+    return canonical(pixels, [labels, coarse], split)
+
+
 def loader_references():
+    from functools import partial
+    import PIL
+    import scipy
     import sklearn
     import torchvision
     from sklearn import datasets
-    from torchvision.datasets import MNIST, FashionMNIST
+    from torchvision.datasets import CIFAR10, EMNIST, KMNIST, MNIST, FashionMNIST
     root = os.environ["TORCHVISION_ROOT"]
     bunch = datasets.fetch_covtype()
     names = [n.lower().replace("_", "-") for n in bunch.feature_names + bunch.target_names]
     columns = [bunch.data[:, k] for k in range(bunch.data.shape[1])] + [bunch.target]
     frame = datasets.fetch_california_housing(as_frame=True).frame
-    return {"scikit-learn": sklearn.__version__, "torchvision": torchvision.__version__}, {
-        "covtype": (len(bunch.target), {n: integers(c) for n, c in zip(names, columns)}),
-        "california-housing": (len(frame), {CALIFORNIA[n]: reals(frame[n].to_numpy()) for n in frame.columns}),
-        "mnist": images(MNIST, root),
-        "fashion-mnist": images(FashionMNIST, root),
+    versions = {"scikit-learn": sklearn.__version__, "torchvision": torchvision.__version__,
+                "pillow": PIL.__version__, "scipy": scipy.__version__}
+    return versions, {
+        "covtype": digests(len(bunch.target), {n: integers(c) for n, c in zip(names, columns)}),
+        "california-housing": digests(len(frame), {CALIFORNIA[n]: reals(frame[n].to_numpy()) for n in frame.columns}),
+        "mnist": digests(*images(MNIST, root)),
+        "fashion-mnist": digests(*images(FashionMNIST, root)),
+        "cifar-10": canonical(*image_splits(CIFAR10, root, cifar_planes)),
+        "cifar-100": cifar_100(root),
+        "kmnist": canonical(*image_splits(KMNIST, root)),
+        **{f"emnist-{s}": canonical(*image_splits(partial(EMNIST, split=s), root))
+           for s in ("balanced", "letters", "digits")},
     }
+
+
+def digests(rows, columns):
+    return {"rows": rows, "columns": columns}
 
 
 def r_table(directory, id):
     header, _, rows = read_r_table(directory, id)
-    return len(rows), {kebab(n): cells(r[j] for r in rows) for j, n in enumerate(header)}
+    return digests(len(rows), {kebab(n): cells(r[j] for r in rows) for j, n in enumerate(header)})
 
 
 def description_version(package_dir):
@@ -139,6 +183,5 @@ match sys.argv[1:]:
         sys.exit(__doc__)
 reference = json.loads(OUT.read_text()) if OUT.exists() else {"versions": {}}
 reference["versions"].update(versions)
-for name, (rows, columns) in tables.items():
-    reference[name] = {"rows": rows, "columns": columns}
+reference.update(tables)
 OUT.write_text(json.dumps(reference, indent=1) + "\n")

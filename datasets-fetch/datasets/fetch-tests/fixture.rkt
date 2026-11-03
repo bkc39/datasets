@@ -1,12 +1,14 @@
 #lang racket/base
 (require (only-in datasets/core-tests/fixture call-with-temporary-fixture gzip-bytes)
+         (only-in file/gzip deflate)
          (only-in file/tar tar->output)
+         (only-in file/zip zip->output zip-entry)
          (only-in racket/contract/base -> ->* any any/c contract-out hash/c list/c listof non-empty-listof
                   or/c)
-         (only-in racket/file make-directory*)
-         (only-in racket/match match match-lambda)
+         (only-in racket/file file->bytes make-directory*)
+         (only-in racket/match match match-define match-lambda)
          (only-in racket/path path-only)
-         (only-in racket/port call-with-output-bytes)
+         (only-in racket/port call-with-output-bytes open-output-nowhere)
          (only-in racket/string string-contains? string-prefix?))
 (provide (contract-out
           [call-with-upstream-files (-> (listof (list/c string? upstream/c))
@@ -16,15 +18,18 @@
           [idx-bytes (->* ((listof exact-nonnegative-integer?) bytes?) (#:magic bytes?) bytes?)]))
 
 (define upstream/c
-  (or/c (list/c 'gz string?) (list/c 'tgz (listof (list/c string? string?))) (list/c 'plain string?)
-        (list/c 'idx-gz (non-empty-listof exact-nonnegative-integer?) bytes?)))
+  (or/c (list/c 'gz string?) (list/c 'tgz (listof (list/c string? (or/c string? bytes?)))) (list/c 'plain string?)
+        (list/c 'idx-gz (non-empty-listof exact-nonnegative-integer?) bytes?)
+        (list/c 'zip (listof (list/c string? bytes?))) (list/c 'bytes bytes?)))
 
 (define (upstream-bytes upstream)
   (match upstream
     [(list 'plain text) (string->bytes/utf-8 text)]
     [(list 'gz text) (gzip-bytes (string->bytes/utf-8 text))]
     [(list 'tgz members) (gzip-bytes (tar-bytes members))]
-    [(list 'idx-gz dims data) (gzip-bytes (idx-bytes dims data))]))
+    [(list 'idx-gz dims data) (gzip-bytes (idx-bytes dims data))]
+    [(list 'zip members) (zip-bytes members)]
+    [(list 'bytes data) data]))
 
 (define (idx-bytes dims data #:magic [magic (bytes 0 0 8 (length dims))])
   (apply bytes-append magic (append (map (lambda (d) (integer->integer-bytes d 4 #f #t)) dims) (list data))))
@@ -46,11 +51,32 @@
                        #:get-timestamp (lambda (_) 0))))))))
 
 (define (write-member! dir member)
-  (match member
-    [(list name text)
-     (define file (build-path dir name))
-     (make-directory* (path-only file))
-     (call-with-output-file file (lambda (out) (write-string text out)))]))
+  (match-define (list name content) member)
+  (define file (build-path dir name))
+  (make-directory* (path-only file))
+  (call-with-output-file file
+    (lambda (out) (if (bytes? content) (write-bytes content out) (write-string content out)))))
+
+(define stored-level 0)
+(define deflated-level 6)
+
+(define (deflated-size data)
+  (define-values (_in out _crc) (deflate (open-input-bytes data) (open-output-nowhere)))
+  out)
+
+(define (zip-bytes members)
+  (call-with-temporary-fixture
+   (lambda (dir)
+     (define file (build-path dir "members.zip"))
+     (call-with-output-file file
+       (lambda (out)
+         (zip->output (for/list ([member (in-list members)])
+                        (match-define (list name data) member)
+                        (zip-entry 'file (string->path name) data (bytes-length data) (hash)
+                                   (if (< (deflated-size data) (bytes-length data)) deflated-level stored-level)))
+                      out
+                      #:get-timestamp (lambda (_) 0))))
+     (file->bytes file))))
 
 (define (call-with-upstream-files upstream proc)
   (call-with-temporary-fixture
