@@ -1,6 +1,6 @@
 #lang scribble/manual
 @(require scribble/eval
-          (for-label racket/base racket/contract/base datasets/core))
+          (for-label racket/base racket/contract/base datasets/core datasets/synthetic))
 @(define ev (make-base-eval))
 @(ev '(require datasets/core))
 
@@ -238,11 +238,48 @@ checks the data's SHA-256, for both tiers; a corrupt cached file raises
 Downloads are logged at level @racket['info] with topic @racket['datasets]; set
 @envvar{PLTSTDERR} to @tt{info@"@"datasets} to see them.
 
-@section[#:tag "datasets-core-table-reference"]{Table inspection}
+@section[#:tag "datasets-core-table-reference"]{Tables}
+
+@defproc[(dataset-table [names (non-empty-listof string?)]
+                        [columns (non-empty-listof (or/c list? vector?))]
+                        [#:info info hash? (hash)])
+         dataset-table?]{
+Returns an immutable table with one column per name, in order. Each column is a
+list or vector of cells: exact integers from @racket[(- (expt 2 63))] to
+@racket[(sub1 (expt 2 63))], flonums, strings or @racket[dataset-missing], its other
+cells all numbers or all strings. Names are distinct and columns equally long; that
+length is the row count, which may be zero.
+
+The metadata (@racket[dataset-table-info]) is @racket[info] over defaults, each key of
+@racket[info] replacing its default whole, unchecked against the data. The defaults
+give the row and column counts, @racket[#f] or empty for the source fields of
+@secref["datasets-metadata-reference"], and one @tt{columns} description per name
+whose @tt{type} is @racket["integer"] when every nonmissing cell is an exact integer,
+@racket["string"] when every one is a string and @racket["real"] otherwise.
+@racket[info] is an @racket[equal?]-based hash table with string keys whose values are
+strings, numbers, booleans, symbols, lists and such hash tables, without cycles; its
+@tt{columns}, if present, is a list of hash tables each with a string @tt{name}.
+
+The table is a copy: later changes to the arguments do not reach it. A copy taken
+through an impersonator is checked again, and one that no longer passes raises
+@racket[exn:fail:contract]. Rebuilding a
+loaded or generated table from its names, columns and metadata gives an
+@racket[equal?] table.}
+
+@examples[#:eval ev
+ (define t (dataset-table '("x" "label") (list (list 1.5 dataset-missing 3) '("a" "b" "a"))))
+ (dataset-table-row-count t)
+ (map (lambda (c) (hash-ref c "type")) (hash-ref (dataset-table-info t) "columns"))
+ (define iris (load-dataset-table 'iris))
+ (equal? iris (dataset-table (dataset-table-names iris)
+                             (vector->list (dataset-table-columns iris))
+                             #:info (dataset-table-info iris)))
+ (eval:error (dataset-table '("a" "a") '((1) (2))))]
 
 @defproc[(dataset-table? [value any/c]) boolean?]{
 Returns @racket[#t] if @racket[value] is a dataset table, @racket[#f] otherwise.
-There is no public table constructor or mutator.}
+Tables come from @racket[load-dataset-table], the @racketmodname[datasets/synthetic]
+generators and @racket[dataset-table]; there is no mutator.}
 
 @defproc[(dataset-table-names [table dataset-table?]) (listof string?)]{
 Returns the selected column names in order. Each string is immutable.}
@@ -262,7 +299,8 @@ Returns the number of source observations, including rows with missing values.}
 
 @defproc[(dataset-table-info [table dataset-table?]) (and/c hash? immutable?)]{
 Returns the full source metadata. Its @racket["column-count"] may exceed the
-number of selected columns in @racket[table].}
+number of selected columns in @racket[table]. For a table from
+@racket[dataset-table], see there.}
 
 @section[#:tag "datasets-core-missing-reference"]{Missing values}
 

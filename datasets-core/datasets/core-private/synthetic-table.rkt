@@ -4,7 +4,7 @@
          (only-in syntax/parse/define define-syntax-parse-rule)
          (only-in datasets/core-private/random seed->generator)
          (only-in datasets/core-private/synthetic-contracts generator)
-         (only-in datasets/core-private/table dataset-table))
+         (only-in datasets/core-private/table column-info unchecked-dataset-table))
 (provide define-generator (struct-out generated) (struct-out target))
 
 (struct generated (features descriptions targets derived))
@@ -57,10 +57,6 @@
         "make-gaussian-quantiles"
         "Nested Gaussian shells cut at quantiles of the distance from the mean."))
 
-(define (column-info name original-name type description)
-  (hash "name" name "original-name" original-name "type" type "levels" '() "unit" #f
-        "missing-count" 0 "description" description))
-
 (define (generated->table name arguments result)
   (define reference (string-append "make_" (regexp-replace* #rx"-" (substring name 5) "_")))
   (define feature-names
@@ -73,10 +69,10 @@
     (append (for/list ([j (in-naturals)]
                        [n (in-list feature-names)]
                        [d (in-list (generated-descriptions result))])
-              (column-info n (string->immutable-string (format "X[:, ~a]" j)) "real" d))
+              (column-info n (string->immutable-string (format "X[:, ~a]" j)) "real" d 0))
             (for/list ([t (in-list targets)] [n (in-list target-names)])
               (column-info n (string->immutable-string (target-original-name t)) (target-type t)
-                           (target-description t)))))
+                           (target-description t) 0))))
   (define data
     (append (map vector->immutable-vector (generated-features result))
             (map (λ (t) (vector->immutable-vector (target-values t))) targets)))
@@ -96,7 +92,7 @@
                          (string->immutable-string (string-append "sklearn.datasets." reference))
                          "reference-version" "1.8.0" "stream" 1 "arguments" arguments
                          "derived" (generated-derived result))))
-  (dataset-table names (vector->immutable-vector (list->vector data)) rows info))
+  (unchecked-dataset-table names (apply vector-immutable data) rows info))
 
 (define-syntax-parse-rule (define-generator name:generator #:stream stream:id body:expr ...+)
   #:with label (datum->syntax #'name (symbol->string (syntax-e #'name)))

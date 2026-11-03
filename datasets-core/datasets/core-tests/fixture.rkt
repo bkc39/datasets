@@ -1,7 +1,7 @@
 #lang racket/base
 (require (for-syntax racket/base)
-         (only-in datasets/core dataset-missing? dataset-table-columns dataset-table-names
-                  dataset-table-row-count dataset-table?)
+         (only-in datasets/core dataset-missing dataset-missing? dataset-table dataset-table-columns
+                  dataset-table-info dataset-table-names dataset-table-row-count dataset-table?)
          (only-in datasets/core-private/codec hex)
          (only-in file/gunzip gunzip-through-ports)
          (only-in file/gzip gzip-through-ports)
@@ -26,6 +26,9 @@
           [write-registry-fixture! (-> path? #:info any/c #:registries (hash/c string? any/c)
                                        #:data (hash/c string? bytes?) void?)]
           [table-digest (-> dataset-table? string?)]
+          [rebuild (-> dataset-table? dataset-table?)]
+          [datum->cells (-> list? list?)]
+          [column-types (-> dataset-table? (listof string?))]
           [toy-artifact bytes?]
           [toy-artifact-sha256 string?]
           [toy-table-digest string?]
@@ -133,6 +136,16 @@
 (define (gzip-bytes bs [timestamp 0])
   (call-with-output-bytes
    (lambda (out) (gzip-through-ports (open-input-bytes bs) out #f timestamp))))
+
+(define (rebuild t)
+  (dataset-table (dataset-table-names t) (vector->list (dataset-table-columns t))
+                 #:info (dataset-table-info t)))
+
+(define (datum->cells datum)
+  (map (lambda (c) (if (eq? c 'missing) dataset-missing c)) datum))
+
+(define (column-types t)
+  (map (lambda (c) (hash-ref c "type")) (hash-ref (dataset-table-info t) "columns")))
 
 (define (table-digest table)
   (hex (sha256-bytes
