@@ -8,3 +8,4 @@ datasets-uci/datasets/uci-data/licenses/* -whitespace
 datasets-islr/datasets/islr-data/provenance/* -whitespace
 datasets-islr/datasets/islr-data/licenses/* -whitespace
 *.rktd.gz binary
+scripts/packages.txt text eol=lf
