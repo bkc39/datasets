@@ -155,13 +155,15 @@ bash scripts/install-check.sh /tmp/datasets-dependencies/sources full
 
 The full checks require Polars' native library, either its packaged binary or
 `RKT_POLARS_COMPAT_LIB_PATH` pointing to the native derivation. Both manuals have a narrative guide and a separate API reference, with evaluated
-examples and cross-references. The core manual also includes the generated catalog.
-Their entry points are [datasets-core.scrbl](datasets-core/datasets/core-doc/datasets-core.scrbl)
+examples and cross-references. The core manual also includes the generated catalog
+of `datasets-core`; `datasets-r`, `datasets-uci`, `datasets-islr` and `datasets-fetch`
+each render their own catalog manual, so a family installed after core is documented
+without re-rendering core's manual. Their entry points are [datasets-core.scrbl](datasets-core/datasets/core-doc/datasets-core.scrbl)
 and [datasets.scrbl](datasets/datasets/main-doc/datasets.scrbl).
 
 ## Reading the guide and reference locally
 
-In the development shell, render both manuals and serve the ignored HTML output:
+In the development shell, render the manuals and serve the ignored HTML output:
 
 ```sh
 bash scripts/build-docs.sh
@@ -170,7 +172,8 @@ python3 -m http.server 8765 --bind 127.0.0.1 --directory doc
 
 Open <http://127.0.0.1:8765/datasets/datasets-guide.html> for the guide or
 <http://127.0.0.1:8765/datasets/datasets-reference.html> for the reference.
-The lightweight core manual is at <http://127.0.0.1:8765/datasets-core/index.html>.
+The lightweight core manual is at <http://127.0.0.1:8765/datasets-core/index.html>,
+and each family catalog beside it, such as <http://127.0.0.1:8765/datasets-r/index.html>.
 The preview uses Scribble's standard manual CSS, fonts, navigation, and API
 boxes. It rebuilds into a clean staging directory and checks local links and
 anchors before replacing `doc/`. Links between our manuals stay local; links to

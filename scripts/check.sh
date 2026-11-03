@@ -19,4 +19,5 @@ if [[ "$mode" == full ]]; then
   raco setup --check-pkg-deps --unused-pkg-deps --pkgs "${dependents[@]}"
   "${test[@]}" "${dependents[@]}"
   racket examples/core-with-polars.rkt
+  bash scripts/catalog-order-check.sh
 fi

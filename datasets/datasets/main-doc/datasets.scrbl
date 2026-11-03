@@ -14,8 +14,13 @@ objects are available through the same loading interface.
 
 The @secref["datasets-guide"] is a practical introduction with evaluated
 examples. The @secref["datasets-reference"] defines the loaders, selection rules,
-and conversion procedures. For the complete dataset catalog and the lightweight
-table API, see @other-doc['(lib "datasets/core-doc/datasets-core.scrbl")].
+and conversion procedures. For the lightweight table API and the catalog of
+@tt{datasets-core}, see @other-doc['(lib "datasets/core-doc/datasets-core.scrbl")].
+Each other package catalogs its own datasets:
+@other-doc['(lib "datasets/r-doc/datasets-r.scrbl")],
+@other-doc['(lib "datasets/uci-doc/datasets-uci.scrbl")],
+@other-doc['(lib "datasets/islr-doc/datasets-islr.scrbl")] and
+@other-doc['(lib "datasets/fetch-doc/datasets-fetch.scrbl")].
 
 @table-of-contents[]
 @include-section["guide.scrbl"]
