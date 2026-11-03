@@ -162,7 +162,8 @@ GGPLOT2_RECIPES=[
                 'themselves: those are faithful.')),
     ('luv-colours','luv_colours',"R's colors(), converted to CIE Luv",
      dict(identifiers=['col'],
-          notes="All 657 built-in R colors() in CIE Luv colour space. col, the colour name, is an identifier.")),
+          notes="All 657 built-in R colors() in CIE Luv colour space. l is upstream's unscaled value (9341.6 for white), not "
+                "L* on a 0 to 100 scale. col, the colour name, is an identifier.")),
     ('midwest','midwest','2000 US census, as documented upstream',
      dict(identifiers=['pid'],
           notes='Demographics of 437 counties in Illinois, Indiana, Michigan, Ohio and Wisconsin. ggplot2 notes that the '
@@ -482,8 +483,10 @@ def import_r():
             cell=sexp('Skipped. '+r['target']) if r['disposition']=='skipped' else f"(dataset {r['target']})"
             return f"((tt {sexp(r['object'])}) {sexp(r['class'])} {cell})"
         PRIVATE.mkdir(parents=True,exist_ok=True)
-        (PRIVATE/'objects.rkt').write_text("#lang racket/base\n(provide r-objects)\n(define r-objects\n  '("
-                                     +'\n    '.join(object_row(r) for r in objects)+'))\n')
+        ggplot2=[f"((tt {sexp(id.replace('-','_'))}) (dataset {id}))" for id,_,_,_ in GGPLOT2_RECIPES]
+        (PRIVATE/'objects.rkt').write_text("#lang racket/base\n(provide ggplot2-objects r-objects)\n(define r-objects\n  '("
+                                     +'\n    '.join(object_row(r) for r in objects)+'))\n(define ggplot2-objects\n  \'('
+                                     +'\n    '.join(ggplot2)+'))\n')
 PIXELS=[f'pixel_{i}_{j}' for i in range(8) for j in range(8)]
 NUMERIC=re.compile(r'[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?')
 def members(source,*names,inner=None):

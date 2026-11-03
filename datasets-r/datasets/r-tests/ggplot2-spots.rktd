@@ -26,6 +26,7 @@
  (row luv-colours 0 ("l" "u" "v" "col") (9341.5702219954601 -3.3706485626489308e-12 0.0 "white"))
  (identifiers luv-colours ("col"))
  (meta luv-colours "l" "original-name" "L")
+ (info-match luv-colours "notes" #rx"l is upstream's unscaled value \\(9341\\.6 for white\\), not L\\* on a 0 to 100 scale")
  (shape midwest 437 28)
  (row midwest 0 ("pid" "county" "state" "area" "poptotal" "inmetro" "category")
       (561 "ADAMS" "IL" 0.052 66090 0 "AAR"))

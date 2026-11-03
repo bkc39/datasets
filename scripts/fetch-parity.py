@@ -14,6 +14,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+from contextlib import contextmanager
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -114,9 +115,9 @@ def verified(path, sha256):
     return path
 
 
-def r_references(archive_dir, package, target, ids, files=()):
+@contextmanager
+def r_package(archive_dir, package, files=()):
     source = json.loads((ROOT / "scripts/sources.json").read_text())[package]
-    archive_dir = Path(archive_dir)
     archive = verified(archive_dir / source["file"], source["sha256"])
     for file in files:
         verified(archive_dir / file["name"], file["sha256"])
@@ -124,9 +125,46 @@ def r_references(archive_dir, package, target, ids, files=()):
         tmp = Path(tmp)
         with tarfile.open(archive) as a:
             a.extractall(tmp, filter="data")
+        yield tmp
+
+
+def r_references(archive_dir, package, target, ids, files=()):
+    archive_dir = Path(archive_dir)
+    with r_package(archive_dir, package, files) as tmp:
         subprocess.run(["Rscript", str(ROOT / "scripts/export-r.R"), str(tmp), str(tmp), target, str(archive_dir)],
                        check=True)
         return {package: description_version(tmp / package)}, {id: r_table(tmp, id) for id in ids}
+
+
+def token_value(token):
+    match token[0], token[1:]:
+        case "m", "":
+            return None
+        case "i", value:
+            return int(value)
+        case "f", value:
+            return float.fromhex(value)
+        case "s", value:
+            return bytes.fromhex(value).decode("utf-8")
+        case _:
+            raise ValueError(f"unknown reference token {token!r}")
+
+
+def token_table(path):
+    columns = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        name, *tokens = line.split("\t")
+        columns[kebab(name)] = [token_value(t) for t in tokens]
+    rows, = {len(values) for values in columns.values()}
+    return rows, {name: cells(values) for name, values in columns.items()}
+
+
+def ggplot2_references(archive_dir):
+    with r_package(Path(archive_dir), "ggplot2") as tmp:
+        subprocess.run(["Rscript", str(ROOT / "scripts/ggplot2-reference.R"), str(tmp / "ggplot2/data"), str(tmp),
+                        *GGPLOT2_SETS], check=True)
+        return ({"ggplot2": description_version(tmp / "ggplot2")},
+                {id: token_table(tmp / f"{id}.cells") for id in GGPLOT2_SETS})
 
 
 match sys.argv[1:]:
@@ -136,7 +174,7 @@ match sys.argv[1:]:
         versions, tables = r_references(archive_dir, "nycflights13", "nycflights13",
                                         [f"nycflights13-{t}" for t in NYCFLIGHTS13_TABLES])
     case ["ggplot2", archive_dir]:
-        versions, tables = r_references(archive_dir, "ggplot2", "ggplot2", GGPLOT2_SETS)
+        versions, tables = ggplot2_references(archive_dir)
     case ["esl-zip", archive_dir]:
         versions, tables = r_references(archive_dir, "ElemStatLearn", "esl-zip", ["zip"],
                                         read_rktd(FETCH_REGISTRY, "zip", "fetch", "files"))

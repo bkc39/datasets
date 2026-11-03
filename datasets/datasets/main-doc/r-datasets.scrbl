@@ -1,6 +1,7 @@
 #lang scribble/manual
-@(require (only-in datasets/core dataset-info) (only-in datasets/r-private/objects r-objects)
-          (only-in racket/match match match-define))
+@(require (only-in datasets/core dataset-info)
+          (only-in datasets/r-private/objects ggplot2-objects r-objects)
+          (only-in racket/match match match-lambda))
 
 @title[#:tag "datasets-from-r"]{Datasets from R}
 
@@ -66,16 +67,11 @@ the rules above. Ordered factors are categorical with levels in R order:
 density estimate on a grid, not R's @tt{faithful}; @tt{mpg} is EPA fuel economy for
 1999 and 2008 models, not the UCI @tt{auto-mpg}.
 
-@(define ggplot2-objects
-   '(("diamonds" diamonds) ("economics" economics) ("economics_long" economics-long)
-     ("faithfuld" faithfuld) ("luv_colours" luv-colours) ("midwest" midwest) ("mpg" mpg)
-     ("msleep" msleep) ("presidential" presidential) ("seals" seals) ("txhousing" txhousing)))
-
 @tabular[#:sep (hspace 2)
          (cons (list "R object" "Dataset" "Rows" "Columns")
-               (for/list ([row (in-list ggplot2-objects)])
-                 (match-define (list object id) row)
-                 (define info (dataset-info id))
-                 (list (tt object) (tt (symbol->string id))
-                       (number->string (hash-ref info "rows"))
-                       (number->string (hash-ref info "column-count")))))]
+               (map (match-lambda
+                      [(list object (and dataset (list 'dataset id)))
+                       (list* (r-object-cell object) (r-object-cell dataset)
+                              (map (lambda (key) (number->string (hash-ref (dataset-info id) key)))
+                                   '("rows" "column-count")))])
+                    ggplot2-objects))]
