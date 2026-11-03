@@ -12,6 +12,11 @@
                       (lambda () release))))))
 
 (define-syntax-parse-rule (with-custodian body:expr ...+)
+  (call-with-custodian (lambda () body ...)))
+
+(define (call-with-custodian proc)
+  (define caller (current-thread))
   (with-resource [custodian (make-custodian) (custodian-shutdown-all custodian)]
     (parameterize ([current-custodian custodian])
-      body ...)))
+      (thread (lambda () (sync (thread-dead-evt caller)) (custodian-shutdown-all custodian)))
+      (proc))))
