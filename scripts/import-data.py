@@ -134,6 +134,67 @@ NYCFLIGHTS13_RECIPES=[
                 'The R POSIXct time_hour (America/New_York) is rendered as an ISO 8601 UTC string, as in nycflights13-flights.')),
 ]
 citations.update({id:NYCFLIGHTS13_CITATION+data for id,data,_ in NYCFLIGHTS13_RECIPES})
+GGPLOT2_CITATION=('Wickham, H. (2016). ggplot2: Elegant Graphics for Data Analysis. Springer-Verlag New York. '
+                  'R package ggplot2 version 4.0.3, https://CRAN.R-project.org/package=ggplot2. Data: ')
+GGPLOT2_NOTES=(' Columns keep their R types: integers stay integers, doubles are reals, character columns are strings;'
+               ' names normalized to kebab-case; R NA rendered as missing.')
+GGPLOT2_ORDERED=' R ordered factors are categorical with levels in R order.'
+GGPLOT2_RECIPES=[
+    ('diamonds','diamonds','source not documented upstream',
+     dict(targets=['price'],units={'price':'US dollars','carat':'carats','x':'mm','y':'mm','z':'mm','depth':'percent'},
+          notes='Prices and attributes of 53,940 round cut diamonds. cut (Fair to Ideal), color (D, best, to J) and clarity '
+                '(I1, worst, to IF) are ordered factors.'+GGPLOT2_ORDERED)),
+    ('economics','economics','US Federal Reserve Economic Data (FRED), https://fred.stlouisfed.org/',
+     dict(units={'pce':'billions of dollars','pop':'thousands','psavert':'percent','uempmed':'weeks','unemploy':'thousands'},
+          descriptions={'date':'Month of data collection, the first day of the month (ISO 8601)'},
+          notes='Monthly US economic time series, July 1967 to April 2015, in wide form. The R Date column date is an ISO 8601 '
+                'date string.')),
+    ('economics-long','economics','US Federal Reserve Economic Data (FRED), https://fred.stlouisfed.org/',
+     dict(descriptions={'date':'Month of data collection, the first day of the month (ISO 8601)',
+                        'variable':'Series: pce, pop, psavert, uempmed or unemploy, as in economics',
+                        'value':'Value of the series','value01':'Value rescaled to the range 0 to 1 within its series'},
+          notes='economics in long form: the five series stacked in turn, one row per series and month. The R Date column date '
+                'is an ISO 8601 date string; variable is a character column, a string.')),
+    ('faithfuld','faithfuld',"R's faithful (Azzalini, A. and Bowman, A. W. (1990). A look at some data on the Old Faithful geyser. "
+                             'Applied Statistics 39, 357-365)',
+     dict(units={'eruptions':'minutes','waiting':'minutes'},
+          notes="A 2d density estimate of R's faithful (eruptions and waiting) on a 75 by 75 grid. Not the 272 eruptions "
+                'themselves: those are faithful.')),
+    ('luv-colours','luv_colours',"R's colors(), converted to CIE Luv",
+     dict(identifiers=['col'],
+          notes="All 657 built-in R colors() in CIE Luv colour space. l is upstream's unscaled value (9341.6 for white), not "
+                "L* on a 0 to 100 scale. col, the colour name, is an identifier.")),
+    ('midwest','midwest','2000 US census, as documented upstream',
+     dict(identifiers=['pid'],
+          notes='Demographics of 437 counties in Illinois, Indiana, Michigan, Ohio and Wisconsin. ggplot2 notes that the '
+                'original variable descriptions were not documented and the current ones are speculative. pid is an '
+                'identifier.')),
+    ('mpg','mpg','US Environmental Protection Agency fuel economy data, https://fueleconomy.gov/',
+     dict(targets=['hwy'],units={'displ':'litres','cty':'miles per gallon','hwy':'miles per gallon'},
+          notes='Fuel economy of 38 popular car models in 1999 and 2008, models with a new release every year in between. '
+                'Not to be confused with auto-mpg, the UCI 1970-1982 cars.')),
+    ('msleep','msleep','Savage, V. M. and West, G. B. (2007). A quantitative, theoretical framework for understanding mammalian '
+                       'sleep. PNAS 104(3), 1051-1056; order, conservation status and vore from Wikipedia',
+     dict(identifiers=['name'],units={'sleep-total':'hours','sleep-rem':'hours','sleep-cycle':'hours','awake':'hours',
+                                      'brainwt':'kg','bodywt':'kg'},
+          descriptions={'genus':'Genus','order':'Taxonomic order'},
+          notes='Sleep times and body and brain weights of 83 mammals, an updated and expanded mammals sleep dataset. '
+                'name, the common name, is an identifier.')),
+    ('presidential','presidential','public domain, as documented upstream',
+     dict(notes='Terms of the 12 US presidents from Eisenhower to Trump, 1953 to 2021. The R Date columns start and end are '
+                'ISO 8601 date strings. name is not unique: Bush appears twice.')),
+    ('seals','seals','Brillinger, D. R., Preisler, H. K., Ager, A. A. and Kie, J. G. (2004). An exploratory data analysis (EDA) '
+                     'of the paths of moving animals. Journal of Statistical Planning and Inference 122, 43-63',
+     dict(units={'lat':'degrees','long':'degrees','delta-long':'degrees','delta-lat':'degrees'},
+          descriptions={'lat':'Latitude','long':'Longitude','delta-long':'Change in longitude','delta-lat':'Change in latitude'},
+          notes='A vector field of seal movements: 1,155 grid points with the movement at each.')),
+    ('txhousing','txhousing','Texas A&M Real Estate Center, https://trerc.tamu.edu/',
+     dict(units={'volume':'US dollars','median':'US dollars','inventory':'months'},
+          descriptions={'year':'Year','month':'Month','date':'Year and month as a decimal year, year + (month - 1) / 12'},
+          notes='Monthly housing market statistics for 46 Texas multiple listing service areas, January 2000 to July 2015. '
+                'date is a real.')),
+]
+citations.update({id:GGPLOT2_CITATION+data for id,_,data,_ in GGPLOT2_RECIPES})
 CORE_RECIPES={
     'mtcars':dict(
         identifiers=['model'],
@@ -390,6 +451,14 @@ def import_r():
             shutil.copyfile(tmp/'nycflights13/man'/f"{id.removeprefix('nycflights13-')}.Rd",PROVENANCE/f'{id}.Rd')
             header,kinds,rows=read_r_table(tmp,id)
             add(id,header,rows,'nycflights13',names=[kebab(h) for h in header],kinds=kinds,**kw|{'notes':kw['notes']+NYCFLIGHTS13_NOTES})
+        shutil.copyfile(tmp/'ggplot2/LICENSE',PROVENANCE/'ggplot2-LICENSE')
+        for id,rd,_,kw in GGPLOT2_RECIPES:
+            shutil.copyfile(tmp/'ggplot2/man'/f'{rd}.Rd',PROVENANCE/f'{id}.Rd')
+            items={kebab(k):d.replace('--','–') for ks,d in rd_items((PROVENANCE/f'{id}.Rd').read_text(encoding='utf-8')).items()
+                   for k in ks.split(',') if d}
+            header,kinds,rows=read_r_table(tmp,id)
+            add(id,header,rows,'ggplot2',names=[kebab(h) for h in header],kinds=kinds,levels=read_r_levels(tmp,id,kebab),
+                **kw|{'descriptions':items|kw.get('descriptions',{}),'notes':kw['notes']+GGPLOT2_NOTES})
         man=tmp/R_DATASETS/'man'
         pages={a:p for p in sorted(man.glob('*.Rd')) for a in re.findall(r'\\alias\{([^}]*)\}',p.read_text())}
         manifest=read_csv_rows(tmp,'r-datasets.csv')
@@ -414,8 +483,10 @@ def import_r():
             cell=sexp('Skipped. '+r['target']) if r['disposition']=='skipped' else f"(dataset {r['target']})"
             return f"((tt {sexp(r['object'])}) {sexp(r['class'])} {cell})"
         PRIVATE.mkdir(parents=True,exist_ok=True)
-        (PRIVATE/'objects.rkt').write_text("#lang racket/base\n(provide r-objects)\n(define r-objects\n  '("
-                                     +'\n    '.join(object_row(r) for r in objects)+'))\n')
+        ggplot2=[f"((tt {sexp(id.replace('-','_'))}) (dataset {id}))" for id,_,_,_ in GGPLOT2_RECIPES]
+        (PRIVATE/'objects.rkt').write_text("#lang racket/base\n(provide ggplot2-objects r-objects)\n(define r-objects\n  '("
+                                     +'\n    '.join(object_row(r) for r in objects)+'))\n(define ggplot2-objects\n  \'('
+                                     +'\n    '.join(ggplot2)+'))\n')
 PIXELS=[f'pixel_{i}_{j}' for i in range(8) for j in range(8)]
 NUMERIC=re.compile(r'[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?')
 def members(source,*names,inner=None):

@@ -1,5 +1,5 @@
 #lang racket/base
-(provide r-objects)
+(provide ggplot2-objects r-objects)
 (define r-objects
   '(((tt "ability.cov") "list" (dataset ability-cov))
     ((tt "airmiles") "ts" (dataset airmiles))
@@ -105,3 +105,15 @@
     ((tt "women") "data.frame" (dataset women))
     ((tt "WorldPhones") "matrix/array" (dataset world-phones))
     ((tt "WWWusage") "ts" (dataset www-usage))))
+(define ggplot2-objects
+  '(((tt "diamonds") (dataset diamonds))
+    ((tt "economics") (dataset economics))
+    ((tt "economics_long") (dataset economics-long))
+    ((tt "faithfuld") (dataset faithfuld))
+    ((tt "luv_colours") (dataset luv-colours))
+    ((tt "midwest") (dataset midwest))
+    ((tt "mpg") (dataset mpg))
+    ((tt "msleep") (dataset msleep))
+    ((tt "presidential") (dataset presidential))
+    ((tt "seals") (dataset seals))
+    ((tt "txhousing") (dataset txhousing))))

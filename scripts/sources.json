@@ -65,6 +65,14 @@
     "version": "titanic 0.1.0",
     "license": "CC0-1.0"
   },
+  "ggplot2": {
+    "file": "datasets-ggplot2_4.0.3.tar.gz",
+    "url": "https://cran.r-project.org/src/contrib/ggplot2_4.0.3.tar.gz",
+    "sha256": "690224bd61642b6222adb109470988e87f786e193cca77a15c0923cf9da73fa5",
+    "package": "datasets-r",
+    "version": "ggplot2 4.0.3",
+    "license": "MIT"
+  },
   "uci-optdigits": {
     "file": "datasets-uci-optdigits.zip",
     "url": "https://archive.ics.uci.edu/static/public/80/optical+recognition+of+handwritten+digits.zip",

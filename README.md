@@ -9,7 +9,9 @@ airquality, us-arrests, plant-growth, tooth-growth, titanic, air-passengers,
 diabetes, breast-cancer, and wine in `datasets-core`, plus penguins,
 penguins-raw, gapminder, datasaurus-dozen, titanic-passengers,
 nycflights13-airlines, nycflights13-airports, nycflights13-planes,
-nycflights13-weather, and the rest of R's `datasets` package (79 more sets:
+nycflights13-weather, ggplot2's eleven sets (diamonds, economics,
+economics-long, faithfuld, luv-colours, midwest, mpg, msleep, presidential,
+seals, txhousing), and the rest of R's `datasets` package (79 more sets:
 cars, co2, quakes, state, volcano, ...) in `datasets-r`, plus digits,
 optdigits, adult, auto-mpg, abalone, wine-quality, bank-marketing,
 heart-disease, mushroom, car-evaluation, spambase, banknote-authentication,
@@ -103,6 +105,8 @@ columns yourself. Every dataframe load has independent storage.
 | nycflights13-airports | 1458 | 8 | FAA codes, location, altitude, time zone |
 | nycflights13-planes | 3322 | 9 | FAA registry metadata by tail number |
 | nycflights13-weather | 26115 | 15 | hourly weather at EWR, JFK, LGA; UTC `time-hour` |
+| diamonds | 53940 | 10 | ggplot2; ordered `cut`/`color`/`clarity` levels, `price` target |
+| mpg | 234 | 11 | ggplot2; EPA fuel economy, 1999 and 2008 models |
 | diabetes | 442 | 11 | lars standardized predictors and response |
 | breast-cancer | 569 | 32 | measurements, M/B labels, source ID |
 | wine | 178 | 14 | measurements and cultivar labels |
@@ -114,7 +118,7 @@ GPL-2 for [lars 1.3](https://CRAN.R-project.org/package=lars), and CC BY 4.0 for
 [Wine](https://archive.ics.uci.edu/dataset/109/wine), and
 [Breast Cancer Wisconsin (Diagnostic)](https://archive.ics.uci.edu/dataset/17/breast+cancer+wisconsin+diagnostic).
 The `datasets-r` sets are CC0 (palmerpenguins 0.1.1, gapminder 1.0.1,
-titanic 0.1.0, nycflights13 1.0.2), MIT (datasauRus 0.1.9), and GPL-2 or GPL-3 (R 4.3.3 `datasets`).
+titanic 0.1.0, nycflights13 1.0.2), MIT (datasauRus 0.1.9, ggplot2 4.0.3), and GPL-2 or GPL-3 (R 4.3.3 `datasets`).
 The `datasets-uci` sets are CC BY 4.0 per their UCI Machine Learning Repository pages.
 This is a redistribution basis, not a claim of independent original-owner
 permission. The `datasets-islr` sets are GPL-2
