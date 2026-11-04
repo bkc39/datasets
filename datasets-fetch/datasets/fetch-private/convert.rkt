@@ -7,8 +7,9 @@
          (only-in racket/file file->bytes)
          (only-in racket/flonum fl/)
          (only-in racket/function curry)
+         (only-in racket/list split-at)
          (only-in racket/match match match* match-define)
-         (only-in racket/sequence sequence-append sequence-map)
+         (only-in racket/sequence sequence->list sequence-append sequence-map)
          (only-in racket/stream for/stream)
          (only-in racket/string string-split)
          (only-in threading ~>))
@@ -24,7 +25,9 @@
           [emnist-digits-rows converter/c]
           [csv-header-rows converter/c]
           [esl-zip-file-names (listof string?)]
-          [esl-zip-rows converter/c]))
+          [esl-zip-rows converter/c]
+          [linnerud-file-names (listof string?)]
+          [linnerud-rows converter/c]))
 
 (define converter-files/c
   (flat-named-contract 'converter-files (hash/c string? complete-path? #:immutable #t)))
@@ -202,3 +205,29 @@
       [(cons token _)
        (error 'esl-zip-rows "digit is not a whole number from 0 to 9\n  file: ~a\n  line: ~a\n  token: ~a"
               name number token)])))
+
+(define linnerud-file-names '("linnerud_exercise.csv" "linnerud_physiological.csv"))
+
+(define (linnerud-rows files info)
+  (match-define (list exercise physiological) linnerud-file-names)
+  (define specs (info->column-specs info))
+  (define exercise-width
+    (match (call-with-input-file (hash-ref files exercise) read-line)
+      [(? eof-object?) 0]
+      [header (length (string-split header))]))
+  (define-values (exercise-specs physiological-specs)
+    (cond
+      [(zero? exercise-width) (error 'linnerud-rows "missing header\n  file: ~a" exercise)]
+      [(< exercise-width (length specs)) (split-at specs exercise-width)]
+      [else
+       (error 'linnerud-rows "header too wide for the dataset\n  file: ~a\n  fields: ~a\n  columns: ~a"
+              exercise exercise-width (length specs))]))
+  (define (file-rows name specs)
+    (~> (hash-ref files name) file->bytes open-input-bytes (csv-rows specs #:separator #\space)
+        sequence->list))
+  (define exercise-rows (file-rows exercise exercise-specs))
+  (define physiological-rows (file-rows physiological physiological-specs))
+  (cond
+    [(= (length exercise-rows) (length physiological-rows)) (map append exercise-rows physiological-rows)]
+    [else (error 'linnerud-rows "files differ in row count\n  ~a: ~a\n  ~a: ~a" exercise
+                 (length exercise-rows) physiological (length physiological-rows))]))

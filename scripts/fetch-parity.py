@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """
 scripts/fetch-parity.sh
+scripts/fetch-parity.sh linnerud
 nix develop .#maintainer -c python3 -I scripts/fetch-parity.py nycflights13 ARCHIVE_DIR
 nix develop .#maintainer -c python3 -I scripts/fetch-parity.py esl-zip ARCHIVE_DIR
+nix develop .#maintainer -c python3 -I scripts/fetch-parity.py ggplot2 ARCHIVE_DIR
 """
 import hashlib
 import json
@@ -13,6 +15,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+from contextlib import contextmanager
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -22,6 +25,8 @@ ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "datasets-fetch/datasets/fetch-tests/fixtures/parity.json"
 FETCH_REGISTRY = ROOT / "datasets-fetch/datasets/fetch-data/registry.rktd"
 NYCFLIGHTS13_TABLES = ["airlines", "airports", "flights", "planes", "weather"]
+GGPLOT2_SETS = ["diamonds", "economics", "economics-long", "faithfuld", "luv-colours", "midwest", "mpg", "msleep",
+                "presidential", "seals", "txhousing"]
 
 CALIFORNIA = {"MedInc": "med-inc", "HouseAge": "house-age", "AveRooms": "ave-rooms",
               "AveBedrms": "ave-bedrms", "Population": "population", "AveOccup": "ave-occup",
@@ -107,11 +112,19 @@ def cifar_100(root):
     return canonical(pixels, [labels, coarse], split)
 
 
+def linnerud_references():
+    import sklearn
+    from sklearn import datasets
+    frame = datasets.load_linnerud(as_frame=True).frame
+    return {"scikit-learn": sklearn.__version__}, {
+        "linnerud": digests(len(frame), {n.lower(): integers(frame[n].to_numpy()) for n in frame.columns}),
+    }
+
+
 def loader_references():
     from functools import partial
     import PIL
     import scipy
-    import sklearn
     import torchvision
     from sklearn import datasets
     from torchvision.datasets import CIFAR10, EMNIST, KMNIST, MNIST, FashionMNIST
@@ -120,9 +133,9 @@ def loader_references():
     names = [n.lower().replace("_", "-") for n in bunch.feature_names + bunch.target_names]
     columns = [bunch.data[:, k] for k in range(bunch.data.shape[1])] + [bunch.target]
     frame = datasets.fetch_california_housing(as_frame=True).frame
-    versions = {"scikit-learn": sklearn.__version__, "torchvision": torchvision.__version__,
-                "pillow": PIL.__version__, "scipy": scipy.__version__}
-    return versions, {
+    versions, linnerud = linnerud_references()
+    versions |= {"torchvision": torchvision.__version__, "pillow": PIL.__version__, "scipy": scipy.__version__}
+    return versions, linnerud | {
         "covtype": digests(len(bunch.target), {n: integers(c) for n, c in zip(names, columns)}),
         "california-housing": digests(len(frame), {CALIFORNIA[n]: reals(frame[n].to_numpy()) for n in frame.columns}),
         "mnist": digests(*images(MNIST, root)),
@@ -155,9 +168,9 @@ def verified(path, sha256):
     return path
 
 
-def r_references(archive_dir, package, target, ids, files=()):
+@contextmanager
+def r_package(archive_dir, package, files=()):
     source = json.loads((ROOT / "scripts/sources.json").read_text())[package]
-    archive_dir = Path(archive_dir)
     archive = verified(archive_dir / source["file"], source["sha256"])
     for file in files:
         verified(archive_dir / file["name"], file["sha256"])
@@ -165,17 +178,58 @@ def r_references(archive_dir, package, target, ids, files=()):
         tmp = Path(tmp)
         with tarfile.open(archive) as a:
             a.extractall(tmp, filter="data")
+        yield tmp
+
+
+def r_references(archive_dir, package, target, ids, files=()):
+    archive_dir = Path(archive_dir)
+    with r_package(archive_dir, package, files) as tmp:
         subprocess.run(["Rscript", str(ROOT / "scripts/export-r.R"), str(tmp), str(tmp), target, str(archive_dir)],
                        check=True)
         return {package: description_version(tmp / package)}, {id: r_table(tmp, id) for id in ids}
 
 
+def token_value(token):
+    match token[0], token[1:]:
+        case "m", "":
+            return None
+        case "i", value:
+            return int(value)
+        case "f", value:
+            return float.fromhex(value)
+        case "s", value:
+            return bytes.fromhex(value).decode("utf-8")
+        case _:
+            raise ValueError(f"unknown reference token {token!r}")
+
+
+def token_table(path):
+    columns = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        name, *tokens = line.split("\t")
+        columns[kebab(name)] = [token_value(t) for t in tokens]
+    rows, = {len(values) for values in columns.values()}
+    return digests(rows, {name: cells(values) for name, values in columns.items()})
+
+
+def ggplot2_references(archive_dir):
+    with r_package(Path(archive_dir), "ggplot2") as tmp:
+        subprocess.run(["Rscript", str(ROOT / "scripts/ggplot2-reference.R"), str(tmp / "ggplot2/data"), str(tmp),
+                        *GGPLOT2_SETS], check=True)
+        return ({"ggplot2": description_version(tmp / "ggplot2")},
+                {id: token_table(tmp / f"{id}.cells") for id in GGPLOT2_SETS})
+
+
 match sys.argv[1:]:
     case []:
         versions, tables = loader_references()
+    case ["linnerud"]:
+        versions, tables = linnerud_references()
     case ["nycflights13", archive_dir]:
         versions, tables = r_references(archive_dir, "nycflights13", "nycflights13",
                                         [f"nycflights13-{t}" for t in NYCFLIGHTS13_TABLES])
+    case ["ggplot2", archive_dir]:
+        versions, tables = ggplot2_references(archive_dir)
     case ["esl-zip", archive_dir]:
         versions, tables = r_references(archive_dir, "ElemStatLearn", "esl-zip", ["zip"],
                                         read_rktd(FETCH_REGISTRY, "zip", "fetch", "files"))

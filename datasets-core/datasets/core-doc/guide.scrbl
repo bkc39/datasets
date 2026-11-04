@@ -1,6 +1,6 @@
 #lang scribble/manual
 @(require scribble/eval
-          (for-label racket/base datasets/core))
+          (for-label racket/base datasets/core (lib "datasets/core-doc/package-catalog.scrbl")))
 @(define ev (make-base-eval))
 
 @title[#:tag "datasets-core-guide"]{Guide}
@@ -133,7 +133,7 @@ or comparing a dataset with another library's version.
 
 @section[#:tag "datasets-core-other-packages"]{Datasets from other packages}
 
-Other packages add datasets to the same catalog. Such a package contributes a
+Other packages can register datasets of their own. Such a package contributes a
 directory to the @tt{datasets} collection, conventionally
 @tt{datasets/@italic{suffix}-data} for a package named
 @tt{datasets-@italic{suffix}}, containing an @tt{info.rkt}, a registry file, and
@@ -150,6 +150,17 @@ Once @exec{raco setup} has indexed the package, @racket[dataset-names],
 two packages declaring the same name is an error naming both. The maintainer
 importer writes this layout with
 @tt{scripts/import-data.py --package @italic{name} --target @italic{dir}}.
+
+Such a package catalogues its datasets in its own manual, in the form of the
+@secref["datasets-catalog"], with its license texts and provenance files in
+@tt{licenses} and @tt{provenance} beside its registry.
+@racket[package-catalog] takes a package name and renders one section with an
+entry per dataset that package registers:
+
+@verbatim|{#lang scribble/manual
+@(require (only-in (lib "datasets/core-doc/package-catalog.scrbl") package-catalog))
+@title{Suffix Datasets Catalog}
+@(package-catalog "datasets-suffix")}|
 
 @section[#:tag "datasets-core-fetch-guide"]{Downloaded datasets}
 

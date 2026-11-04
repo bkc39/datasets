@@ -1,0 +1,26 @@
+#lang racket/base
+(module+ test
+  (require (only-in datasets/core dataset-names)
+           (only-in racket/list flatten)
+           (only-in racket/match match)
+           (only-in rackunit check-equal? check-exn)
+           (only-in scribble/decode part-start-depth part-start-tags part-start?)
+           (only-in (lib "datasets/core-doc/package-catalog.scrbl") package-catalog)
+           (only-in "fixture.rkt" call-with-registry-fixtures registry-fixture))
+  (define (entry-tags package)
+    (for*/list ([v (in-list (flatten (package-catalog package)))]
+                #:when (and (part-start? v) (= 1 (part-start-depth v)))
+                [tag (in-list (part-start-tags v))])
+      (match tag
+        [(list 'part name) name])))
+  (define (expected-tags package)
+    (for/list ([name (in-list (dataset-names #:package package))])
+      (format "dataset-~a" name)))
+  (call-with-registry-fixtures (list (registry-fixture "sibling"))
+    (lambda ()
+      (check-equal? (entry-tags "datasets-core") (expected-tags "datasets-core"))
+      (check-equal? (entry-tags "datasets-fixture") (expected-tags "datasets-fixture"))))
+  (check-exn (lambda (e)
+               (and (exn:fail:contract? e)
+                    (regexp-match? #rx"^package-catalog: contract violation" (exn-message e))))
+             (lambda () (package-catalog "datasets-absent"))))

@@ -1,6 +1,11 @@
 #lang scribble/manual
 @(require scribble/eval
-          (for-label racket/base racket/contract/base datasets/core datasets/synthetic))
+          (for-label racket/base
+                     racket/contract/base
+                     datasets/core
+                     datasets/synthetic
+                     scribble/decode
+                     (lib "datasets/core-doc/package-catalog.scrbl")))
 @(define ev (make-base-eval))
 @(ev '(require datasets/core))
 
@@ -350,5 +355,16 @@ A time-series hash has @tt{frequency} (observations per unit of the first index
 column, such as 12 for monthly data indexed by year and month), @tt{index} (the
 names of the index columns, outermost first), and @tt{start} and @tt{end} (the
 index values of the first and last rows, one per index column).
+
+@section[#:tag "datasets-core-catalog-reference"]{Catalog sections}
+@defmodule[(lib "datasets/core-doc/package-catalog.scrbl")]
+
+@defproc[(package-catalog [package (and/c string? registered-package?)]) pre-part?]{
+Returns one section, tagged @tt{datasets-package-}@racket[package], with an
+entry per dataset that @racket[package] registers: its size, notes, citation,
+source, license, fetch details, and a table of its columns. A package is
+registered when @racket[(dataset-packages)] includes it; any other
+@racket[package] is a contract violation. See
+@secref["datasets-core-other-packages"].}
 
 @(close-eval ev)

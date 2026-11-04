@@ -2,7 +2,7 @@
 (require (only-in datasets/core dataset-info dataset-names)
          (only-in datasets/core-doc/catalog-rows catalog-column-rows)
          (only-in datasets/core-tests/fixture call-with-environment call-with-temporary-fixture)
-         (only-in datasets/fetch-private/convert idx-file-names)
+         (only-in datasets/fetch-private/convert idx-file-names linnerud-file-names)
          (only-in datasets/fetch-tests/digest parity-reference)
          (only-in file/sha1 bytes->hex-string)
          (only-in racket/list drop make-list take)
@@ -17,9 +17,11 @@
     (append (for/list ([k (in-range 1 785)]) (format "pixel~a" k)) '("label" "split")))
   (define (plane-columns . prefixes)
     (for*/list ([prefix (in-list prefixes)] [k (in-range 1 1025)]) (format "~a~a" prefix k)))
-  (define (idx-files base shas)
-    (for/list ([name (in-list idx-file-names)] [sha (in-list shas)])
+  (define (pinned-files names base shas)
+    (for/list ([name (in-list names)] [sha (in-list shas)])
       (list name (string-append base name) sha)))
+  (define (idx-files base shas)
+    (pinned-files idx-file-names base shas))
   (define (toronto-files name sha) `((,name ,(string-append "https://www.cs.toronto.edu/~kriz/" name) ,sha)))
   (struct fetch-set (name rows columns files binding license shape))
   (define (emnist-set name rows)
@@ -77,6 +79,15 @@
                    "edd7a857845ad6bb1d0ba43fe7e794d164fe2dce499a1694695a792adfac43c5"
                    "20bb9a0ef54c7db3efc55a92eef5582c109615df22683c380526788f98e42a1c"))
       "idx-image-rows" "CC-BY-SA-4.0" '(1 28 28))
+     (fetch-set
+      'linnerud
+      20 '("chins" "situps" "jumps" "weight" "waist" "pulse")
+      (pinned-files linnerud-file-names
+                    (string-append "https://raw.githubusercontent.com/scikit-learn/scikit-learn/"
+                                   "646da0f072a8afef6a980aa427a710311e67eb9d/sklearn/datasets/data/")
+                    '("cb8d8c24937643fa2459682efb86c5e667bcd6dd93109eef81964d9e9f11bf8c"
+                      "2bf7e05c1cd7d0adf0eca1e456941f624bed0a4fc96694d60d0ff7853ec5fcf7"))
+      "linnerud-rows" "NOASSERTION" #f)
      (fetch-set
       'mnist
       70000 image-columns

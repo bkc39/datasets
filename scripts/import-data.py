@@ -7,6 +7,7 @@ datasets-r/datasets/r-private/objects.rkt, or TARGET/r-private/objects.rkt when 
 """
 import argparse, csv, gzip, hashlib, io, json, re, shutil, subprocess, sys, tarfile, tempfile, urllib.request, zipfile
 import xml.etree.ElementTree as ET
+from dataclasses import dataclass, field
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parent))
 from rtable import kebab, read_csv_rows, read_r_levels, read_r_table, read_rktd
@@ -15,26 +16,22 @@ DEFAULTS = {'datasets-core': ('datasets-core/datasets/core-data', 'datasets-core
             'datasets-r': ('datasets-r/datasets/r-data', 'datasets-r/datasets/r-data/provenance'),
             'datasets-uci': ('datasets-uci/datasets/uci-data', 'datasets-uci/datasets/uci-data/provenance'),
             'datasets-islr': ('datasets-islr/datasets/islr-data', 'datasets-islr/datasets/islr-data/provenance')}
+@dataclass(frozen=True)
+class Config:
+    package: str
+    out: Path
+    provenance: Path
+    private: Path
+    sources: dict
+    cache: Path
+    registry: dict = field(default_factory=dict)
+    citations: dict = field(default_factory=lambda: dict(CITATIONS))
 cli = argparse.ArgumentParser(description=__doc__)
 cli.add_argument('--fetch', action='store_true')
 cli.add_argument('--package', default='datasets-core')
 cli.add_argument('--target', type=Path)
 cli.add_argument('--provenance', type=Path)
 cli.add_argument('archive_dir', type=Path)
-args = cli.parse_args()
-if args.package not in DEFAULTS: sys.exit(f'No import recipes for package {args.package}')
-PACKAGE = args.package
-OUT = args.target or ROOT/DEFAULTS[PACKAGE][0]
-PROVENANCE = args.provenance or ROOT/DEFAULTS[PACKAGE][1]
-PRIVATE = args.target/'r-private' if args.target else ROOT/'datasets-r/datasets/r-private'
-(OUT/'data').mkdir(parents=True,exist_ok=True); PROVENANCE.mkdir(parents=True,exist_ok=True)
-SOURCES = {k:s for k,s in json.loads((ROOT/'scripts/sources.json').read_text()).items() if PACKAGE in s.get('packages',[s.get('package','datasets-core')])}
-fetch = args.fetch
-cache = args.archive_dir; cache.mkdir(parents=True,exist_ok=True)
-for s in SOURCES.values():
-    p=cache/s['file']
-    if fetch and not p.exists(): urllib.request.urlretrieve(s['url'],p)
-    if hashlib.sha256(p.read_bytes()).hexdigest()!=s['sha256']: raise ValueError('Source checksum mismatch: '+str(p))
 def sexp(x):
     if x is None: return 'missing'
     if isinstance(x,bool): return '#t' if x else '#f'
@@ -48,7 +45,6 @@ def number(s):
     except ValueError:
         try: return float(s)
         except ValueError: return s
-registry={}
 def column_kind(name,values,kind,levels,identifiers):
     if name in identifiers: return 'identifier'
     if name in levels: return 'categorical'
@@ -56,7 +52,7 @@ def column_kind(name,values,kind,levels,identifiers):
     if all(isinstance(v,int) for v in values): return 'integer'
     if all(isinstance(v,(int,float)) for v in values): return 'real'
     return 'string'
-def add(id,original,rows,source,levels={},units={},descriptions={},identifiers=[],targets=[],notes='',series=None,names=None,kinds=None):
+def add(cfg,id,original,rows,source,levels={},units={},descriptions={},identifiers=[],targets=[],notes='',series=None,names=None,kinds=None):
     names=names or [re.sub('[^a-z0-9]+','-',s.lower()).strip('-') for s in original]
     aliases={'freq':'frequency','len':'length','supp':'supplement','solar-r':'solar-r','urbanpop':'urban-pop','sepal-length':'sepal-length'}
     names=[aliases.get(n,n) for n in names]
@@ -66,16 +62,16 @@ def add(id,original,rows,source,levels={},units={},descriptions={},identifiers=[
         kind=column_kind(name,[r[j] for r in rows if r[j] is not None],kind,levels,identifiers)
         columns.append({'name':name,'original-name':orig,'type':kind,'levels':levels.get(name,[]),'unit':units.get(name,False),'description':descriptions.get(name,orig),'missing-count':sum(r[j] is None for r in rows)})
     text='(\n'+'\n'.join('  '+sexp(r) for r in rows)+'\n)\n'
-    (OUT/'data'/f'{id}.rktd.gz').write_bytes(gzip.compress(text.encode(),9,mtime=0))
-    s=SOURCES[source]
-    registry[id]={'name':id,'rows':len(rows),'column-count':len(names),'columns':columns,'identifiers':identifiers,'suggested-targets':targets,'source-url':s['url'],'source-version':s.get('version') or ('R 4.3.3' if source=='R' else 'lars 1.3' if source=='lars' else 'UCI snapshot 2026-09-26 (hash pinned)'),'source-sha256':s['sha256'],'sha256':hashlib.sha256(text.encode()).hexdigest(),'license':s.get('license') or ('GPL-2.0-only OR GPL-3.0-only' if source=='R' else 'GPL-2.0-only' if source=='lars' else 'CC-BY-4.0'),'citation':citations.get(id,'R Core Team (2024). R: A Language and Environment for Statistical Computing. See bundled upstream documentation for original references.'),'notes':notes or 'Source row order and values retained; names normalized to kebab-case.','time-series':series or False,'tier':'bundled','package':PACKAGE,'fetch':False}
-citations={'iris':'Fisher, R. (1936). Iris. UCI. doi:10.24432/C56C76','wine':'Aeberhard, S. and Forina, M. (1991). Wine. UCI. doi:10.24432/C5PC7J','breast-cancer':'Wolberg, W., Mangasarian, O., Street, N., and Street, W. (1993). Breast Cancer Wisconsin (Diagnostic). UCI. doi:10.24432/C5DW2B','diabetes':'Efron, Hastie, Johnstone and Tibshirani (2004). Least Angle Regression. Annals of Statistics 32(2), 407-499. doi:10.1214/009053604000000067'}
+    (cfg.out/'data'/f'{id}.rktd.gz').write_bytes(gzip.compress(text.encode(),9,mtime=0))
+    s=cfg.sources[source]
+    cfg.registry[id]={'name':id,'rows':len(rows),'column-count':len(names),'columns':columns,'identifiers':identifiers,'suggested-targets':targets,'source-url':s['url'],'source-version':s.get('version') or ('R 4.3.3' if source=='R' else 'lars 1.3' if source=='lars' else 'UCI snapshot 2026-09-26 (hash pinned)'),'source-sha256':s['sha256'],'sha256':hashlib.sha256(text.encode()).hexdigest(),'license':s.get('license') or ('GPL-2.0-only OR GPL-3.0-only' if source=='R' else 'GPL-2.0-only' if source=='lars' else 'CC-BY-4.0'),'citation':cfg.citations.get(id,'R Core Team (2024). R: A Language and Environment for Statistical Computing. See bundled upstream documentation for original references.'),'notes':notes or 'Source row order and values retained; names normalized to kebab-case.','time-series':series or False,'tier':'bundled','package':cfg.package,'fetch':False}
+CITATIONS={'iris':'Fisher, R. (1936). Iris. UCI. doi:10.24432/C56C76','wine':'Aeberhard, S. and Forina, M. (1991). Wine. UCI. doi:10.24432/C5PC7J','breast-cancer':'Wolberg, W., Mangasarian, O., Street, N., and Street, W. (1993). Breast Cancer Wisconsin (Diagnostic). UCI. doi:10.24432/C5DW2B','diabetes':'Efron, Hastie, Johnstone and Tibshirani (2004). Least Angle Regression. Annals of Statistics 32(2), 407-499. doi:10.1214/009053604000000067'}
 PENGUIN_SOURCE='Gorman, K. B., Williams, T. D. and Fraser, W. R. (2014). Ecological sexual dimorphism and environmental variability within a community of Antarctic penguins (genus Pygoscelis). PLoS ONE 9(3), e90081. doi:10.1371/journal.pone.0090081'
-citations.update({'penguins':'Horst, A. M., Hill, A. P. and Gorman, K. B. (2020). palmerpenguins: Palmer Archipelago (Antarctica) penguin data. doi:10.5281/zenodo.3960218. Data: '+PENGUIN_SOURCE,
+CITATIONS.update({'penguins':'Horst, A. M., Hill, A. P. and Gorman, K. B. (2020). palmerpenguins: Palmer Archipelago (Antarctica) penguin data. doi:10.5281/zenodo.3960218. Data: '+PENGUIN_SOURCE,
                   'gapminder':'Bryan, J. (2025). gapminder: Data from Gapminder. R package version 1.0.1. Data: Gapminder Foundation, https://www.gapminder.org/data/',
                   'datasaurus-dozen':'Gillespie, C., Locke, S., Davies, R. and D\'Agostino McGowan, L. (2025). datasauRus: Datasets from the Datasaurus Dozen. R package version 0.1.9. Matejka, J. and Fitzmaurice, G. (2017). Same Stats, Different Graphs. CHI 2017. doi:10.1145/3025453.3025912',
                   'titanic-passengers':'Hendricks, P. (2015). titanic: Titanic Passenger Survival Data Set. R package version 0.1.0. Data: Kaggle, Titanic: Machine Learning from Disaster, https://www.kaggle.com/c/titanic/data'})
-citations['penguins-raw']=citations['penguins']
+CITATIONS['penguins-raw']=CITATIONS['penguins']
 PENGUIN_UNITS={'bill-length-mm':'mm','bill-depth-mm':'mm','culmen-length-mm':'mm','culmen-depth-mm':'mm','flipper-length-mm':'mm','body-mass-g':'g','delta-15-n':'per mil (o/oo)','delta-13-c':'per mil (o/oo)'}
 R_DATASETS='R-4.3.3/src/library/datasets/'
 R_RECIPES=[
@@ -133,7 +129,68 @@ NYCFLIGHTS13_RECIPES=[
           notes='Hourly meteorological data for the three New York City airports in 2013; joins nycflights13-flights on origin and time-hour. '
                 'The R POSIXct time_hour (America/New_York) is rendered as an ISO 8601 UTC string, as in nycflights13-flights.')),
 ]
-citations.update({id:NYCFLIGHTS13_CITATION+data for id,data,_ in NYCFLIGHTS13_RECIPES})
+CITATIONS.update({id:NYCFLIGHTS13_CITATION+data for id,data,_ in NYCFLIGHTS13_RECIPES})
+GGPLOT2_CITATION=('Wickham, H. (2016). ggplot2: Elegant Graphics for Data Analysis. Springer-Verlag New York. '
+                  'R package ggplot2 version 4.0.3, https://CRAN.R-project.org/package=ggplot2. Data: ')
+GGPLOT2_NOTES=(' Columns keep their R types: integers stay integers, doubles are reals, character columns are strings;'
+               ' names normalized to kebab-case; R NA rendered as missing.')
+GGPLOT2_ORDERED=' R ordered factors are categorical with levels in R order.'
+GGPLOT2_RECIPES=[
+    ('diamonds','diamonds','source not documented upstream',
+     dict(targets=['price'],units={'price':'US dollars','carat':'carats','x':'mm','y':'mm','z':'mm','depth':'percent'},
+          notes='Prices and attributes of 53,940 round cut diamonds. cut (Fair to Ideal), color (D, best, to J) and clarity '
+                '(I1, worst, to IF) are ordered factors.'+GGPLOT2_ORDERED)),
+    ('economics','economics','US Federal Reserve Economic Data (FRED), https://fred.stlouisfed.org/',
+     dict(units={'pce':'billions of dollars','pop':'thousands','psavert':'percent','uempmed':'weeks','unemploy':'thousands'},
+          descriptions={'date':'Month of data collection, the first day of the month (ISO 8601)'},
+          notes='Monthly US economic time series, July 1967 to April 2015, in wide form. The R Date column date is an ISO 8601 '
+                'date string.')),
+    ('economics-long','economics','US Federal Reserve Economic Data (FRED), https://fred.stlouisfed.org/',
+     dict(descriptions={'date':'Month of data collection, the first day of the month (ISO 8601)',
+                        'variable':'Series: pce, pop, psavert, uempmed or unemploy, as in economics',
+                        'value':'Value of the series','value01':'Value rescaled to the range 0 to 1 within its series'},
+          notes='economics in long form: the five series stacked in turn, one row per series and month. The R Date column date '
+                'is an ISO 8601 date string; variable is a character column, a string.')),
+    ('faithfuld','faithfuld',"R's faithful (Azzalini, A. and Bowman, A. W. (1990). A look at some data on the Old Faithful geyser. "
+                             'Applied Statistics 39, 357-365)',
+     dict(units={'eruptions':'minutes','waiting':'minutes'},
+          notes="A 2d density estimate of R's faithful (eruptions and waiting) on a 75 by 75 grid. Not the 272 eruptions "
+                'themselves: those are faithful.')),
+    ('luv-colours','luv_colours',"R's colors(), converted to CIE Luv",
+     dict(identifiers=['col'],
+          notes="All 657 built-in R colors() in CIE Luv colour space. l is upstream's unscaled value (9341.6 for white), not "
+                "L* on a 0 to 100 scale. col, the colour name, is an identifier.")),
+    ('midwest','midwest','2000 US census, as documented upstream',
+     dict(identifiers=['pid'],
+          notes='Demographics of 437 counties in Illinois, Indiana, Michigan, Ohio and Wisconsin. ggplot2 notes that the '
+                'original variable descriptions were not documented and the current ones are speculative. pid is an '
+                'identifier.')),
+    ('mpg','mpg','US Environmental Protection Agency fuel economy data, https://fueleconomy.gov/',
+     dict(targets=['hwy'],units={'displ':'litres','cty':'miles per gallon','hwy':'miles per gallon'},
+          notes='Fuel economy of 38 popular car models in 1999 and 2008, models with a new release every year in between. '
+                'Not to be confused with auto-mpg, the UCI 1970-1982 cars.')),
+    ('msleep','msleep','Savage, V. M. and West, G. B. (2007). A quantitative, theoretical framework for understanding mammalian '
+                       'sleep. PNAS 104(3), 1051-1056; order, conservation status and vore from Wikipedia',
+     dict(identifiers=['name'],units={'sleep-total':'hours','sleep-rem':'hours','sleep-cycle':'hours','awake':'hours',
+                                      'brainwt':'kg','bodywt':'kg'},
+          descriptions={'genus':'Genus','order':'Taxonomic order'},
+          notes='Sleep times and body and brain weights of 83 mammals, an updated and expanded mammals sleep dataset. '
+                'name, the common name, is an identifier.')),
+    ('presidential','presidential','public domain, as documented upstream',
+     dict(notes='Terms of the 12 US presidents from Eisenhower to Trump, 1953 to 2021. The R Date columns start and end are '
+                'ISO 8601 date strings. name is not unique: Bush appears twice.')),
+    ('seals','seals','Brillinger, D. R., Preisler, H. K., Ager, A. A. and Kie, J. G. (2004). An exploratory data analysis (EDA) '
+                     'of the paths of moving animals. Journal of Statistical Planning and Inference 122, 43-63',
+     dict(units={'lat':'degrees','long':'degrees','delta-long':'degrees','delta-lat':'degrees'},
+          descriptions={'lat':'Latitude','long':'Longitude','delta-long':'Change in longitude','delta-lat':'Change in latitude'},
+          notes='A vector field of seal movements: 1,155 grid points with the movement at each.')),
+    ('txhousing','txhousing','Texas A&M Real Estate Center, https://trerc.tamu.edu/',
+     dict(units={'volume':'US dollars','median':'US dollars','inventory':'months'},
+          descriptions={'year':'Year','month':'Month','date':'Year and month as a decimal year, year + (month - 1) / 12'},
+          notes='Monthly housing market statistics for 46 Texas multiple listing service areas, January 2000 to July 2015. '
+                'date is a real.')),
+]
+CITATIONS.update({id:GGPLOT2_CITATION+data for id,_,data,_ in GGPLOT2_RECIPES})
 CORE_RECIPES={
     'mtcars':dict(
         identifiers=['model'],
@@ -174,13 +231,13 @@ CORE_RECIPES={
         descriptions={'age':'Age, standardized','sex':'Sex, standardized source coding','bmi':'Body mass index, standardized','map':'Mean arterial pressure, standardized','tc':'Total cholesterol, standardized','ldl':'Low-density lipoproteins, standardized','hdl':'High-density lipoproteins, standardized','tch':'Total cholesterol / HDL, standardized','ltg':'Log triglycerides, standardized','glu':'Blood glucose, standardized','response':'Quantitative disease progression one year after baseline'},
         notes='lars standardized ten-predictor x matrix and y response; source x. name prefix removed (recorded in original-name); columns centered and scaled to unit Euclidean norm. No raw measurements or exact scikit-learn parity promised.'),
 }
-def import_core():
+def import_core(cfg):
     with tempfile.TemporaryDirectory() as tmp:
         tmp=Path(tmp)
         for src in ['R','lars']:
-            with tarfile.open(cache/SOURCES[src]['file']) as a: a.extractall(tmp,filter='data')
+            with tarfile.open(cfg.cache/cfg.sources[src]['file']) as a: a.extractall(tmp,filter='data')
         subprocess.run(['Rscript',str(ROOT/'scripts/export-r.R'),str(tmp),str(tmp)],check=True)
-        docs=PROVENANCE
+        docs=cfg.provenance
         rnames={'mtcars':'mtcars','faithful':'faithful','anscombe':'anscombe','airquality':'airquality','us-arrests':'USArrests','plant-growth':'PlantGrowth','tooth-growth':'ToothGrowth','titanic':'Titanic','air-passengers':'AirPassengers'}
         for id,orig in rnames.items(): (docs/f'{id}.Rd').write_bytes((tmp/f'R-4.3.3/src/library/datasets/man/{orig}.Rd').read_bytes())
         (docs/'diabetes.Rd').write_bytes((tmp/'lars/man/diabetes.Rd').read_bytes())
@@ -188,23 +245,23 @@ def import_core():
             with p.open() as f: records=list(csv.reader(f))
             id=p.stem
             kw=CORE_RECIPES.get(id,{})
-            add(id,records[0],[[number(v) for v in r] for r in records[1:]],'lars' if id=='diabetes' else 'R',**kw)
+            add(cfg,id,records[0],[[number(v) for v in r] for r in records[1:]],'lars' if id=='diabetes' else 'R',**kw)
     for id,file in [('iris','bezdekIris.data'),('wine','wine.data'),('breast-cancer','wdbc.data')]:
-        with zipfile.ZipFile(cache/SOURCES[id]['file']) as a:
+        with zipfile.ZipFile(cfg.cache/cfg.sources[id]['file']) as a:
             rows=[[number(v) for v in r] for r in csv.reader(io.StringIO(a.read(file).decode())) if r]
             for name in a.namelist():
-                if name.endswith('.names'): (PROVENANCE/name).write_bytes(a.read(name))
+                if name.endswith('.names'): (cfg.provenance/name).write_bytes(a.read(name))
         if id=='iris':
-            add(id,['sepal length','sepal width','petal length','petal width','species'],rows,id,levels={'species':['Iris-setosa','Iris-versicolor','Iris-virginica']},units={n:'cm' for n in ['sepal-length','sepal-width','petal-length','petal-width']},targets=['species'],notes='Corrected UCI bezdekIris.data variant, including corrected observations 35 and 38. Original class label spelling retained. Source class column is named species here.')
-            registry[id]['columns'][-1]['original-name']='class'
+            add(cfg,id,['sepal length','sepal width','petal length','petal width','species'],rows,id,levels={'species':['Iris-setosa','Iris-versicolor','Iris-virginica']},units={n:'cm' for n in ['sepal-length','sepal-width','petal-length','petal-width']},targets=['species'],notes='Corrected UCI bezdekIris.data variant, including corrected observations 35 and 38. Original class label spelling retained. Source class column is named species here.')
+            cfg.registry[id]['columns'][-1]['original-name']='class'
         elif id=='wine':
             names=['Alcohol','Malic acid','Ash','Alcalinity of ash','Magnesium','Total phenols','Flavanoids','Nonflavanoid phenols','Proanthocyanins','Color intensity','Hue','OD280/OD315 of diluted wines','Proline','cultivar']
-            add(id,names,[r[1:]+[str(r[0])] for r in rows],id,levels={'cultivar':['1','2','3']},targets=['cultivar'],notes='Source class moved from first to last column and retained as a string label; measurement order unchanged.')
-            registry[id]['columns'][-1]['original-name']='class'
+            add(cfg,id,names,[r[1:]+[str(r[0])] for r in rows],id,levels={'cultivar':['1','2','3']},targets=['cultivar'],notes='Source class moved from first to last column and retained as a string label; measurement order unchanged.')
+            cfg.registry[id]['columns'][-1]['original-name']='class'
         else:
             measures=['radius','texture','perimeter','area','smoothness','compactness','concavity','concave points','symmetry','fractal dimension']
             names=[m+' '+s for s in ['mean','standard error','worst'] for m in measures]+['diagnosis','id']
-            add(id,names,[r[2:]+[r[1],str(r[0])] for r in rows],id,levels={'diagnosis':['M','B']},identifiers=['id'],targets=['diagnosis'],notes='UCI diagnostic dataset. Source ID and M/B diagnosis moved after 30 measurements. Worst means mean of the three largest values; source IDs retained as strings.')
+            add(cfg,id,names,[r[2:]+[r[1],str(r[0])] for r in rows],id,levels={'diagnosis':['M','B']},identifiers=['id'],targets=['diagnosis'],notes='UCI diagnostic dataset. Source ID and M/B diagnosis moved after 30 measurements. Worst means mean of the three largest values; source IDs retained as strings.')
 def groups(text,i,n):
     out=[]
     for _ in range(n):
@@ -275,8 +332,8 @@ ISLR_CHAPTERS=[
     (['nci60'],['boston']),
     (['fund','khan'],['carseats']),
 ]
-citations.update({id:ISLR_CITATION for id,_,_ in ISLR_RECIPES})
-def import_islr():
+CITATIONS.update({id:ISLR_CITATION for id,_,_ in ISLR_RECIPES})
+def import_islr(cfg):
     if unknown:=sorted({id for used in ISLR_CHAPTERS for ids in used for id in ids}-{id for id,_,_ in ISLR_RECIPES}):
         raise ValueError(f'ISLR_CHAPTERS names no recipe: {unknown}')
     def kebab(s):
@@ -284,11 +341,11 @@ def import_islr():
         return re.sub('[^a-z0-9]+','-',s.lower()).strip('-')
     with tempfile.TemporaryDirectory() as tmp:
         tmp=Path(tmp)
-        with tarfile.open(cache/SOURCES['ISLR2']['file']) as a: a.extractall(tmp,filter='data')
-        subprocess.run(['Rscript',str(ROOT/'scripts/export-r.R'),str(tmp),str(tmp),PACKAGE],check=True)
+        with tarfile.open(cfg.cache/cfg.sources['ISLR2']['file']) as a: a.extractall(tmp,filter='data')
+        subprocess.run(['Rscript',str(ROOT/'scripts/export-r.R'),str(tmp),str(tmp),cfg.package],check=True)
         for id,obj,kw in ISLR_RECIPES:
             rd=(tmp/f'ISLR2/man/{obj}.Rd').read_text(encoding='utf-8')
-            (PROVENANCE/f'{id}.Rd').write_text(rd,encoding='utf-8')
+            (cfg.provenance/f'{id}.Rd').write_text(rd,encoding='utf-8')
             with (tmp/f'{id}.csv').open(encoding='utf-8') as f: records=list(csv.reader(f))
             with (tmp/f'{id}.levels').open(encoding='utf-8') as f: factor_levels=list(csv.reader(f))[1:]
             original=records[0]
@@ -311,8 +368,8 @@ def import_islr():
             summary=rd_field(rd,'description').removesuffix('.')+'.'
             factors='R factors rendered as labels with levels in metadata; ' if levels else ''
             notes=' '.join(filter(None,[summary,kw.get('notes'),factors+'names normalized to kebab-case.']))
-            add(id,[originals.get(n,o) for n,o in zip(names,original)],rows,'ISLR2',names=names,levels=levels,identifiers=identifiers,targets=kw.get('targets',[]),units=kw.get('units',{}),descriptions=descriptions,notes=notes)
-            registry[id]['islr2-chapters']={k:[c+1 for c,used in enumerate(ISLR_CHAPTERS) if id in used[j]] for j,k in enumerate(['text','exercises'])}
+            add(cfg,id,[originals.get(n,o) for n,o in zip(names,original)],rows,'ISLR2',names=names,levels=levels,identifiers=identifiers,targets=kw.get('targets',[]),units=kw.get('units',{}),descriptions=descriptions,notes=notes)
+            cfg.registry[id]['islr2-chapters']={k:[c+1 for c,used in enumerate(ISLR_CHAPTERS) if id in used[j]] for j,k in enumerate(['text','exercises'])}
 ESL_CITATION=('Halvorsen, K. B. (2019). ElemStatLearn: Data Sets, Functions and Examples from the Book "The Elements of Statistical Learning, '
               'Data Mining, Inference, and Prediction" by Trevor Hastie, Robert Tibshirani and Jerome Friedman. R package version 2015.6.26.2. '
               'Book: Hastie, T., Tibshirani, R. and Friedman, J. (2009). The Elements of Statistical Learning, Second Edition. Springer. '
@@ -336,7 +393,7 @@ ESL_RECIPES=[
         notes='The 111 complete days of airquality without month and day. Two cells differ: wind on 1973-07-01 (4 vs 4.1) '
               'and ozone on 1973-09-01 (95.9999999999999 vs 96).')),
 ]
-citations.update({id:ESL_CITATION for id,_,_ in ESL_RECIPES})
+CITATIONS.update({id:ESL_CITATION for id,_,_ in ESL_RECIPES})
 SPAMBASE=ROOT/'datasets-uci/datasets/uci-data/data/spambase.rktd.gz'
 def check_esl_spam(tmp):
     _,_,rows=read_r_table(tmp,'esl-spam')
@@ -344,15 +401,15 @@ def check_esl_spam(tmp):
     same=len(rows)==len(spambase) and all(len(r)==len(s) and [float(v) for v in r[:-1]]==[float(v) for v in s[:-1]] and (r[-1]=='spam')==(s[-1]==1)
                                           for r,s in zip(rows,spambase))
     if not same: raise ValueError(f'ElemStatLearn spam is not cell-equal to {SPAMBASE.relative_to(ROOT)}')
-def import_esl():
+def import_esl(cfg):
     with tempfile.TemporaryDirectory() as tmp:
         tmp=Path(tmp)
-        with tarfile.open(cache/SOURCES['ElemStatLearn']['file']) as a: a.extractall(tmp,filter='data')
+        with tarfile.open(cfg.cache/cfg.sources['ElemStatLearn']['file']) as a: a.extractall(tmp,filter='data')
         subprocess.run(['Rscript',str(ROOT/'scripts/export-r.R'),str(tmp),str(tmp),'esl'],check=True)
         check_esl_spam(tmp)
         for id,rds,kw in ESL_RECIPES:
-            for provenance,man in rds.items(): shutil.copyfile(tmp/'ElemStatLearn/man'/man,PROVENANCE/provenance)
-            rd=(PROVENANCE/next(iter(rds))).read_text(encoding='utf-8')
+            for provenance,man in rds.items(): shutil.copyfile(tmp/'ElemStatLearn/man'/man,cfg.provenance/provenance)
+            rd=(cfg.provenance/next(iter(rds))).read_text(encoding='utf-8')
             header,kinds,rows=read_r_table(tmp,id)
             renames=kw.get('renames',{})
             def rename(h): return renames.get(kebab(h),kebab(h))
@@ -364,39 +421,51 @@ def import_esl():
             originals=kw.get('originals',{})
             descriptions={n:items[o] for n,o in zip(names,header) if o in items}|kw['descriptions']
             summary=rd_field(rd,'description').removesuffix('.')+'.'
-            add(id,[originals.get(n,h) for n,h in zip(names,header)],rows,'ElemStatLearn',names=names,kinds=kinds,levels=levels,
+            add(cfg,id,[originals.get(n,h) for n,h in zip(names,header)],rows,'ElemStatLearn',names=names,kinds=kinds,levels=levels,
                 targets=kw['targets'],units=kw.get('units',{}),descriptions=descriptions,notes=summary+' '+kw['notes'])
-def import_r():
-    def kebab(s): return re.sub('[^a-z0-9]+','-',re.sub('([a-z])([A-Z])',r'\1-\2',s).lower()).strip('-')
+def r_recipe_columns(id,header,rows,r_levels,kw):
+    kw=dict(kw)
+    aliases=kw.pop('aliases',{})
+    names=[aliases.get(kebab(o,camel=True),kebab(o,camel=True)) for o in header]
+    levels=r_levels|kw.pop('levels',{})
+    for j,n in enumerate(names):
+        if n in levels and not {r[j] for r in rows if r[j] is not None}<=set(levels[n]): raise ValueError(f'{id}: {n} value outside levels')
+    return names,levels,kw
+def import_r(cfg):
     with tempfile.TemporaryDirectory() as tmp:
         tmp=Path(tmp)
-        for k,s in SOURCES.items():
-            with tarfile.open(cache/s['file']) as a:
+        for k,s in cfg.sources.items():
+            with tarfile.open(cfg.cache/s['file']) as a:
                 a.extractall(tmp,[m for m in a.getmembers() if k!='R' or m.name.startswith(R_DATASETS)],filter='data')
-        subprocess.run(['Rscript',str(ROOT/'scripts/export-r.R'),str(tmp),str(tmp),PACKAGE],check=True)
+        subprocess.run(['Rscript',str(ROOT/'scripts/export-r.R'),str(tmp),str(tmp),cfg.package],check=True)
         subprocess.run(['Rscript',str(ROOT/'scripts/export-r-datasets.R'),str(tmp),str(tmp)],check=True)
         for id,rd in [('penguins','palmerpenguins/man/penguins.Rd'),('penguins-raw','palmerpenguins/man/penguins_raw.Rd'),('gapminder','gapminder/man/gapminder.Rd'),('datasaurus-dozen','datasauRus/man/datasaurus_dozen.Rd'),('titanic-passengers','titanic/man/titanic_train.Rd')]:
-            (PROVENANCE/f'{id}.Rd').write_bytes((tmp/rd).read_bytes())
-        (PROVENANCE/'datasauRus-LICENSE').write_bytes((tmp/'datasauRus/LICENSE').read_bytes())
+            (cfg.provenance/f'{id}.Rd').write_bytes((tmp/rd).read_bytes())
+        (cfg.provenance/'datasauRus-LICENSE').write_bytes((tmp/'datasauRus/LICENSE').read_bytes())
         for id,source,kw in R_RECIPES:
             header,kinds,rows=read_r_table(tmp,id)
-            aliases=kw.pop('aliases',{})
-            names=[aliases.get(kebab(o),kebab(o)) for o in header]
-            levels=read_r_levels(tmp,id,kebab)|kw.pop('levels',{})
-            for j,n in enumerate(names):
-                if n in levels and not {r[j] for r in rows if r[j] is not None}<=set(levels[n]): raise ValueError(f'{id}: {n} value outside levels')
-            add(id,header,rows,source,names=names,levels=levels,kinds=kinds,**kw)
+            names,levels,kw=r_recipe_columns(id,header,rows,read_r_levels(tmp,id,lambda c:kebab(c,camel=True)),kw)
+            add(cfg,id,header,rows,source,names=names,levels=levels,kinds=kinds,**kw)
         for id,_,kw in NYCFLIGHTS13_RECIPES:
-            shutil.copyfile(tmp/'nycflights13/man'/f"{id.removeprefix('nycflights13-')}.Rd",PROVENANCE/f'{id}.Rd')
+            shutil.copyfile(tmp/'nycflights13/man'/f"{id.removeprefix('nycflights13-')}.Rd",cfg.provenance/f'{id}.Rd')
             header,kinds,rows=read_r_table(tmp,id)
-            add(id,header,rows,'nycflights13',names=[kebab(h) for h in header],kinds=kinds,**kw|{'notes':kw['notes']+NYCFLIGHTS13_NOTES})
+            add(cfg,id,header,rows,'nycflights13',names=[kebab(h,camel=True) for h in header],kinds=kinds,**kw|{'notes':kw['notes']+NYCFLIGHTS13_NOTES})
+        shutil.copyfile(tmp/'ggplot2/LICENSE',cfg.provenance/'ggplot2-LICENSE')
+        for id,rd,_,kw in GGPLOT2_RECIPES:
+            shutil.copyfile(tmp/'ggplot2/man'/f'{rd}.Rd',cfg.provenance/f'{id}.Rd')
+            items={kebab(k,camel=True):d.replace('--','–') for ks,d in rd_items((cfg.provenance/f'{id}.Rd').read_text(encoding='utf-8')).items()
+                   for k in ks.split(',') if d}
+            header,kinds,rows=read_r_table(tmp,id)
+            add(cfg,id,header,rows,'ggplot2',names=[kebab(h,camel=True) for h in header],kinds=kinds,
+                levels=read_r_levels(tmp,id,lambda c:kebab(c,camel=True)),
+                **kw|{'descriptions':items|kw.get('descriptions',{}),'notes':kw['notes']+GGPLOT2_NOTES})
         man=tmp/R_DATASETS/'man'
         pages={a:p for p in sorted(man.glob('*.Rd')) for a in re.findall(r'\\alias\{([^}]*)\}',p.read_text())}
         manifest=read_csv_rows(tmp,'r-datasets.csv')
         for m in manifest:
             id,objects=m['id'],m['objects'].split('|')
             page=pages[objects[0]]
-            (PROVENANCE/f'{id}.Rd').write_bytes(page.read_bytes())
+            (cfg.provenance/f'{id}.Rd').write_bytes(page.read_bytes())
             title=re.search(r'\\title\{((?:[^{}]|\{[^{}]*\})*)\}',page.read_text()).group(1)
             title=' '.join(re.sub(r'\\[A-Za-z]+\{([^{}]*)\}',r'\1',title).replace('--','–').split())
             columns=read_csv_rows(tmp,f'{id}.columns')
@@ -405,7 +474,7 @@ def import_r():
             identifiers=[i for i in m['identifiers'].split('|') if i]
             series=m['frequency'] and {'frequency':number(m['frequency']),'start':[number(v) for v in m['start'].split('|')],
                                        'end':[number(v) for v in m['end'].split('|')],'index':m['index'].split('|')}
-            add(id,[c['original'] for c in columns],rows,'R',names=[c['name'] for c in columns],kinds=kinds,
+            add(cfg,id,[c['original'] for c in columns],rows,'R',names=[c['name'] for c in columns],kinds=kinds,
                 levels=levels,identifiers=identifiers,descriptions={c['name']:c['description'] for c in columns},series=series,
                 notes=f"{title}. R object{'s'[:len(objects)-1]} {', '.join(objects)}. {m['notes']}")
         objects=sorted(read_csv_rows(tmp,'r-objects.csv'),key=lambda r:(r['object'].lower(),r['object']))
@@ -413,13 +482,15 @@ def import_r():
         def object_row(r):
             cell=sexp('Skipped. '+r['target']) if r['disposition']=='skipped' else f"(dataset {r['target']})"
             return f"((tt {sexp(r['object'])}) {sexp(r['class'])} {cell})"
-        PRIVATE.mkdir(parents=True,exist_ok=True)
-        (PRIVATE/'objects.rkt').write_text("#lang racket/base\n(provide r-objects)\n(define r-objects\n  '("
-                                     +'\n    '.join(object_row(r) for r in objects)+'))\n')
+        cfg.private.mkdir(parents=True,exist_ok=True)
+        ggplot2=[f"((tt {sexp(id.replace('-','_'))}) (dataset {id}))" for id,_,_,_ in GGPLOT2_RECIPES]
+        (cfg.private/'objects.rkt').write_text("#lang racket/base\n(provide ggplot2-objects r-objects)\n(define r-objects\n  '("
+                                     +'\n    '.join(object_row(r) for r in objects)+'))\n(define ggplot2-objects\n  \'('
+                                     +'\n    '.join(ggplot2)+'))\n')
 PIXELS=[f'pixel_{i}_{j}' for i in range(8) for j in range(8)]
 NUMERIC=re.compile(r'[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?')
-def members(source,*names,inner=None):
-    with zipfile.ZipFile(cache/SOURCES[source]['file']) as a:
+def members(cfg,source,*names,inner=None):
+    with zipfile.ZipFile(cfg.cache/cfg.sources[source]['file']) as a:
         if inner is None: return [a.read(n) for n in names]
         with zipfile.ZipFile(io.BytesIO(a.read(inner))) as b: return [b.read(n) for n in names]
 def delimited(data,delimiter=',',skip='|'):
@@ -450,40 +521,40 @@ def uci_typed(records,missing,strings):
     return [list(r) for r in zip(*columns)]
 def names_levels(text,pattern):
     return {kebab(n):[v.strip().strip('"') for v in vs.split(',')] for n,vs in re.findall(pattern,text,re.M)}
-def optdigits():
-    train,test=members('uci-optdigits','optdigits.tra','optdigits.tes')
+def optdigits(cfg):
+    train,test=members(cfg,'uci-optdigits','optdigits.tra','optdigits.tes')
     return PIXELS+['class','split'],[r+['train'] for r in delimited(train)]+[r+['test'] for r in delimited(test)]
-def adult():
-    data,test,doc=members('uci-adult','adult.data','adult.test','adult.names')
+def adult(cfg):
+    data,test,doc=members(cfg,'uci-adult','adult.data','adult.test','adult.names')
     original=re.findall(r'^([a-z-]+): ',doc.decode(),re.M)+['income','split']
     return original,[r+['train'] for r in delimited(data)]+[r[:-1]+[r[-1].removesuffix('.'),'test'] for r in delimited(test)]
-def auto_mpg():
-    (data,)=members('uci-auto-mpg','auto-mpg.data')
+def auto_mpg(cfg):
+    (data,)=members(cfg,'uci-auto-mpg','auto-mpg.data')
     rows=[left.split()+[name.strip().strip('"')] for left,name in (l.split('\t') for l in data.decode().splitlines() if l.strip())]
     return ['mpg','cylinders','displacement','horsepower','weight','acceleration','model year','origin','car name'],rows
-def wine_quality():
-    red,white=members('uci-wine-quality','winequality-red.csv','winequality-white.csv')
+def wine_quality(cfg):
+    red,white=members(cfg,'uci-wine-quality','winequality-red.csv','winequality-white.csv')
     (header,reds),(_,whites)=with_header(delimited(red,';')),with_header(delimited(white,';'))
     return header+['colour'],[r+['red'] for r in reds]+[r+['white'] for r in whites]
-def student_performance():
-    mat,por=members('uci-student-performance','student-mat.csv','student-por.csv',inner='student.zip')
+def student_performance(cfg):
+    mat,por=members(cfg,'uci-student-performance','student-mat.csv','student-por.csv',inner='student.zip')
     (header,maths),(_,portuguese)=with_header(delimited(mat,';')),with_header(delimited(por,';'))
     return header+['subject'],[r+['math'] for r in maths]+[r+['portuguese'] for r in portuguese]
-def concrete():
-    return with_header(xls_records(*members('uci-concrete-strength','Concrete_Data.xls')))
-def energy():
-    return with_header(xlsx_records(*members('uci-energy-efficiency','ENB2012_data.xlsx')))
+def concrete(cfg):
+    return with_header(xls_records(*members(cfg,'uci-concrete-strength','Concrete_Data.xls')))
+def energy(cfg):
+    return with_header(xlsx_records(*members(cfg,'uci-energy-efficiency','ENB2012_data.xlsx')))
 SPAM_CHARS={';':'semicolon','(':'paren','[':'bracket','!':'exclamation','$':'dollar','#':'hash'}
-def spambase():
-    data,doc=members('uci-spambase','spambase.data','spambase.names')
+def spambase(cfg):
+    data,doc=members(cfg,'uci-spambase','spambase.data','spambase.names')
     return re.findall(r'^([a-z_0-9]+_[^:\s]+|capital_run_length_\w+):',doc.decode(),re.M)+['spam'],delimited(data)
-def mushroom_attributes():
-    doc=members('uci-mushroom','agaricus-lepiota.names')[0].decode()
+def mushroom_attributes(cfg):
+    doc=members(cfg,'uci-mushroom','agaricus-lepiota.names')[0].decode()
     return [(n,' '.join(text.split())) for n,text in re.findall(r'^\s+\d+\. ([a-z?-]+):\s+(.*?)(?=^\s+\d+\. |\Z)',doc[doc.index('7. Attribute Information'):doc.index('8. Missing')],re.M|re.S)]
-def mushroom():
-    return ['class']+[n for n,_ in mushroom_attributes()],delimited(members('uci-mushroom','agaricus-lepiota.data')[0])
-def uci_cite(authors,year,title,source,paper=None):
-    s=SOURCES[source]
+def mushroom(cfg):
+    return ['class']+[n for n,_ in mushroom_attributes(cfg)],delimited(members(cfg,'uci-mushroom','agaricus-lepiota.data')[0])
+def uci_cite(cfg,authors,year,title,source,paper=None):
+    s=cfg.sources[source]
     return (f'{authors} ({year}). {title}.' if authors else f'{title} [Dataset]. ({year}).')+f" UCI Machine Learning Repository. doi:{s['doi']}. {s['page']}"+(f' Described in: {paper}' if paper else '')
 YES_NO=['no','yes']
 STUDENT_YES_NO=['schoolsup','famsup','paid','activities','nursery','higher','internet','romantic']
@@ -494,38 +565,38 @@ DIGIT_DESCRIPTIONS={'digit':'Digit class 0-9'}|{f'pixel-{i}-{j}':f'Count of on p
 UCI_DOCS={'uci-optdigits':['optdigits.names'],'uci-adult':['adult.names'],'uci-auto-mpg':['auto-mpg.names'],'uci-abalone':['abalone.names'],'uci-wine-quality':['winequality.names'],
           'uci-heart-disease':['heart-disease.names'],'uci-mushroom':['agaricus-lepiota.names'],'uci-car-evaluation':['car.names'],'uci-spambase':['spambase.names','spambase.DOCUMENTATION'],
           'uci-concrete-strength':['Concrete_Readme.txt'],'uci-bike-sharing':[('Readme.txt','bike-sharing-Readme.txt')]}
-def import_uci():
+def import_uci(cfg):
     for source,docs in UCI_DOCS.items():
         for doc in docs:
             member,name=doc if isinstance(doc,tuple) else (doc,doc)
-            (PROVENANCE/name).write_bytes(*members(source,member))
-    (PROVENANCE/'bank-additional-names.txt').write_bytes(*members('uci-bank-marketing','bank-additional/bank-additional-names.txt',inner='bank-additional.zip'))
-    (PROVENANCE/'student.txt').write_bytes(*members('uci-student-performance','student.txt',inner='student.zip'))
-    adult_doc=members('uci-adult','adult.names')[0].decode()
-    bank_doc=members('uci-bank-marketing','bank-additional/bank-additional-names.txt',inner='bank-additional.zip')[0].decode('utf-8-sig').replace('\r','')
+            (cfg.provenance/name).write_bytes(*members(cfg,source,member))
+    (cfg.provenance/'bank-additional-names.txt').write_bytes(*members(cfg,'uci-bank-marketing','bank-additional/bank-additional-names.txt',inner='bank-additional.zip'))
+    (cfg.provenance/'student.txt').write_bytes(*members(cfg,'uci-student-performance','student.txt',inner='student.zip'))
+    adult_doc=members(cfg,'uci-adult','adult.names')[0].decode()
+    bank_doc=members(cfg,'uci-bank-marketing','bank-additional/bank-additional-names.txt',inner='bank-additional.zip')[0].decode('utf-8-sig').replace('\r','')
     bank_levels=names_levels(bank_doc,r'^\s*\d+ - ([a-z_.]+)\s*:?[^(\n]*\(categorical: ([^)]*?)(?:;[^)]*)?\)')|{'month':['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'],'y':YES_NO}
-    mushroom_codes={kebab(n):[pair.split('=')[1] for pair in re.split(r',\s*',text) if not pair.endswith('=?')] for n,text in mushroom_attributes()}
-    mushroom_text={kebab(n):text for n,text in mushroom_attributes()}
-    optdigits_cite=uci_cite('Alpaydin, E. and Kaynak, C.',1998,'Optical Recognition of Handwritten Digits','uci-optdigits')
-    citations.update({'digits':optdigits_cite,'optdigits':optdigits_cite,
-        'adult':uci_cite('Becker, B. and Kohavi, R.',1996,'Adult','uci-adult'),
-        'auto-mpg':uci_cite('Quinlan, R.',1993,'Auto MPG','uci-auto-mpg'),
-        'abalone':uci_cite('Nash, W., Sellers, T., Talbot, S., Cawthorn, A. and Ford, W.',1994,'Abalone','uci-abalone','Nash, W. J., Sellers, T. L., Talbot, S. R., Cawthorn, A. J. and Ford, W. B. (1994). The Population Biology of Abalone (Haliotis species) in Tasmania. I. Blacklip Abalone (H. rubra) from the North Coast and Islands of Bass Strait. Sea Fisheries Division, Technical Report No. 48.'),
-        'wine-quality':uci_cite('Cortez, P., Cerdeira, A., Almeida, F., Matos, T. and Reis, J.',2009,'Wine Quality','uci-wine-quality','Cortez, P., Cerdeira, A., Almeida, F., Matos, T. and Reis, J. (2009). Modeling wine preferences by data mining from physicochemical properties. Decision Support Systems 47(4), 547-553. doi:10.1016/j.dss.2009.05.016'),
-        'bank-marketing':uci_cite('Moro, S., Rita, P. and Cortez, P.',2014,'Bank Marketing','uci-bank-marketing','Moro, S., Cortez, P. and Rita, P. (2014). A data-driven approach to predict the success of bank telemarketing. Decision Support Systems. doi:10.1016/j.dss.2014.03.001'),
-        'heart-disease':uci_cite('Janosi, A., Steinbrunn, W., Pfisterer, M. and Detrano, R.',1989,'Heart Disease','uci-heart-disease','Detrano, R. et al. (1989). International application of a new probability algorithm for the diagnosis of coronary artery disease. American Journal of Cardiology 64, 304-310.'),
-        'mushroom':uci_cite(None,1981,'Mushroom','uci-mushroom','The Audubon Society Field Guide to North American Mushrooms (1981). G. H. Lincoff (Pres.), New York: Alfred A. Knopf.'),
-        'car-evaluation':uci_cite('Bohanec, M.',1988,'Car Evaluation','uci-car-evaluation','Bohanec, M. and Rajkovic, V. (1988). Knowledge acquisition and explanation for multi-attribute decision making. 8th International Workshop on Expert Systems and their Applications, Avignon, 59-78.'),
-        'spambase':uci_cite('Hopkins, M., Reeber, E., Forman, G. and Suermondt, J.',1999,'Spambase','uci-spambase'),
-        'banknote-authentication':uci_cite('Lohweg, V.',2012,'Banknote Authentication','uci-banknote-authentication'),
-        'seeds':uci_cite('Charytanowicz, M., Niewczas, J., Kulczycki, P., Kowalski, P. and Lukasik, S.',2010,'Seeds','uci-seeds','Charytanowicz, M., Niewczas, J., Kulczycki, P., Kowalski, P. A., Lukasik, S. and Zak, S. (2010). Complete Gradient Clustering Algorithm for Features Analysis of X-Ray Images. Information Technologies in Biomedicine. doi:10.1007/978-3-642-13105-9_2'),
-        'concrete-strength':uci_cite('Yeh, I.-C.',1998,'Concrete Compressive Strength','uci-concrete-strength','Yeh, I.-C. (1998). Modeling of strength of high performance concrete using artificial neural networks. Cement and Concrete Research 28(12), 1797-1808. doi:10.1016/S0008-8846(98)00165-3. Copyright Prof. I-Cheng Yeh.'),
-        'energy-efficiency':uci_cite('Tsanas, A. and Xifara, A.',2012,'Energy Efficiency','uci-energy-efficiency','Tsanas, A. and Xifara, A. (2012). Accurate quantitative estimation of energy performance of residential buildings using statistical machine learning tools. Energy and Buildings 49.'),
-        'student-performance':uci_cite('Cortez, P.',2008,'Student Performance','uci-student-performance','Cortez, P. and Silva, A. (2008). Using data mining to predict secondary school student performance. Proceedings of the 5th Annual Future Business Technology Conference.'),
-        'bike-sharing-daily':uci_cite('Fanaee-T, H.',2013,'Bike Sharing','uci-bike-sharing',BIKE_PAPER),
-        'bike-sharing-hourly':uci_cite('Fanaee-T, H.',2013,'Bike Sharing','uci-bike-sharing',BIKE_PAPER)})
+    mushroom_codes={kebab(n):[pair.split('=')[1] for pair in re.split(r',\s*',text) if not pair.endswith('=?')] for n,text in mushroom_attributes(cfg)}
+    mushroom_text={kebab(n):text for n,text in mushroom_attributes(cfg)}
+    optdigits_cite=uci_cite(cfg,'Alpaydin, E. and Kaynak, C.',1998,'Optical Recognition of Handwritten Digits','uci-optdigits')
+    cfg.citations.update({'digits':optdigits_cite,'optdigits':optdigits_cite,
+        'adult':uci_cite(cfg,'Becker, B. and Kohavi, R.',1996,'Adult','uci-adult'),
+        'auto-mpg':uci_cite(cfg,'Quinlan, R.',1993,'Auto MPG','uci-auto-mpg'),
+        'abalone':uci_cite(cfg,'Nash, W., Sellers, T., Talbot, S., Cawthorn, A. and Ford, W.',1994,'Abalone','uci-abalone','Nash, W. J., Sellers, T. L., Talbot, S. R., Cawthorn, A. J. and Ford, W. B. (1994). The Population Biology of Abalone (Haliotis species) in Tasmania. I. Blacklip Abalone (H. rubra) from the North Coast and Islands of Bass Strait. Sea Fisheries Division, Technical Report No. 48.'),
+        'wine-quality':uci_cite(cfg,'Cortez, P., Cerdeira, A., Almeida, F., Matos, T. and Reis, J.',2009,'Wine Quality','uci-wine-quality','Cortez, P., Cerdeira, A., Almeida, F., Matos, T. and Reis, J. (2009). Modeling wine preferences by data mining from physicochemical properties. Decision Support Systems 47(4), 547-553. doi:10.1016/j.dss.2009.05.016'),
+        'bank-marketing':uci_cite(cfg,'Moro, S., Rita, P. and Cortez, P.',2014,'Bank Marketing','uci-bank-marketing','Moro, S., Cortez, P. and Rita, P. (2014). A data-driven approach to predict the success of bank telemarketing. Decision Support Systems. doi:10.1016/j.dss.2014.03.001'),
+        'heart-disease':uci_cite(cfg,'Janosi, A., Steinbrunn, W., Pfisterer, M. and Detrano, R.',1989,'Heart Disease','uci-heart-disease','Detrano, R. et al. (1989). International application of a new probability algorithm for the diagnosis of coronary artery disease. American Journal of Cardiology 64, 304-310.'),
+        'mushroom':uci_cite(cfg,None,1981,'Mushroom','uci-mushroom','The Audubon Society Field Guide to North American Mushrooms (1981). G. H. Lincoff (Pres.), New York: Alfred A. Knopf.'),
+        'car-evaluation':uci_cite(cfg,'Bohanec, M.',1988,'Car Evaluation','uci-car-evaluation','Bohanec, M. and Rajkovic, V. (1988). Knowledge acquisition and explanation for multi-attribute decision making. 8th International Workshop on Expert Systems and their Applications, Avignon, 59-78.'),
+        'spambase':uci_cite(cfg,'Hopkins, M., Reeber, E., Forman, G. and Suermondt, J.',1999,'Spambase','uci-spambase'),
+        'banknote-authentication':uci_cite(cfg,'Lohweg, V.',2012,'Banknote Authentication','uci-banknote-authentication'),
+        'seeds':uci_cite(cfg,'Charytanowicz, M., Niewczas, J., Kulczycki, P., Kowalski, P. and Lukasik, S.',2010,'Seeds','uci-seeds','Charytanowicz, M., Niewczas, J., Kulczycki, P., Kowalski, P. A., Lukasik, S. and Zak, S. (2010). Complete Gradient Clustering Algorithm for Features Analysis of X-Ray Images. Information Technologies in Biomedicine. doi:10.1007/978-3-642-13105-9_2'),
+        'concrete-strength':uci_cite(cfg,'Yeh, I.-C.',1998,'Concrete Compressive Strength','uci-concrete-strength','Yeh, I.-C. (1998). Modeling of strength of high performance concrete using artificial neural networks. Cement and Concrete Research 28(12), 1797-1808. doi:10.1016/S0008-8846(98)00165-3. Copyright Prof. I-Cheng Yeh.'),
+        'energy-efficiency':uci_cite(cfg,'Tsanas, A. and Xifara, A.',2012,'Energy Efficiency','uci-energy-efficiency','Tsanas, A. and Xifara, A. (2012). Accurate quantitative estimation of energy performance of residential buildings using statistical machine learning tools. Energy and Buildings 49.'),
+        'student-performance':uci_cite(cfg,'Cortez, P.',2008,'Student Performance','uci-student-performance','Cortez, P. and Silva, A. (2008). Using data mining to predict secondary school student performance. Proceedings of the 5th Annual Future Business Technology Conference.'),
+        'bike-sharing-daily':uci_cite(cfg,'Fanaee-T, H.',2013,'Bike Sharing','uci-bike-sharing',BIKE_PAPER),
+        'bike-sharing-hourly':uci_cite(cfg,'Fanaee-T, H.',2013,'Bike Sharing','uci-bike-sharing',BIKE_PAPER)})
     recipes=[
-        ('digits','uci-optdigits',lambda:(PIXELS+['class'],delimited(members('uci-optdigits','optdigits.tes')[0])),dict(
+        ('digits','uci-optdigits',lambda cfg:(PIXELS+['class'],delimited(members(cfg,'uci-optdigits','optdigits.tes')[0])),dict(
             names=[kebab(n) for n in PIXELS]+['digit'],targets=['digit'],descriptions=DIGIT_DESCRIPTIONS,
             notes='The 1,797-row optdigits.tes test portion, identical row for row to the data of scikit-learn load_digits (checked against scikit-learn 1.8.0): 64 pixel counts (0-16) of an 8x8 grid in row-major order, then the digit class. Pixel names follow scikit-learn (pixel_ROW_COL; the source names no attributes). The full 5,620-row set is optdigits.')),
         ('optdigits','uci-optdigits',optdigits,dict(
@@ -539,35 +610,35 @@ def import_uci():
             missing={'?'},targets=['mpg'],
             descriptions={'cylinders':'Number of cylinders','model-year':'Model year (19xx)','origin':'Origin code (1, 2 or 3)','car-name':'Car name; not unique across rows'},
             notes='auto-mpg.data: the StatLib cars with the 8 unknown-mpg rows removed. The 6 ? horsepower values are rendered as missing. Integral values written with a decimal point are stored as integers.')),
-        ('abalone','uci-abalone',lambda:(['Sex','Length','Diameter','Height','Whole weight','Shucked weight','Viscera weight','Shell weight','Rings'],delimited(members('uci-abalone','abalone.data')[0])),dict(
+        ('abalone','uci-abalone',lambda cfg:(['Sex','Length','Diameter','Height','Whole weight','Shucked weight','Viscera weight','Shell weight','Rings'],delimited(members(cfg,'uci-abalone','abalone.data')[0])),dict(
             levels={'sex':['M','F','I']},targets=['rings'],units={'length':'mm / 200','diameter':'mm / 200','height':'mm / 200','whole-weight':'grams / 200','shucked-weight':'grams / 200','viscera-weight':'grams / 200','shell-weight':'grams / 200'},
             descriptions={'sex':'M, F or I (infant)','length':'Longest shell measurement','diameter':'Perpendicular to length','height':'With meat in shell','whole-weight':'Whole abalone','shucked-weight':'Weight of meat','viscera-weight':'Gut weight (after bleeding)','shell-weight':'After being dried','rings':'Rings; +1.5 gives the age in years'},
             notes='Continuous measurements as distributed, scaled by 1/200 by the donors; rows with missing values were removed upstream.')),
         ('wine-quality','uci-wine-quality',wine_quality,dict(
             levels={'colour':['red','white']},targets=['quality'],descriptions={'quality':'Sensory quality score between 0 and 10','colour':'Red or white vinho verde'},
             notes='Red and white vinho verde in one table: the 1,599 red rows, then the 4,898 white rows, told apart by colour.')),
-        ('bank-marketing','uci-bank-marketing',lambda:with_header(delimited(members('uci-bank-marketing','bank-additional/bank-additional-full.csv',inner='bank-additional.zip')[0],';')),dict(
+        ('bank-marketing','uci-bank-marketing',lambda cfg:with_header(delimited(members(cfg,'uci-bank-marketing','bank-additional/bank-additional-full.csv',inner='bank-additional.zip')[0],';')),dict(
             missing={'unknown'},levels={kebab(k):[l for l in v if l!='unknown'] for k,v in bank_levels.items()},targets=['y'],units={'duration':'seconds'},
             descriptions={'duration':'Last contact duration; known only after the call, so for benchmarking only','pdays':'Days since last contact in a previous campaign; 999 = not previously contacted','y':'Whether the client subscribed a term deposit'},
             notes='bank-additional-full.csv: 41,188 calls, May 2008 to November 2010, ordered by date, with five social and economic context attributes; the file analysed by Moro et al. (2014), chosen over the older bank-full.csv (45,211 rows, no context attributes). The documented unknown label is rendered as missing; pdays 999 is kept.')),
-        ('heart-disease','uci-heart-disease',lambda:(['age','sex','cp','trestbps','chol','fbs','restecg','thalach','exang','oldpeak','slope','ca','thal','num'],delimited(members('uci-heart-disease','processed.cleveland.data')[0])),dict(
+        ('heart-disease','uci-heart-disease',lambda cfg:(['age','sex','cp','trestbps','chol','fbs','restecg','thalach','exang','oldpeak','slope','ca','thal','num'],delimited(members(cfg,'uci-heart-disease','processed.cleveland.data')[0])),dict(
             missing={'?'},targets=['num'],units={'age':'years','trestbps':'mm Hg','chol':'mg/dl'},
             descriptions={'age':'Age','sex':'1 = male, 0 = female','cp':'Chest pain type: 1 typical angina, 2 atypical angina, 3 non-anginal pain, 4 asymptomatic','trestbps':'Resting blood pressure on admission','chol':'Serum cholesterol','fbs':'Fasting blood sugar > 120 mg/dl: 1 true, 0 false','restecg':'Resting electrocardiographic results: 0 normal, 1 ST-T wave abnormality, 2 left ventricular hypertrophy','thalach':'Maximum heart rate achieved','exang':'Exercise induced angina: 1 yes, 0 no','oldpeak':'ST depression induced by exercise relative to rest','slope':'Slope of the peak exercise ST segment: 1 upsloping, 2 flat, 3 downsloping','ca':'Number of major vessels (0-3) colored by fluoroscopy','thal':'3 normal, 6 fixed defect, 7 reversible defect','num':'Angiographic disease status: 0 absence, 1-4 presence'},
             notes='processed.cleveland.data: the 303 Cleveland Clinic patients and the 14 attributes used in published experiments. ? is rendered as missing (ca, thal). Coded attributes stay numeric with their codes in the descriptions; integral values written with a decimal point are stored as integers.')),
         ('mushroom','uci-mushroom',mushroom,dict(
             missing={'?'},levels={'class':['e','p']}|mushroom_codes,targets=['class'],descriptions={'class':'edible=e, poisonous=p'}|mushroom_text,
             notes='Hypothetical samples of 23 gilled mushroom species, keeping the source one-letter codes (decoded in each description) and the source column order with class first. bruises? is renamed bruises. The 2,480 ? stalk-root values are rendered as missing. Donated by J. Schlimmer (1987); the UCI page names no creator.')),
-        ('car-evaluation','uci-car-evaluation',lambda:(['buying','maint','doors','persons','lug_boot','safety','class'],delimited(members('uci-car-evaluation','car.data')[0])),dict(
+        ('car-evaluation','uci-car-evaluation',lambda cfg:(['buying','maint','doors','persons','lug_boot','safety','class'],delimited(members(cfg,'uci-car-evaluation','car.data')[0])),dict(
             levels={'buying':['vhigh','high','med','low'],'maint':['vhigh','high','med','low'],'doors':['2','3','4','5more'],'persons':['2','4','more'],'lug-boot':['small','med','big'],'safety':['low','med','high'],'class':['unacc','acc','good','vgood']},targets=['class'],
             descriptions={'buying':'Buying price','maint':'Price of the maintenance','doors':'Number of doors','persons':'Capacity in terms of persons to carry','lug-boot':'Size of luggage boot','safety':'Estimated safety of the car','class':'Car acceptability'},
             notes='All 1,728 combinations of the six attributes with their acceptability class.')),
         ('spambase','uci-spambase',spambase,dict(
             names_fn=lambda n:'char-freq-'+SPAM_CHARS[n[-1]] if n.startswith('char_freq_') else kebab(n),targets=['spam'],descriptions={'spam':'1 = spam, 0 = not spam'},
             notes='4,601 e-mails: 48 word and 6 character frequencies (percent), three capital-run-length statistics and the spam class. Character columns are named after the character (char_freq_; is char-freq-semicolon, and so on).')),
-        ('banknote-authentication','uci-banknote-authentication',lambda:(['variance','skewness','curtosis','entropy','class'],delimited(members('uci-banknote-authentication','data_banknote_authentication.txt')[0])),dict(
+        ('banknote-authentication','uci-banknote-authentication',lambda cfg:(['variance','skewness','curtosis','entropy','class'],delimited(members(cfg,'uci-banknote-authentication','data_banknote_authentication.txt')[0])),dict(
             targets=['class'],descriptions={'variance':'Variance of the wavelet transformed image','skewness':'Skewness of the wavelet transformed image','curtosis':'Curtosis of the wavelet transformed image','entropy':'Entropy of the image','class':'Class (0 or 1)'},
             notes='Wavelet features of images of genuine and forged banknote-like specimens. The archive carries no documentation file; names and descriptions follow the UCI dataset page.')),
-        ('seeds','uci-seeds',lambda:(['area','perimeter','compactness','length of kernel','width of kernel','asymmetry coefficient','length of kernel groove','class'],[l.split() for l in members('uci-seeds','seeds_dataset.txt')[0].decode().splitlines() if l.strip()]),dict(
+        ('seeds','uci-seeds',lambda cfg:(['area','perimeter','compactness','length of kernel','width of kernel','asymmetry coefficient','length of kernel groove','class'],[l.split() for l in members(cfg,'uci-seeds','seeds_dataset.txt')[0].decode().splitlines() if l.strip()]),dict(
             targets=['class'],descriptions={'area':'Area A','perimeter':'Perimeter P','compactness':'Compactness C = 4*pi*A/P^2','class':'Wheat variety (1, 2 or 3): Kama, Rosa and Canadian, 70 kernels each'},
             notes='X-ray measurements of 210 wheat kernels. The source file separates some fields with two tabs; fields are split on whitespace. The archive carries no documentation file; names follow the UCI dataset page.')),
         ('concrete-strength','uci-concrete-strength',concrete,dict(
@@ -582,13 +653,14 @@ def import_uci():
             levels={'school':['GP','MS'],'sex':['F','M'],'address':['U','R'],'famsize':['LE3','GT3'],'pstatus':['T','A'],'mjob':['teacher','health','services','at_home','other'],'fjob':['teacher','health','services','at_home','other'],'reason':['home','reputation','course','other'],'guardian':['mother','father','other'],'subject':['math','portuguese']}|{n:YES_NO for n in STUDENT_YES_NO},
             targets=['g3'],descriptions={'g1':'First period grade (0-20)','g2':'Second period grade (0-20)','g3':'Final grade (0-20)','subject':'Course: math (student-mat.csv) or portuguese (student-por.csv)'},
             notes='Two Portuguese secondary schools in one table: the 395 mathematics rows, then the 649 Portuguese-language rows, told apart by subject. Some students appear in both courses; the source has no student identifier.')),
-        ('bike-sharing-daily','uci-bike-sharing',lambda:with_header(delimited(members('uci-bike-sharing','day.csv')[0])),dict(
+        ('bike-sharing-daily','uci-bike-sharing',lambda cfg:with_header(delimited(members(cfg,'uci-bike-sharing','day.csv')[0])),dict(
             identifiers=['instant'],targets=['cnt'],descriptions=BIKE_DESCRIPTIONS,notes='Capital Bikeshare (Washington, D.C.) rentals per day, 2011-2012, with weather and calendar attributes (day.csv).'+BIKE_NOTE)),
-        ('bike-sharing-hourly','uci-bike-sharing',lambda:with_header(delimited(members('uci-bike-sharing','hour.csv')[0])),dict(
+        ('bike-sharing-hourly','uci-bike-sharing',lambda cfg:with_header(delimited(members(cfg,'uci-bike-sharing','hour.csv')[0])),dict(
             identifiers=['instant'],targets=['cnt'],descriptions=BIKE_DESCRIPTIONS,notes='Capital Bikeshare (Washington, D.C.) rentals per hour, 2011-2012, with weather and calendar attributes (hour.csv); hours without rentals are absent.'+BIKE_NOTE)),
     ]
     for id,source,read,kw in recipes:
-        original,records=read()
+        original,records=read(cfg)
+        kw=dict(kw)
         names_fn=kw.pop('names_fn',kebab)
         names=kw.pop('names',None) or [names_fn(n) for n in original]
         levels=kw.pop('levels',{})
@@ -599,9 +671,31 @@ def import_uci():
             present={r[j] for r in rows if r[j] is not None}
             if not present<=set(levels[n]): raise ValueError(f'{id}: {n} values {present-set(levels[n])} outside levels')
             levels[n]=[l for l in levels[n] if l in present]
-        add(id,original,rows,source,names=names,levels=levels,**kw)
-for step in {'datasets-core':[import_core],'datasets-r':[import_r],'datasets-uci':[import_uci],'datasets-islr':[import_islr,import_esl]}[PACKAGE]: step()
-(OUT/'registry.rktd').write_text(sexp(dict(sorted(registry.items())))+'\n')
-for stale in (OUT/'data').iterdir():
-    if stale.name not in {f'{id}.rktd.gz' for id in registry}: stale.unlink()
-print('Imported',len(registry),'datasets')
+        add(cfg,id,original,rows,source,names=names,levels=levels,**kw)
+def main():
+    args = cli.parse_args()
+    if args.package not in DEFAULTS: sys.exit(f'No import recipes for package {args.package}')
+    package = args.package
+    cfg = Config(package=package,
+                 out=args.target or ROOT/DEFAULTS[package][0],
+                 provenance=args.provenance or ROOT/DEFAULTS[package][1],
+                 private=args.target/'r-private' if args.target else ROOT/'datasets-r/datasets/r-private',
+                 sources={k:s for k,s in json.loads((ROOT/'scripts/sources.json').read_text()).items() if package in s.get('packages',[s.get('package','datasets-core')])},
+                 cache=args.archive_dir)
+    (cfg.out/'data').mkdir(parents=True,exist_ok=True); cfg.provenance.mkdir(parents=True,exist_ok=True)
+    cfg.cache.mkdir(parents=True,exist_ok=True)
+    for s in cfg.sources.values():
+        p=cfg.cache/s['file']
+        if args.fetch and not p.exists(): urllib.request.urlretrieve(s['url'],p)
+        if hashlib.sha256(p.read_bytes()).hexdigest()!=s['sha256']: raise ValueError('Source checksum mismatch: '+str(p))
+    run_import(cfg,{'datasets-core':[import_core],'datasets-r':[import_r],'datasets-uci':[import_uci],'datasets-islr':[import_islr,import_esl]}[package])
+    print('Imported',len(cfg.registry),'datasets')
+def run_import(cfg,steps):
+    (cfg.out/'data').mkdir(parents=True,exist_ok=True)
+    for step in steps: step(cfg)
+    (cfg.out/'registry.rktd').write_text(sexp(dict(sorted(cfg.registry.items())))+'\n')
+    for stale in (cfg.out/'data').iterdir():
+        if stale.name not in {f'{id}.rktd.gz' for id in cfg.registry}: stale.unlink()
+    return cfg.registry
+
+if __name__ == '__main__': main()

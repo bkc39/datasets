@@ -29,7 +29,8 @@
             pname = if full then "datasets" else "datasets-core";
             version = "0.1";
             src = source pkgs;
-            nativeBuildInputs = [ pkgs.racket ];
+            nativeBuildInputs = [ pkgs.racket ]
+              ++ pkgs.lib.optional full (pkgs.python3.withPackages (ps: [ ps.xlrd ]));
             RKT_POLARS_COMPAT_LIB_PATH = if full then "${native}" else "";
             FONTCONFIG_FILE = if full then pkgs.makeFontsConf { fontDirectories = [ pkgs.dejavu_fonts ]; } else "";
             buildPhase = ''
@@ -56,6 +57,7 @@
             checkPhase = ''
               runHook preCheck
               bash scripts/check.sh ${if full then "full" else "core"}
+              ${pkgs.lib.optionalString full "python3 -I -m unittest discover -s scripts/tests -t scripts/tests"}
               runHook postCheck
             '';
             installPhase = ''

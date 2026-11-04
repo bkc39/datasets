@@ -8,9 +8,12 @@
                   gunzip-file gzip-bytes hex registry-fixture rows->rktd-bytes table-digest
                   write-registry-fixture!))
 (define-runtime-path core-data "../core-data")
+(define-runtime-path core-package "../..")
+(define-runtime-path core-licenses "../licenses")
 (define-runtime-path pre-change-registry "pre-change-registry.rktd")
 (module+ test
-  (require (only-in rackunit check-equal? check-exn check-false test-case))
+  (require (only-in rackunit check-equal? check-exn check-false test-case)
+           (only-in (submod "registry-checks.rkt" test) check-dataset-identifiers check-licenses))
   (define pinned-sha256
     '((air-passengers "7f5e28170e7d79384a758fca5ca1f4e0dc018dc4717bc4864eb197e545e6eeac")
       (airquality "8274e5211f8a68c76e80f5ea8ec31d65be653a097a911adb22d086a2309d4110")
@@ -79,6 +82,14 @@
   (check-core-storage)
   (test-case "S2 S3b S4 hold with a sibling registry installed"
     (call-with-registry-fixtures (list (registry-fixture "sibling")) check-core-storage))
+
+  (test-case "S5 identifiers name distinct, complete columns"
+    (for ([id (in-list (dataset-names #:package "datasets-core"))])
+      (check-dataset-identifiers id)))
+
+  (test-case "S5b one license file per registry license id"
+    (check-licenses (simplify-path core-package) (simplify-path core-licenses)
+                    (dataset-names #:package "datasets-core")))
 
   (test-case "S6 no uncompressed or stray files"
     (check-equal? (sort (map path->string (directory-list (build-path core-data "data"))) string<?)
