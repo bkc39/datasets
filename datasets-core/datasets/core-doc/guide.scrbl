@@ -157,7 +157,7 @@ Such a package catalogues its datasets in its own manual, in the form of the
 @tt{datasets/core-doc/package-catalog}, takes a package name and renders one
 section with an entry per dataset that package registers:
 
-@codeblock|{#lang scribble/manual
+@verbatim|{#lang scribble/manual
 @(require (only-in (lib "datasets/core-doc/package-catalog.scrbl") package-catalog))
 @title{Suffix Datasets Catalog}
 @(package-catalog "datasets-suffix")}|
