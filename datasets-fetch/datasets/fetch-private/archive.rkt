@@ -38,10 +38,15 @@
     (proc in check-gunzip!)))
 
 (define (tar-gz-member archive member)
-  (match (tar-gz-members archive (list member))
+  (match (read-tar-gz-members 'tar-gz-member archive (list member))
     [(list data) data]))
 
 (define (tar-gz-members archive names)
+  (cond
+    [(null? names) '()]
+    [else (read-tar-gz-members 'tar-gz-members archive names)]))
+
+(define (read-tar-gz-members who archive names)
   (define wanted (for/hash ([name (in-list names)]) (values name #t)))
   (call-with-gunzip-port
    archive
@@ -49,7 +54,7 @@
      (define found (make-hash))
      (define (member-error message name)
        (check-gunzip!)
-       (error 'tar-gz-member "~a\n  archive: ~a\n  member: ~a" message archive name))
+       (error who "~a\n  archive: ~a\n  member: ~a" message archive name))
      (define (untar-failure e)
        (define truncated? (eof-object? (peek-byte in)))
        (check-gunzip!)

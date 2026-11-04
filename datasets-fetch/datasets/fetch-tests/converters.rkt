@@ -246,7 +246,7 @@
                       cifar-10-rows "label out of range" "member: cifar-10-batches-bin/data_batch_5.bin"
                       "record: 1" "label: 10" "expected: 0 to 9")
       (,cifar-10-rows ,(cifar-10-upstream (rest (cifar-10-members))) ,cifar-10-info
-                      tar-gz-member "no such member" "member: cifar-10-batches-bin/data_batch_1.bin")
+                      tar-gz-members "no such member" "member: cifar-10-batches-bin/data_batch_1.bin")
       (,cifar-10-rows ,(cifar-10-upstream (cifar-10-members)) ,(misshapen cifar-10-info)
                       cifar-10-rows "image size does not match the column count" "image-shape: (3 1 3)"
                       "column-count: 8")
@@ -261,7 +261,7 @@
                        ,cifar-100-info
                        cifar-100-rows "member is not a whole number of records" "record bytes: 8" "given bytes: 6")
       (,cifar-100-rows ,(cifar-100-upstream (take (cifar-100-members) 2)) ,cifar-100-info
-                       tar-gz-member "no such member" "member: cifar-100-binary/train.bin")
+                       tar-gz-members "no such member" "member: cifar-100-binary/train.bin")
       (,cifar-100-rows ,(cifar-100-upstream (cifar-100-members)) ,(misshapen cifar-100-info)
                        cifar-100-rows "image size does not match the column count" "column-count: 9")
       ,@(append*
