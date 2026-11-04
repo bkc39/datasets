@@ -2,10 +2,11 @@
 (require (only-in datasets/core dataset-info dataset-names)
          (only-in datasets/core-doc/catalog-rows catalog-column-rows)
          (only-in datasets/core-tests/fixture call-with-environment call-with-temporary-fixture)
-         (only-in datasets/fetch-private/convert idx-file-names)
+         (only-in datasets/fetch-private/convert idx-file-names linnerud-file-names)
+         (only-in datasets/fetch-tests/digest parity-reference)
          (only-in file/sha1 bytes->hex-string)
-         (only-in racket/list make-list)
-         (only-in racket/match match-define match-lambda)
+         (only-in racket/list drop make-list take)
+         (only-in racket/match match match-define match-lambda)
          (only-in racket/string string-join)
          (only-in threading ~>))
 (module+ test
@@ -14,62 +15,111 @@
   (define (indexed prefix n) (for/list ([i (in-range n)]) (format "~a-~a" prefix i)))
   (define image-columns
     (append (for/list ([k (in-range 1 785)]) (format "pixel~a" k)) '("label" "split")))
-  (define (idx-files base shas)
-    (for/list ([name (in-list idx-file-names)] [sha (in-list shas)])
+  (define (plane-columns . prefixes)
+    (for*/list ([prefix (in-list prefixes)] [k (in-range 1 1025)]) (format "~a~a" prefix k)))
+  (define (pinned-files names base shas)
+    (for/list ([name (in-list names)] [sha (in-list shas)])
       (list name (string-append base name) sha)))
+  (define (idx-files base shas)
+    (pinned-files idx-file-names base shas))
+  (define (toronto-files name sha) `((,name ,(string-append "https://www.cs.toronto.edu/~kriz/" name) ,sha)))
+  (struct fetch-set (name rows columns files binding license shape))
+  (define (emnist-set name rows)
+    (fetch-set name rows image-columns
+               '(("gzip.zip" "https://biometrics.nist.gov/cs_links/EMNIST/gzip.zip"
+                             "fb9bb67e33772a9cc0b895e4ecf36d2cf35be8b709693c3564cea2a019fcda8e"))
+               (format "~a-rows" name) "NOASSERTION" '(1 28 28)))
   (define sets
-    `((california-housing
-       20640 ("med-inc" "house-age" "ave-rooms" "ave-bedrms" "population" "ave-occup" "latitude" "longitude"
+    (list
+     (fetch-set
+      'california-housing
+      20640 '("med-inc" "house-age" "ave-rooms" "ave-bedrms" "population" "ave-occup" "latitude" "longitude"
               "med-house-val")
-       (("cal_housing.tgz" "https://ndownloader.figshare.com/files/5976036"
+      '(("cal_housing.tgz" "https://ndownloader.figshare.com/files/5976036"
                            "aaa5c9a6afe2225cc2aed2723682ae403280c4a3695a2ddda4ffb5d8215ea681"))
-       "california-housing-rows" "NOASSERTION")
-      (covtype
-       581012 ,(append '("elevation" "aspect" "slope" "horizontal-distance-to-hydrology"
-                         "vertical-distance-to-hydrology" "horizontal-distance-to-roadways" "hillshade-9am"
-                         "hillshade-noon" "hillshade-3pm" "horizontal-distance-to-fire-points")
-                       (indexed "wilderness-area" 4) (indexed "soil-type" 40) '("cover-type"))
-       (("covtype.data.gz"
+      "california-housing-rows" "NOASSERTION" #f)
+     (fetch-set
+      'cifar-10
+      60000 (append (plane-columns "red" "green" "blue") '("label" "split"))
+      (toronto-files "cifar-10-binary.tar.gz" "c4a38c50a1bc5f3a1c5537f2155ab9d68f9f25eb1ed8d9ddda3db29a59bca1dd")
+      "cifar-10-rows" "NOASSERTION" '(3 32 32))
+     (fetch-set
+      'cifar-100
+      60000 (append (plane-columns "red" "green" "blue") '("label" "coarse-label" "split"))
+      (toronto-files "cifar-100-binary.tar.gz" "58a81ae192c23a4be8b1804d68e518ed807d710a4eb253b1f2a199162a40d8ec")
+      "cifar-100-rows" "NOASSERTION" '(3 32 32))
+     (fetch-set
+      'covtype
+      581012 (append '("elevation" "aspect" "slope" "horizontal-distance-to-hydrology"
+                       "vertical-distance-to-hydrology" "horizontal-distance-to-roadways" "hillshade-9am"
+                       "hillshade-noon" "hillshade-3pm" "horizontal-distance-to-fire-points")
+                     (indexed "wilderness-area" 4) (indexed "soil-type" 40) '("cover-type"))
+      '(("covtype.data.gz"
          "https://archive.ics.uci.edu/ml/machine-learning-databases/covtype/covtype.data.gz"
          "614360d0257557dd1792834a85a1cdebfadc3c4f30b011d56afee7ffb5b15771"))
-       "covtype-rows" "CC-BY-4.0")
-      (fashion-mnist
-       70000 ,image-columns
-       ,(idx-files "http://fashion-mnist.s3-website.eu-central-1.amazonaws.com/"
-                   '("3aede38d61863908ad78613f6a32ed271626dd12800ba2636569512369268a84"
-                     "a04f17134ac03560a47e3764e11b92fc97de4d1bfaf8ba1a3aa29af54cc90845"
-                     "346e55b948d973a97e58d2351dde16a484bd415d4595297633bb08f03db6a073"
-                     "67da17c76eaffca5446c3361aaab5c3cd6d1c2608764d35dfb1850b086bf8dd5"))
-       "idx-image-rows" "MIT")
-      (mnist
-       70000 ,image-columns
-       ,(idx-files "https://ossci-datasets.s3.amazonaws.com/mnist/"
-                   '("440fcabf73cc546fa21475e81ea370265605f56be210a4024d2ca8f203523609"
-                     "3552534a0a558bbed6aed32b30c495cca23d567ec52cac8be1a0730e8010255c"
-                     "8d422c7b0a1c1c79245a5bcf07fe86e33eeafee792b84584aec276f5a2dbc4e6"
-                     "f7ae60f92e00ec6debd23a6088c31dbd2371eca3ffa0defaefb259924204aec6"))
-       "idx-image-rows" "NOASSERTION")
-      (nycflights13-flights
-       336776 ("year" "month" "day" "dep-time" "sched-dep-time" "dep-delay" "arr-time" "sched-arr-time"
+      "covtype-rows" "CC-BY-4.0" #f)
+     (emnist-set 'emnist-balanced 131600)
+     (emnist-set 'emnist-digits 280000)
+     (emnist-set 'emnist-letters 145600)
+     (fetch-set
+      'fashion-mnist
+      70000 image-columns
+      (idx-files "http://fashion-mnist.s3-website.eu-central-1.amazonaws.com/"
+                 '("3aede38d61863908ad78613f6a32ed271626dd12800ba2636569512369268a84"
+                   "a04f17134ac03560a47e3764e11b92fc97de4d1bfaf8ba1a3aa29af54cc90845"
+                   "346e55b948d973a97e58d2351dde16a484bd415d4595297633bb08f03db6a073"
+                   "67da17c76eaffca5446c3361aaab5c3cd6d1c2608764d35dfb1850b086bf8dd5"))
+      "idx-image-rows" "MIT" '(1 28 28))
+     (fetch-set
+      'kmnist
+      70000 image-columns
+      (idx-files "https://codh.rois.ac.jp/kmnist/dataset/kmnist/"
+                 '("51467d22d8cc72929e2a028a0428f2086b092bb31cfb79c69cc0a90ce135fde4"
+                   "e38f9ebcd0f3ebcdec7fc8eabdcdaef93bb0df8ea12bee65224341c8183d8e17"
+                   "edd7a857845ad6bb1d0ba43fe7e794d164fe2dce499a1694695a792adfac43c5"
+                   "20bb9a0ef54c7db3efc55a92eef5582c109615df22683c380526788f98e42a1c"))
+      "idx-image-rows" "CC-BY-SA-4.0" '(1 28 28))
+     (fetch-set
+      'linnerud
+      20 '("chins" "situps" "jumps" "weight" "waist" "pulse")
+      (pinned-files linnerud-file-names
+                    (string-append "https://raw.githubusercontent.com/scikit-learn/scikit-learn/"
+                                   "646da0f072a8afef6a980aa427a710311e67eb9d/sklearn/datasets/data/")
+                    '("cb8d8c24937643fa2459682efb86c5e667bcd6dd93109eef81964d9e9f11bf8c"
+                      "2bf7e05c1cd7d0adf0eca1e456941f624bed0a4fc96694d60d0ff7853ec5fcf7"))
+      "linnerud-rows" "NOASSERTION" #f)
+     (fetch-set
+      'mnist
+      70000 image-columns
+      (idx-files "https://ossci-datasets.s3.amazonaws.com/mnist/"
+                 '("440fcabf73cc546fa21475e81ea370265605f56be210a4024d2ca8f203523609"
+                   "3552534a0a558bbed6aed32b30c495cca23d567ec52cac8be1a0730e8010255c"
+                   "8d422c7b0a1c1c79245a5bcf07fe86e33eeafee792b84584aec276f5a2dbc4e6"
+                   "f7ae60f92e00ec6debd23a6088c31dbd2371eca3ffa0defaefb259924204aec6"))
+      "idx-image-rows" "NOASSERTION" '(1 28 28))
+     (fetch-set
+      'nycflights13-flights
+      336776 '("year" "month" "day" "dep-time" "sched-dep-time" "dep-delay" "arr-time" "sched-arr-time"
                "arr-delay" "carrier" "flight" "tailnum" "origin" "dest" "air-time" "distance" "hour"
                "minute" "time-hour")
-       (("flights.csv"
+      '(("flights.csv"
          "https://raw.githubusercontent.com/vincentarelbundock/Rdatasets/cc03c29690889dbe83089f5206e2422db8c3f71f/csv/nycflights13/flights.csv"
          "b791a2590c9167aa0bd3cb45af3f64101180878cf088c183eae4011e3a654f42"))
-       "csv-header-rows" "CC0-1.0")
-      (zip
-       9298 ,(append '("digit") (for/list ([k (in-range 1 257)]) (format "pixel~a" k)) '("split"))
-       (("zip.train.gz" "https://hastie.su.domains/ElemStatLearn/datasets/zip.train.gz"
+      "csv-header-rows" "CC0-1.0" #f)
+     (fetch-set
+      'zip
+      9298 (append '("digit") (for/list ([k (in-range 1 257)]) (format "pixel~a" k)) '("split"))
+      '(("zip.train.gz" "https://hastie.su.domains/ElemStatLearn/datasets/zip.train.gz"
                         "66ebf231ab51f2cf6ac1a892d0f98ccffee1079d7a5db638c1f11f366046ca16")
         ("zip.test.gz" "https://hastie.su.domains/ElemStatLearn/datasets/zip.test.gz"
                        "8dacc3c6e136af6c3488de9e5113a7daf140c8c2f1f0b61c54ee02f03f1a962f"))
-       "esl-zip-rows" "NOASSERTION")))
+      "esl-zip-rows" "NOASSERTION" '(1 16 16))))
   (define (sha256-hex s) (~> s string->bytes/utf-8 sha256-bytes bytes->hex-string))
 
   (test-case "the datasets-fetch registry: shapes, pins, converters, terms"
-    (check-equal? (dataset-names #:package "datasets-fetch") (map car sets))
+    (check-equal? (dataset-names #:package "datasets-fetch") (map fetch-set-name sets))
     (for ([s (in-list sets)])
-      (match-define (list name rows columns files binding license) s)
+      (match-define (fetch-set name rows columns files binding license shape) s)
       (define info (dataset-info name))
       (define fetch (hash-ref info "fetch"))
       (check-equal? (map (lambda (k) (hash-ref info k)) '("tier" "package" "rows" "column-count"))
@@ -85,8 +135,9 @@
                     files)
       (check-equal? (hash-ref info "source-sha256")
                     (~> (map (match-lambda [(list _ _ sha) sha]) files) (string-join "\n") sha256-hex))
-      (check-not-false (member license '("CC-BY-4.0" "MIT" "CC0-1.0" "NOASSERTION")))
+      (check-not-false (member license '("CC-BY-4.0" "CC-BY-SA-4.0" "MIT" "CC0-1.0" "NOASSERTION")))
       (check-equal? (hash-ref info "license") license)
+      (check-equal? (hash-ref info "image-shape" #f) shape (symbol->string name))
       (check-regexp-match #px"Downloads [0-9.]+ MB" (hash-ref info "notes"))))
 
   (test-case "the catalog shows the pixel columns of the image sets as one row"
@@ -95,7 +146,55 @@
                     '("pixel1 … pixel784" "label" "split")
                     (symbol->string name)))
     (check-equal? (map car (catalog-column-rows (hash-ref (dataset-info 'zip) "columns")))
-                  '("digit" "pixel1 … pixel256" "split")))
+                  '("digit" "pixel1 … pixel256" "split"))
+    (for ([name (in-list '(kmnist emnist-balanced emnist-letters emnist-digits))])
+      (check-equal? (map car (catalog-column-rows (hash-ref (dataset-info name) "columns")))
+                    '("pixel1 … pixel784" "label" "split")
+                    (symbol->string name)))
+    (check-equal? (map car (catalog-column-rows (hash-ref (dataset-info 'cifar-10) "columns")))
+                  '("red1 … red1024" "green1 … green1024" "blue1 … blue1024" "label" "split"))
+    (check-equal? (map car (catalog-column-rows (hash-ref (dataset-info 'cifar-100) "columns")))
+                  '("red1 … red1024" "green1 … green1024" "blue1 … blue1024" "label" "coarse-label" "split")))
+
+  (define pixel-rx #px"^(pixel|red|green|blue)([0-9]+)$")
+  (define (plane-prefixes prefix)
+    (match prefix
+      ["red" '("red" "green" "blue")]
+      ["pixel" '("pixel")]
+      [_ #f]))
+  (define (pixel-planes names)
+    (match (map (lambda (name) (regexp-match pixel-rx name)) names)
+      [(list (list _ (app plane-prefixes (? list? planes)) _) _ ...) planes]
+      [_ '()]))
+
+  (test-case "image-shape: C x H x W pixel columns, one contiguous run of C planes of H x W, row-major"
+    (define shaped
+      (for/list ([name (in-list (dataset-names #:package "datasets-fetch"))]
+                 #:when (hash-has-key? (dataset-info name) "image-shape"))
+        name))
+    (check-equal? shaped '(cifar-10 cifar-100 emnist-balanced emnist-digits emnist-letters fashion-mnist kmnist
+                                    mnist zip))
+    (for ([name (in-list shaped)])
+      (define info (dataset-info name))
+      (match-define (list c h w) (hash-ref info "image-shape"))
+      (define names (map (lambda (column) (hash-ref column "name")) (hash-ref info "columns")))
+      (define start (for/first ([n (in-list names)] [i (in-naturals)] #:when (regexp-match? pixel-rx n)) i))
+      (define planes (pixel-planes (drop names start)))
+      (define size (* c h w))
+      (check-equal? (length planes) c (symbol->string name))
+      (check-equal? (length (filter (lambda (n) (regexp-match? pixel-rx n)) names)) size (symbol->string name))
+      (check-equal? (take (drop names start) size)
+                    (for*/list ([p (in-list planes)] [k (in-range 1 (add1 (* h w)))]) (format "~a~a" p k))
+                    (symbol->string name))
+      (check-equal? start (if (eq? name 'zip) 1 0) (symbol->string name))))
+
+  (test-case "parity.json pins each image set's rows and canonical text as the registry does"
+    (for ([name (in-list '(cifar-10 cifar-100 kmnist emnist-balanced emnist-letters emnist-digits))])
+      (define info (dataset-info name))
+      (define reference (parity-reference name))
+      (check-equal? (list (hash-ref reference 'rows) (hash-ref reference 'canonical-sha256))
+                    (list (hash-ref info "rows") (hash-ref info "sha256"))
+                    (symbol->string name))))
 
   (test-case "zip types: digit integer, pixels real, split categorical train then test"
     (check-equal? (for/list ([column (in-list (hash-ref (dataset-info 'zip) "columns"))])
@@ -114,6 +213,8 @@
                                     (dataset-cached? 'covtype)
                                     (dataset-info 'zip)
                                     (dataset-cached? 'zip)
+                                    (dataset-info 'cifar-10)
+                                    (dataset-cached? 'emnist-balanced)
                                     (with-handlers ([exn:fail? exn-message])
                                       (load-dataset-table 'covtype #:download? #f))))])
                (eval form))

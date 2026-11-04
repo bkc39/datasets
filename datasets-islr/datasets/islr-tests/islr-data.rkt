@@ -1,20 +1,17 @@
 #lang racket/base
 (require (for-syntax racket/base)
-         (only-in datasets/core dataset-info dataset-missing dataset-missing? dataset-names
-                  dataset-packages dataset-table-column dataset-table-columns dataset-table-names
-                  dataset-table-row-count load-dataset-table)
+         (only-in datasets/core dataset-info dataset-missing dataset-missing? dataset-table-column
+                  dataset-table-columns dataset-table-names dataset-table-row-count
+                  load-dataset-table)
          (only-in datasets/core-doc/catalog-rows catalog-column-rows)
-         (only-in datasets/core-tests/fixture conjuncts gunzip-file hex license-ids)
          (only-in datasets/islr-tests/columns column-meta column-names)
-         (only-in racket/list append-map remove-duplicates)
          (only-in racket/match == match match-define)
          (only-in racket/runtime-path define-runtime-path)
-         (only-in racket/vector vector-count)
-         (only-in setup/getinfo get-info/full))
+         (only-in racket/vector vector-count))
 (define-runtime-path islr-data "../islr-data")
-(define-runtime-path package-root "../..")
 (module+ test
-  (require (only-in rackunit check-= check-equal? check-false check-not-false check-true test-case))
+  (require (only-in (submod datasets/core-tests/registry-checks test) check-bundled-registry)
+           (only-in rackunit check-= check-equal? check-false check-true test-case))
   (define islr-shapes
     '((auto 392 9) (bikeshare 8645 15) (boston 506 13) (brain-cancer 88 8) (caravan 5822 86)
       (carseats 400 11) (college 777 19) (credit 400 11) (default 10000 4) (fund 50 2000)
@@ -26,7 +23,6 @@
       (,esl-shapes "GPL-2.0-or-later" "ElemStatLearn 2015.6.26.2" #f)))
   (define ids (sort (map car (append islr-shapes esl-shapes)) symbol<?))
   (define vowel-features (for/list ([k (in-range 1 11)]) (format "x~a" k)))
-  (define (data-file id) (build-path islr-data "data" (format "~a.rktd.gz" id)))
   (define (column id name) (dataset-table-column (load-dataset-table id) name))
   (define (column-count id name keep?) (vector-count keep? (column id name)))
   (define (value-counts id name values)
@@ -39,12 +35,6 @@
   (define (column-sum id name)
     (for/sum ([v (in-vector (column id name))] #:unless (dataset-missing? v)) v))
   (define ((has-type type) meta) (equal? (hash-ref meta "type") type))
-  (define (type-value? type levels)
-    (match type
-      ["integer" exact-integer?]
-      ["real" real?]
-      ["categorical" (lambda (v) (member v levels))]
-      [_ string?]))
   (define (single-letter-segment? meta)
     (define name (hash-ref meta "name"))
     (and (regexp-match? #px"(^|-)[a-z](-|$)" name) (not (member name '("x" "y")))))
@@ -233,22 +223,16 @@
       (info ozone "suggested-targets" ("ozone"))
       (info ozone "identifiers" ())))
 
-  (check-equal? (dataset-names #:package "datasets-islr") ids)
-  (check-not-false (member "datasets-islr" (dataset-packages)))
+  (check-bundled-registry "datasets-islr" islr-data ids #:types 'declared)
   (for* ([source (in-list sources)]
          #:do [(match-define (list shapes license version chapters?) source)]
          [shape (in-list shapes)])
     (match-define (list id rows cols) shape)
     (define t (load-dataset-table id))
     (define info (dataset-info id))
+    (define where (symbol->string id))
     (check-equal? (dataset-table-row-count t) rows)
     (check-equal? (length (dataset-table-names t)) cols)
-    (check-equal? (hash-ref info "rows") rows)
-    (check-equal? (hash-ref info "column-count") cols)
-    (check-equal? (hash-ref info "tier") "bundled")
-    (check-equal? (hash-ref info "package") "datasets-islr")
-    (check-false (hash-ref info "fetch"))
-    (define where (symbol->string id))
     (check-equal? (hash-ref info "license") license where)
     (check-equal? (hash-ref info "source-version") version where)
     (if chapters?
@@ -256,35 +240,7 @@
         (check-false (hash-has-key? info "islr2-chapters") where))
     (check-equal? (column-names id single-letter-segment?) '() where)
     (check-equal? (column-names id escaped-description?) '() where)
-    (check-equal? (hex (sha256-bytes (gunzip-file (data-file id)))) (hash-ref info "sha256"))
-    (define header (call-with-input-file (data-file id) (lambda (in) (read-bytes 8 in))))
-    (check-equal? (subbytes header 0 4) (bytes #x1f #x8b 8 0))
-    (check-equal? (subbytes header 4 8) (bytes 0 0 0 0))
-    (check-true (file-exists? (build-path islr-data "provenance" (format "~a.Rd" id))))
-    (for ([target (in-list (hash-ref info "suggested-targets"))])
-      (check-not-false (member target (dataset-table-names t)) target))
-    (for ([c (in-vector (dataset-table-columns t))] [meta (in-list (hash-ref info "columns"))])
-      (define name (hash-ref meta "name"))
-      (define type (hash-ref meta "type"))
-      (define levels (hash-ref meta "levels"))
-      (define value? (type-value? type levels))
-      (check-equal? (vector-length c) rows)
-      (check-equal? (vector-count dataset-missing? c) (hash-ref meta "missing-count") name)
-      (check-equal? (null? levels) (not (equal? type "categorical")) name)
-      (check-not-false (for/and ([v (in-vector c)] #:unless (dataset-missing? v)) (value? v))
-                       name)))
-  (check-equal? (map path->string (directory-list (build-path islr-data "data")))
-                (for/list ([id (in-list ids)]) (format "~a.rktd.gz" id)))
-  (match-define (list _ 'AND data-license) ((get-info/full package-root) 'license))
-  (define license-files (directory-list (build-path islr-data "licenses")))
-  (define registry-licenses
-    (remove-duplicates (for/list ([id (in-list ids)]) (hash-ref (dataset-info id) "license"))))
-  (check-equal? (sort registry-licenses string<?) (sort (conjuncts data-license) string<?))
-  (for ([license (in-list (remove-duplicates (append-map license-ids registry-licenses)))])
-    (define file-name (pregexp (string-append "^" (regexp-quote license) "[-.]")))
-    (check-not-false (for/or ([file (in-list license-files)])
-                       (regexp-match? file-name (path->string file)))
-                     license))
+    (check-true (file-exists? (build-path islr-data "provenance" (format "~a.Rd" id)))))
   (check-equal? (map car (catalog-column-rows (hash-ref (dataset-info 'vowel) "columns")))
                 '("y" "x1 … x10" "split"))
 

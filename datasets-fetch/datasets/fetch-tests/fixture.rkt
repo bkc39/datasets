@@ -3,18 +3,27 @@
          (only-in datasets/fetch-private/mat mat-class/c)
          (only-in file/gzip deflate)
          (only-in file/tar tar->output)
+         (only-in file/zip zip->output zip-entry)
          (only-in racket/contract/base -> ->* any any/c contract-out hash/c integer-in list/c listof
                   non-empty-listof or/c)
-         (only-in racket/file make-directory*)
+         (only-in racket/file file->bytes make-directory*)
+         (only-in racket/list append* append-map first second)
          (only-in racket/match match match-define match-lambda)
          (only-in racket/path path-only)
-         (only-in racket/port call-with-output-bytes)
+         (only-in racket/port call-with-output-bytes open-output-nowhere)
          (only-in racket/string string-contains? string-prefix?)
          (only-in threading ~>))
 (provide (contract-out
           [call-with-upstream-files (-> (listof (list/c string? upstream/c))
                                         (-> (hash/c string? complete-path? #:immutable #t) any)
                                         any)]
+          [cifar-10-member-names (listof string?)]
+          [cifar-10-member-splits (listof string?)]
+          [cifar-10-upstream (-> (listof member/c) list?)]
+          [cifar-100-member-names (listof string?)]
+          [cifar-100-upstream (-> (listof member/c) list?)]
+          [cifar-record-bytes (-> (listof (listof byte?)) bytes?)]
+          [emnist-members (-> string? (list/c idx/c idx/c idx/c idx/c) (listof (list/c string? bytes?)))]
           [error-with? (-> symbol? string? ... (-> any/c boolean?))]
           [idx-bytes (->* ((listof exact-nonnegative-integer?) bytes?) (#:magic bytes?) bytes?)]
           [mat-bytes (->* ((listof (list/c string? mat-class/c (non-empty-listof exact-nonnegative-integer?)
@@ -23,18 +32,25 @@
           [png-bytes (->* (exact-positive-integer? exact-positive-integer? bytes?)
                           (#:filters (listof (integer-in 0 4)) #:idat-chunks exact-positive-integer?) bytes?)]
           [png-chunk (-> string? bytes? bytes?)]
+          [tar-bytes (-> (listof member/c) bytes?)]
           [zlib-bytes (-> bytes? bytes?)]))
 
+(define member/c (list/c string? (or/c string? bytes?)))
+(define idx/c (list/c (listof exact-nonnegative-integer?) bytes?))
+
 (define upstream/c
-  (or/c (list/c 'gz string?) (list/c 'tgz (listof (list/c string? string?))) (list/c 'plain string?)
-        (list/c 'idx-gz (non-empty-listof exact-nonnegative-integer?) bytes?)))
+  (or/c (list/c 'gz string?) (list/c 'tgz (listof (list/c string? (or/c string? bytes?)))) (list/c 'plain string?)
+        (list/c 'idx-gz (non-empty-listof exact-nonnegative-integer?) bytes?)
+        (list/c 'zip (listof (list/c string? bytes?))) (list/c 'bytes bytes?)))
 
 (define (upstream-bytes upstream)
   (match upstream
     [(list 'plain text) (string->bytes/utf-8 text)]
     [(list 'gz text) (gzip-bytes (string->bytes/utf-8 text))]
     [(list 'tgz members) (gzip-bytes (tar-bytes members))]
-    [(list 'idx-gz dims data) (gzip-bytes (idx-bytes dims data))]))
+    [(list 'idx-gz dims data) (gzip-bytes (idx-bytes dims data))]
+    [(list 'zip members) (zip-bytes members)]
+    [(list 'bytes data) data]))
 
 (define (idx-bytes dims data #:magic [magic (bytes 0 0 8 (length dims))])
   (apply bytes-append magic (append (map (lambda (d) (integer->integer-bytes d 4 #f #t)) dims) (list data))))
@@ -56,11 +72,32 @@
                        #:get-timestamp (lambda (_) 0))))))))
 
 (define (write-member! dir member)
-  (match member
-    [(list name text)
-     (define file (build-path dir name))
-     (make-directory* (path-only file))
-     (call-with-output-file file (lambda (out) (write-string text out)))]))
+  (match-define (list name content) member)
+  (define file (build-path dir name))
+  (make-directory* (path-only file))
+  (call-with-output-file file
+    (lambda (out) (if (bytes? content) (write-bytes content out) (write-string content out)))))
+
+(define stored-level 0)
+(define deflated-level 6)
+
+(define (deflated-size data)
+  (define-values (_in out _crc) (deflate (open-input-bytes data) (open-output-nowhere)))
+  out)
+
+(define (zip-bytes members)
+  (call-with-temporary-fixture
+   (lambda (dir)
+     (define file (build-path dir "members.zip"))
+     (call-with-output-file file
+       (lambda (out)
+         (zip->output (for/list ([member (in-list members)])
+                        (match-define (list name data) member)
+                        (zip-entry 'file (string->path name) data (bytes-length data) (hash)
+                                   (if (< (deflated-size data) (bytes-length data)) deflated-level stored-level)))
+                      out
+                      #:get-timestamp (lambda (_) 0))))
+     (file->bytes file))))
 
 (define (call-with-upstream-files upstream proc)
   (call-with-temporary-fixture
@@ -174,3 +211,29 @@
     [2 b]
     [3 (quotient (+ a b) 2)]
     [4 (cond [(and (<= pa pb) (<= pa pc)) a] [(<= pb pc) b] [else c])]))
+
+(define cifar-10-batches
+  (append (for/list ([k (in-range 1 6)]) (list (format "cifar-10-batches-bin/data_batch_~a.bin" k) "train"))
+          '(("cifar-10-batches-bin/test_batch.bin" "test"))))
+(define cifar-10-member-names (map first cifar-10-batches))
+(define cifar-10-member-splits (map second cifar-10-batches))
+(define cifar-100-member-names '("cifar-100-binary/train.bin" "cifar-100-binary/test.bin"))
+
+(define (cifar-record-bytes records)
+  (apply bytes (append* records)))
+
+(define (in-tar-order names members)
+  (append-map (lambda (name) (filter (lambda (member) (equal? (first member) name)) members)) names))
+
+(define (cifar-10-upstream members)
+  (match-define (list batch-1 batch-2 batch-3 batch-4 batch-5 test) cifar-10-member-names)
+  `(("cifar-10-binary.tar.gz" (tgz ,(in-tar-order (list batch-3 batch-1 test batch-5 batch-2 batch-4) members)))))
+
+(define (cifar-100-upstream members)
+  `(("cifar-100-binary.tar.gz" (tgz ,members))))
+
+(define (emnist-members split contents)
+  (for/list ([part (in-list '("train-images-idx3" "train-labels-idx1" "test-images-idx3" "test-labels-idx1"))]
+             [content (in-list contents)])
+    (match-define (list dims data) content)
+    (list (format "gzip/emnist-~a-~a-ubyte.gz" split part) (gzip-bytes (idx-bytes dims data)))))

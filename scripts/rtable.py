@@ -36,9 +36,10 @@ def read_r_table(directory, id):
     return header, list(kinds), rows
 
 
-def kebab(name):
-    """Lower-case name with each run of other characters replaced by one hyphen."""
-    return re.sub("[^a-z0-9]+", "-", name.lower()).strip("-")
+def kebab(name, camel=False):
+    """Lower-case name with each run of other characters replaced by one hyphen; camel splits aB as a-b first."""
+    split = re.sub("([a-z])([A-Z])", r"\1-\2", name) if camel else name
+    return re.sub("[^a-z0-9]+", "-", split.lower()).strip("-")
 
 
 def read_rktd(path, *keys):

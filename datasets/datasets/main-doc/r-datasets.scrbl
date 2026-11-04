@@ -1,9 +1,12 @@
 #lang scribble/manual
-@(require (only-in datasets/r-private/objects r-objects) (only-in racket/match match))
+@(require (only-in datasets/core dataset-info)
+          (only-in datasets/r-private/objects ggplot2-objects r-objects)
+          (only-in racket/match match match-lambda))
 
 @title[#:tag "datasets-from-r"]{Datasets from R}
 
-@(define catalog '(lib "datasets/core-doc/datasets-core.scrbl"))
+@(define catalog '(lib "datasets/r-doc/datasets-r.scrbl"))
+@(define core-manual '(lib "datasets/core-doc/datasets-core.scrbl"))
 
 @(define (r-object-cell x)
    (match x
@@ -14,8 +17,9 @@
 Every object of the @tt{datasets} package of R 4.3.3 is imported by
 @tt{datasets-r}, linked to equivalent data in @tt{datasets-core}, or skipped, as
 the table below records. R's @tt{iris} links to the @tt{datasets-core}
-@tt{iris}: the same measurements, with UCI species labels. Each dataset's entry
-is in the @secref["datasets-catalog" #:doc catalog]. Imports are mechanical:
+@tt{iris}: the same measurements, with UCI species labels. An imported
+dataset's entry is in the @other-doc[catalog]; a linked one's is in the
+@other-doc[core-manual]. Imports are mechanical:
 
 @itemlist[
  @item{Names: a hyphen goes between a lowercase letter or digit and a capital,
@@ -55,3 +59,21 @@ is in the @secref["datasets-catalog" #:doc catalog]. Imports are mechanical:
          (cons (list "R object" "Class" "Dataset")
                (for/list ([row (in-list r-objects)])
                  (map r-object-cell row)))]
+
+@section[#:tag "datasets-from-ggplot2"]{ggplot2}
+
+@tt{datasets-r} also bundles the eleven data sets of ggplot2 4.0.3 (MIT) under
+the rules above. Ordered factors are categorical with levels in R order:
+@tt{diamonds} @tt{cut} runs from @tt{Fair} to @tt{Ideal}, @tt{color} from
+@tt{D} to @tt{J} and @tt{clarity} from @tt{I1} to @tt{IF}. @tt{faithfuld} is a
+density estimate on a grid, not R's @tt{faithful}; @tt{mpg} is EPA fuel economy for
+1999 and 2008 models, not the UCI @tt{auto-mpg}.
+
+@tabular[#:sep (hspace 2)
+         (cons (list "R object" "Dataset" "Rows" "Columns")
+               (map (match-lambda
+                      [(list object (and dataset (list 'dataset id)))
+                       (list* (r-object-cell object) (r-object-cell dataset)
+                              (map (lambda (key) (number->string (hash-ref (dataset-info id) key)))
+                                   '("rows" "column-count")))])
+                    ggplot2-objects))]

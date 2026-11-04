@@ -1,12 +1,15 @@
 #lang racket/base
-(require (only-in datasets/fetch-private/archive gunzip-file tar-gz-member)
+(require (only-in datasets/fetch-private/archive gunzip-bytes gunzip-file tar-gz-member tar-gz-members
+                  zip-members)
          (only-in datasets/fetch-private/csv csv-rows info->column-specs)
          (only-in datasets/fetch-private/idx read-idx)
          (only-in racket/contract/base -> and/c contract-out flat-named-contract hash/c integer-in listof)
          (only-in racket/file file->bytes)
          (only-in racket/flonum fl/)
+         (only-in racket/function curry)
+         (only-in racket/list split-at)
          (only-in racket/match match match* match-define)
-         (only-in racket/sequence sequence-append sequence-map)
+         (only-in racket/sequence sequence->list sequence-append sequence-map)
          (only-in racket/stream for/stream)
          (only-in racket/string string-split)
          (only-in threading ~>))
@@ -15,9 +18,16 @@
           [california-housing-rows converter/c]
           [idx-file-names (listof string?)]
           [idx-image-rows converter/c]
+          [cifar-10-rows converter/c]
+          [cifar-100-rows converter/c]
+          [emnist-balanced-rows converter/c]
+          [emnist-letters-rows converter/c]
+          [emnist-digits-rows converter/c]
           [csv-header-rows converter/c]
           [esl-zip-file-names (listof string?)]
-          [esl-zip-rows converter/c]))
+          [esl-zip-rows converter/c]
+          [linnerud-file-names (listof string?)]
+          [linnerud-rows converter/c]))
 
 (define converter-files/c
   (flat-named-contract 'converter-files (hash/c string? complete-path? #:immutable #t)))
@@ -52,14 +62,16 @@
     "t10k-labels-idx1-ubyte.gz"))
 
 (define (idx-image-rows files info)
-  (match-define (list train-images train-labels test-images test-labels) idx-file-names)
-  (define width (- (hash-ref info "column-count") 2))
-  (sequence-append (idx-split-rows files train-images train-labels "train" width)
-                   (idx-split-rows files test-images test-labels "test" width)))
+  (idx-rows (curry idx-file files) idx-file-names (- (hash-ref info "column-count") 2)))
 
-(define (idx-split-rows files images-file labels-file split width)
-  (define-values (image-dims images) (idx-file files images-file))
-  (define-values (label-dims labels) (idx-file files labels-file))
+(define (idx-rows read-part parts width)
+  (match-define (list train-images train-labels test-images test-labels) parts)
+  (sequence-append (idx-split-rows read-part train-images train-labels "train" width)
+                   (idx-split-rows read-part test-images test-labels "test" width)))
+
+(define (idx-split-rows read-part images-part labels-part split width)
+  (define-values (image-dims images) (read-part images-part))
+  (define-values (label-dims labels) (read-part labels-part))
   (sequence-map (lambda (i) (idx-row images labels i width split))
                 (in-range (idx-image-count image-dims label-dims split width))))
 
@@ -84,6 +96,82 @@
 
 (define (idx-file files name)
   (~> (hash-ref files name) gunzip-file open-input-bytes read-idx))
+
+(define (image-width who info extra-columns)
+  (define shape (hash-ref info "image-shape"))
+  (define width (apply * shape))
+  (define count (hash-ref info "column-count"))
+  (cond
+    [(= count (+ width extra-columns)) width]
+    [else (error who "image size does not match the column count\n  image-shape: ~a\n  column-count: ~a"
+                 shape count)]))
+
+(define ((emnist-rows split) files info)
+  (define width (image-width 'idx-image-rows info 2))
+  (define members
+    (zip-members (hash-ref files "gzip.zip")
+                 (map (lambda (part) (format "gzip/emnist-~a-~a-ubyte.gz" split part))
+                      '("train-images-idx3" "train-labels-idx1" "test-images-idx3" "test-labels-idx1"))))
+  (idx-rows (lambda (data) (~> data gunzip-bytes open-input-bytes read-idx)) members width))
+
+(define emnist-balanced-rows (emnist-rows "balanced"))
+(define emnist-letters-rows (emnist-rows "letters"))
+(define emnist-digits-rows (emnist-rows "digits"))
+
+(struct cifar-member (name split))
+(struct cifar-label (offset classes name))
+
+(define cifar-10-members
+  (append (for/list ([k (in-range 1 6)])
+            (cifar-member (format "cifar-10-batches-bin/data_batch_~a.bin" k) "train"))
+          (list (cifar-member "cifar-10-batches-bin/test_batch.bin" "test"))))
+(define cifar-100-members
+  (list (cifar-member "cifar-100-binary/train.bin" "train") (cifar-member "cifar-100-binary/test.bin" "test")))
+
+(define (cifar-10-rows files info)
+  (cifar-rows 'cifar-10-rows (hash-ref files "cifar-10-binary.tar.gz") info
+              #:members cifar-10-members
+              #:labels (list (cifar-label 0 10 "label"))))
+
+(define (cifar-100-rows files info)
+  (cifar-rows 'cifar-100-rows (hash-ref files "cifar-100-binary.tar.gz") info
+              #:members cifar-100-members
+              #:labels (list (cifar-label 1 100 "label") (cifar-label 0 20 "coarse label"))))
+
+(define (cifar-rows who archive info #:members members #:labels labels)
+  (define width (image-width who info (add1 (length labels))))
+  (define record-bytes (+ (length labels) width))
+  (apply sequence-append
+         (map (lambda (member data) (cifar-member-rows who member data record-bytes labels))
+              members
+              (tar-gz-members archive (map cifar-member-name members)))))
+
+(define (cifar-member-rows who member data record-bytes labels)
+  (match-define (cifar-member name split) member)
+  (sequence-map (lambda (record) (cifar-row who name data record record-bytes labels split))
+                (in-range (cifar-record-count who name data record-bytes))))
+
+(define (cifar-record-count who member data record-bytes)
+  (define size (bytes-length data))
+  (cond
+    [(and (positive? size) (zero? (remainder size record-bytes))) (quotient size record-bytes)]
+    [else (error who "member is not a whole number of records\n  member: ~a\n  record bytes: ~a\n  given bytes: ~a"
+                 member record-bytes size)]))
+
+(define (cifar-row who member data record record-bytes labels split)
+  (define start (* record record-bytes))
+  (define label-values
+    (for/list ([label (in-list labels)])
+      (match-define (cifar-label offset classes name) label)
+      (define value (bytes-ref data (+ start offset)))
+      (cond
+        [(< value classes) value]
+        [else (error who "~a out of range\n  member: ~a\n  record: ~a\n  label: ~a\n  expected: 0 to ~a"
+                     name member (add1 record) value (sub1 classes))])))
+  (~> data
+      (subbytes (+ start (length labels)) (+ start record-bytes))
+      bytes->list
+      (append _ label-values (list split))))
 
 (define (csv-header-rows files info)
   (match (hash-values files)
@@ -117,3 +205,29 @@
       [(cons token _)
        (error 'esl-zip-rows "digit is not a whole number from 0 to 9\n  file: ~a\n  line: ~a\n  token: ~a"
               name number token)])))
+
+(define linnerud-file-names '("linnerud_exercise.csv" "linnerud_physiological.csv"))
+
+(define (linnerud-rows files info)
+  (match-define (list exercise physiological) linnerud-file-names)
+  (define specs (info->column-specs info))
+  (define exercise-width
+    (match (call-with-input-file (hash-ref files exercise) read-line)
+      [(? eof-object?) 0]
+      [header (length (string-split header))]))
+  (define-values (exercise-specs physiological-specs)
+    (cond
+      [(zero? exercise-width) (error 'linnerud-rows "missing header\n  file: ~a" exercise)]
+      [(< exercise-width (length specs)) (split-at specs exercise-width)]
+      [else
+       (error 'linnerud-rows "header too wide for the dataset\n  file: ~a\n  fields: ~a\n  columns: ~a"
+              exercise exercise-width (length specs))]))
+  (define (file-rows name specs)
+    (~> (hash-ref files name) file->bytes open-input-bytes (csv-rows specs #:separator #\space)
+        sequence->list))
+  (define exercise-rows (file-rows exercise exercise-specs))
+  (define physiological-rows (file-rows physiological physiological-specs))
+  (cond
+    [(= (length exercise-rows) (length physiological-rows)) (map append exercise-rows physiological-rows)]
+    [else (error 'linnerud-rows "files differ in row count\n  ~a: ~a\n  ~a: ~a" exercise
+                 (length exercise-rows) physiological (length physiological-rows))]))

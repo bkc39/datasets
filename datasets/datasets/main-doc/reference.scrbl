@@ -45,7 +45,12 @@ Each named loader delegates to @racket[load-dataset] with its corresponding
 dataset identifier, passing @racket[#:format] and @racket[#:columns]; named
 loaders take no @racket[#:download?]. The defaults, selection rules, errors, and
 result types are the same. Variable descriptions and provenance appear in the
-@secref["datasets-catalog" #:doc '(lib "datasets/core-doc/datasets-core.scrbl")].
+@secref["datasets-catalog" #:doc '(lib "datasets/core-doc/datasets-core.scrbl")]
+and in the catalogs of
+@other-doc['(lib "datasets/r-doc/datasets-r.scrbl")],
+@other-doc['(lib "datasets/uci-doc/datasets-uci.scrbl")],
+@other-doc['(lib "datasets/islr-doc/datasets-islr.scrbl")] and
+@other-doc['(lib "datasets/fetch-doc/datasets-fetch.scrbl")].
 @defproc[(load-mtcars [#:format format (or/c 'polars 'table 'matrix 'data-frame) 'polars] [#:columns columns (or/c #f (non-empty-listof string?)) #f]) any/c]{Loads mtcars.}
 @defproc[(load-iris [#:format format (or/c 'polars 'table 'matrix 'data-frame) 'polars] [#:columns columns (or/c #f (non-empty-listof string?)) #f]) any/c]{Loads corrected UCI Iris.}
 @defproc[(load-faithful [#:format format (or/c 'polars 'table 'matrix 'data-frame) 'polars] [#:columns columns (or/c #f (non-empty-listof string?)) #f]) any/c]{Loads faithful.}
