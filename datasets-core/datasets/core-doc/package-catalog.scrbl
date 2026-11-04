@@ -8,12 +8,9 @@
          (only-in "catalog-rows.rkt" catalog-column-rows))
 (provide (contract-out [package-catalog (-> string? list?)]))
 
-(define core-manual '(lib "datasets/core-doc/datasets-core.scrbl"))
-
-(define (fetch-guide)
-  (secref "datasets-core-fetch-guide" #:doc core-manual))
-
 (define (fetch-line info)
+  (define fetch-guide
+    (secref "datasets-core-fetch-guide" #:doc '(lib "datasets/core-doc/datasets-core.scrbl")))
   (match (hash-ref info "fetch")
     [#f '()]
     [(hash-table ("format" "convert") ("files" files)
@@ -25,9 +22,9 @@
            (add-between (for/list ([f (in-list files)])
                           (list (tt (hash-ref f "name")) " (SHA-256 " (tt (hash-ref f "sha256")) ")"))
                         ", ")
-           "; see " (fetch-guide) ".")]
+           "; see " fetch-guide ".")]
     [fetch (para "Fetch tier: download SHA-256 " (tt (hash-ref fetch "sha256"))
-                 ", fetched on first use; see " (fetch-guide) ".")]))
+                 ", fetched on first use; see " fetch-guide ".")]))
 
 (define (dataset-entry name)
   (define info (dataset-info name))

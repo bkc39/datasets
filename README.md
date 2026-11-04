@@ -53,7 +53,8 @@ nonmissing values: categories are not encoded, nor missing values imputed.
 package directories in dependency order: `datasets-core` first, the umbrella `datasets`
 last. The flake, scripts and gates read it; `scripts/check-package-list.rkt` checks that
 it names every package directory, that each package's deps and build-deps on listed
-packages are listed before it, and that the umbrella depends on all the others. Each package declares
+packages are listed before it, that the umbrella depends on all the others, and that every
+dependency on the core states the core's current version. Each package declares
 `collection 'multi` and contributes distinct directories to the shared `datasets` collection.
 `datasets-r` contributes `datasets/r-data`, found through its registry, and its
 tests; it depends on `datasets-core`, and `datasets` depends on it. Its sets have
@@ -61,7 +62,7 @@ no named loader: use `(load-dataset 'penguins)`. `datasets-uci` contributes
 `datasets/uci-data` the same way; `(load-dataset 'digits)`. `datasets-islr`
 contributes `datasets/islr-data` the same way. `datasets-fetch` contributes
 `datasets/fetch-data`, a registry of converted fetch-tier sets, and their
-private converters; it requires `datasets-core` 0.3.
+private converters. Every sibling requires `datasets-core` 0.4.
 
 `datasets-core` contributes `datasets/core` and depends only on `base` at runtime.
 It provides `load-dataset-table`, `dataset-names`, `dataset-info`, the

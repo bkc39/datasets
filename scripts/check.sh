@@ -7,7 +7,7 @@ mode=${1:-full}
 racket scripts/check-package-list.rkt
 source scripts/packages.sh
 test=(raco test --drdr --jobs 2 --package)
-raco test scripts/check-package-list.rkt
+raco test scripts/check-package-list.rkt scripts/user-deps.rkt
 if [[ "$mode" == full ]]; then
   # Render the manuals referenced by the evaluated guide examples.
   raco setup --avoid-main --pkgs polars data-frame threading-doc
