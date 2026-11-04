@@ -2,7 +2,7 @@
 (require (for-syntax racket/base)
          (only-in racket/cmdline command-line)
          (only-in racket/file file->lines)
-         (only-in racket/list append-map check-duplicates drop-right filter-map first last rest take)
+         (only-in racket/list append-map check-duplicates drop-right filter-map last take)
          (only-in racket/match == match)
          (only-in racket/runtime-path define-runtime-path)
          (only-in setup/getinfo get-info/full))
@@ -38,18 +38,23 @@
 
 (define (option-version options)
   (match options
-    [(list* '#:version version _) version]
-    [(list* _ _ more) (option-version more)]
+    [(list _ ... '#:version version _ ...) version]
     [_ #f]))
 
-(define (core-version-problems root core names)
-  (define version (info-field root core 'version))
+(define (package-version root name)
+  (match (info-field root name 'version)
+    ['() "0.0"]
+    [version version]))
+
+(define (version-problems root names)
+  (define versions (for/hash ([name (in-list names)]) (values name (package-version root name))))
   (for*/list ([name (in-list names)]
               [key (in-list '(deps build-deps))]
               [form (in-list (info-field root name key))]
-              #:when (equal? (dep-name form) core)
-              #:unless (equal? (dep-version form) version))
-    `(core-version ,name ,form ,version)))
+              [dep (in-value (dep-name form))]
+              #:when (hash-has-key? versions dep)
+              #:unless (equal? (dep-version form) (hash-ref versions dep)))
+    `(version ,name ,form ,dep ,(hash-ref versions dep))))
 
 (define (dep-problem name form)
   (match (dep-name form)
@@ -105,7 +110,7 @@
     [else
      (define packages (drop-right names 1))
      (append (order-problems root names packages)
-             (core-version-problems root (first names) (rest names))
+             (version-problems root names)
              (filter-map mismatch
                          `((deps ,(sort (listed-deps root (last names) '(deps) names) string<?)
                                  ,(sort packages string<?))
@@ -120,8 +125,8 @@
     [(list 'info name message) (format "~a/info.rkt: cannot be read: ~a" name message)]
     [(list 'dep name form) (format "~a/info.rkt: ~s is not a dependency form" name form)]
     [(list 'self name) (format "~a/info.rkt: the package depends on itself" name)]
-    [(list 'core-version name form version)
-     (format "~a/info.rkt: ~s does not state the core package's version ~s" name form version)]
+    [(list 'version name form dep version)
+     (format "~a/info.rkt: ~s does not state ~a's version ~s" name form dep version)]
     [(list 'order name dep)
      (format "scripts/packages.txt: ~a depends on ~a, which is not listed before it" name dep)]
     [(list 'deps found expected)
@@ -157,8 +162,10 @@
           (hash "datasets-core" (hash 'version "0.2"
                                       'deps '(("base" #:version "9.3"))
                                       'build-deps '("rackunit-lib"))
-                "datasets-r" (hash 'deps '(("base" #:version "9.3") ("datasets-core" #:version "0.2")))
-                "datasets-fetch" (hash 'deps '(("datasets-core" #:version "0.2") "threading-lib")
+                "datasets-r" (hash 'version "0.1"
+                                   'deps '(("base" #:version "9.3") ("datasets-core" #:version "0.2")))
+                "datasets-fetch" (hash 'version "0.1"
+                                       'deps '(("datasets-core" #:version "0.2") "threading-lib")
                                        'build-deps '("rackunit-lib"))
                 "datasets" (hash 'deps '(("datasets-core" #:version "0.2")
                                          ("datasets-r" #:version "0.1")
@@ -239,23 +246,34 @@
       [((swap-lines 1 2)) ()]
       [((remove-dep 1)) (deps)]
       [((add deps "datasets" "datasets-extra")) ()]
-      [((swap-lines 0 1)) (order core-version)]
-      [((swap-lines 0 1) (swap-deps 0 1)) (order core-version)]
-      [((add deps "datasets-core" "datasets-r")) (order)]
+      [((swap-lines 0 1)) (order)]
+      [((swap-lines 0 1) (swap-deps 0 1)) (order)]
+      [((add deps "datasets-core" ("datasets-r" #:version "0.1"))) (order)]
       [((add deps "datasets-r" ("datasets-fetch" #:version "0.1"))) (order)]
       [((add build-deps "datasets-r" ("datasets-fetch" #:version "0.1"))) (order)]
       [((add build-deps "datasets-fetch" ("datasets-r" #:version "0.1"))) ()]
       [((add build-deps "datasets" ("datasets-core" "0.2"))) ()]
-      [((add build-deps "datasets" "datasets-core")) (core-version)]
-      [((set deps "datasets-r" (("base" #:version "9.3") "datasets-core"))) (core-version)]
-      [((set deps "datasets-fetch" (("datasets-core" #:version "0.1")))) (core-version)]
-      [((set deps "datasets-r" (("datasets-core" #:platform unix)))) (core-version)]
-      [((set version "datasets-core" "0.3")) (core-version)]
+      [((add build-deps "datasets" "datasets-core")) (version)]
+      [((set deps "datasets-r" (("base" #:version "9.3") "datasets-core"))) (version)]
+      [((set deps "datasets-fetch" (("datasets-core" #:version "0.1")))) (version)]
+      [((set deps "datasets-r" (("datasets-core" #:platform unix)))) (version)]
+      [((set version "datasets-core" "0.3")) (version)]
+      [((set deps "datasets" (("datasets-core" #:version "0.2") "datasets-r" ("datasets-fetch" #:version "0.1"))))
+       (version)]
+      [((set version "datasets-r" "0.2")) (version)]
+      [((set version "datasets-fetch" "0.1.1")) (version)]
+      [((add build-deps "datasets-fetch" "datasets-r")) (version)]
       [((insert-line 1 "extra-pkg")
         (add-dir "extra-pkg")
-        (add deps "datasets" "extra-pkg")
-        (add deps "datasets-r" "extra-pkg"))
+        (set version "extra-pkg" "0.1")
+        (add deps "datasets" ("extra-pkg" #:version "0.1"))
+        (add deps "datasets-r" ("extra-pkg" #:version "0.1")))
        ()]
+      [((insert-line 1 "extra-pkg")
+        (add-dir "extra-pkg")
+        (add deps "datasets" ("extra-pkg" #:version "0.0"))
+        (add deps "datasets-r" "extra-pkg"))
+       (version)]
       [((add deps "datasets-r" datasets-core)) (dep)]
       [((add deps "datasets-r" ("datasets-core" . "0.2"))) (dep)]
       [((add deps "datasets-r" ("datasets-core" "0.2" junk))) (dep)]
@@ -277,7 +295,7 @@
 
   (define (problem-file problem)
     (match problem
-      [(list (or 'info 'dep 'self 'core-version) name _ ...) (format "~a/info.rkt: " name)]
+      [(list (or 'info 'dep 'self 'version) name _ ...) (format "~a/info.rkt: " name)]
       [_ "scripts/packages.txt: "]))
 
   (for ([c (in-list cases)])

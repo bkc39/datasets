@@ -8,9 +8,10 @@
          (only-in "catalog-rows.rkt" catalog-column-rows))
 (provide (contract-out [package-catalog (-> string? list?)]))
 
+(define fetch-guide
+  (secref "datasets-core-fetch-guide" #:doc '(lib "datasets/core-doc/datasets-core.scrbl")))
+
 (define (fetch-line info)
-  (define fetch-guide
-    (secref "datasets-core-fetch-guide" #:doc '(lib "datasets/core-doc/datasets-core.scrbl")))
   (match (hash-ref info "fetch")
     [#f '()]
     [(hash-table ("format" "convert") ("files" files)
