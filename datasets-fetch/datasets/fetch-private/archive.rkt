@@ -35,9 +35,9 @@
   (define (trailer) (- size 2 (file-position in)))
   (define (truncated?) (or (end-seen?) (< (trailer) 4)))
   (define (invalid e)
-    (cond
-      [(truncated?) (error 'inflate-zlib "truncated zlib stream")]
-      [else (error 'inflate-zlib "invalid deflate data\n  detail: ~a" (exn-message e))]))
+    (when (truncated?)
+      (error 'inflate-zlib "truncated zlib stream"))
+    (error 'inflate-zlib "invalid deflate data\n  detail: ~a" (exn-message e)))
   (define inflated (and zlib? (not dictionary?) (inflate-limited in limit invalid)))
   (cond
     [(not cmf) (error 'inflate-zlib "truncated zlib stream")]
@@ -55,11 +55,10 @@
     (make-output-port 'inflate-zlib always-evt
                       (lambda (buffer start end _non-blocking? _breakable?)
                         (set! written (+ written (- end start)))
-                        (cond
-                          [(> written limit)
-                           (error 'inflate-zlib "inflated data exceeds the limit\n  limit: ~a" limit)]
-                          [else (set! chunks (cons (subbytes buffer start end) chunks))
-                                (- end start)]))
+                        (when (> written limit)
+                          (error 'inflate-zlib "inflated data exceeds the limit\n  limit: ~a" limit))
+                        (set! chunks (cons (subbytes buffer start end) chunks))
+                        (- end start))
                       void))
   (with-handlers ([(lambda (e) (and (exn:fail? e) (<= written limit))) invalid])
     (inflate in out))
