@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Render every manual into the ignored doc/ directory; packages must be installed.
 set -euo pipefail
 project_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
 cd "$project_root"
@@ -7,18 +6,21 @@ mkdir -p "$project_root/.cache"
 staging=$(mktemp -d "$project_root/.cache/docs.XXXXXX")
 trap 'rm -rf -- "$staging"' EXIT
 raco setup --avoid-main --pkgs polars data-frame threading-doc
-manuals=(datasets-core/datasets/core-doc/datasets-core.scrbl
-  datasets-r/datasets/r-doc/datasets-r.scrbl
-  datasets-uci/datasets/uci-doc/datasets-uci.scrbl
-  datasets-islr/datasets/islr-doc/datasets-islr.scrbl
-  datasets-fetch/datasets/fetch-doc/datasets-fetch.scrbl
-  datasets/datasets/main-doc/datasets.scrbl)
+source scripts/packages.sh
+manuals=()
+for package in "${packages[@]}"; do
+  manual=("$package"/datasets/*-doc/"$package".scrbl)
+  if [[ ${#manual[@]} -ne 1 || ! -f ${manual[0]} ]]; then
+    echo "build-docs: $package has no single manual" >&2
+    exit 1
+  fi
+  manuals+=("${manual[0]}")
+done
 installed=()
 for manual in "${manuals[@]}"; do
   installed+=("$(dirname -- "$manual")/doc")
 done
 rm -rf -- "${installed[@]}"
-source scripts/packages.sh
 raco setup --pkgs "${packages[@]}" 2>&1 | tee "$staging/setup.log"
 if grep -q '^raco setup: WARNING: undefined tag in <pkgs>/datasets' "$staging/setup.log"; then
   echo "build-docs: a datasets manual links an undocumented binding" >&2
