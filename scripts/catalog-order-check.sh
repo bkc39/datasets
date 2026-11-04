@@ -36,6 +36,7 @@ for family in "${families[@]}"; do
 done
 rm -rf -- "$core_manual"
 raco setup -j 2 --pkgs "$core"
+grep -rqF "datasets-package-$core" "$core_manual" || fail "the re-rendered $core manual has no catalog section"
 for family in "${families[@]}"; do
   ! grep -rqF "datasets-package-$family" "$core_manual" ||
     fail "the $core manual catalogues $family"

@@ -54,7 +54,7 @@ package directories in dependency order: `datasets-core` first, the umbrella `da
 last. The flake, scripts and gates read it; `scripts/check-package-list.rkt` checks that
 it names every package directory, that each package's deps and build-deps on listed
 packages are listed before it, that the umbrella depends on all the others, and that every
-dependency on the core states the core's current version. Each package declares
+dependency on a listed package states that package's current version. Each package declares
 `collection 'multi` and contributes distinct directories to the shared `datasets` collection.
 `datasets-r` contributes `datasets/r-data`, found through its registry, and its
 tests; it depends on `datasets-core`, and `datasets` depends on it. Its sets have

@@ -4,6 +4,7 @@
                      racket/contract/base
                      datasets/core
                      datasets/synthetic
+                     scribble/decode
                      (lib "datasets/core-doc/package-catalog.scrbl")))
 @(define ev (make-base-eval))
 @(ev '(require datasets/core))
@@ -358,10 +359,12 @@ index values of the first and last rows, one per index column).
 @section[#:tag "datasets-core-catalog-reference"]{Catalog sections}
 @defmodule[(lib "datasets/core-doc/package-catalog.scrbl")]
 
-@defproc[(package-catalog [package string?]) list?]{
-Returns Scribble content for one section, tagged
-@tt{datasets-package-}@racket[package], with an entry per dataset that
-@racket[package] registers: its size, notes, citation, source, license, fetch
-details, and a table of its columns. See @secref["datasets-core-other-packages"].}
+@defproc[(package-catalog [package (and/c string? registered-package?)]) pre-part?]{
+Returns one section, tagged @tt{datasets-package-}@racket[package], with an
+entry per dataset that @racket[package] registers: its size, notes, citation,
+source, license, fetch details, and a table of its columns. A package is
+registered when @racket[(dataset-packages)] includes it; any other
+@racket[package] is a contract violation. See
+@secref["datasets-core-other-packages"].}
 
 @(close-eval ev)
