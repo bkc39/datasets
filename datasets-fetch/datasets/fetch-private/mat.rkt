@@ -1,9 +1,11 @@
 #lang racket/base
-(require (only-in datasets/fetch-private/archive bytes->input-port inflate-zlib)
-         (only-in racket/contract/base ->i -> any/c contract-out flat-named-contract listof non-empty-listof
-                  or/c)
-         (only-in racket/match match match-define)
+(require (only-in datasets/fetch-private/archive inflate-zlib)
+         (only-in datasets/fetch-private/bytes-port bytes->input-port)
+         (only-in racket/contract/base ->i -> and/c any/c contract-out flat-named-contract listof
+                  non-empty-listof or/c)
+         (only-in racket/match match match* match-define)
          (only-in racket/port copy-port make-limited-input-port open-output-nowhere)
+         (only-in racket/unsafe/ops unsafe-bytes->immutable-bytes!)
          (only-in threading ~>))
 (define mat-name/c
   (flat-named-contract 'mat-name
@@ -20,7 +22,7 @@
           [mat-array-ref (->i ([a mat-array?] [i exact-nonnegative-integer?])
                               #:pre/name (a i) "index within the array" (< i (mat-array-count a))
                               [_ (or/c exact-integer? flonum?)])]
-          [mat-array->bytes (-> byte-storage/c bytes?)]))
+          [rename mat-array-data mat-array->bytes (-> byte-storage/c (and/c bytes? immutable?))]))
 
 (struct mat-array (class dims count kind width data big-endian?))
 
@@ -79,40 +81,42 @@
   (let loop ([seen '()] [found '()])
     (define offset (file-position in))
     (define tag (read-bytes 8 in))
-    (define complete? (and (bytes? tag) (= (bytes-length tag) 8)))
-    (define-values (name array)
-      (cond
-        [complete?
-         (define-values (type size _small?) (tag-type+size tag big-endian?))
-         (read-top-element in type size (frame offset big-endian? #f) names)]
-        [else (values #f #f)]))
-    (cond
-      [(eof-object? tag) (values (reverse seen) found)]
-      [(not complete?) (overrun offset)]
-      [(not name) (loop seen found)]
-      [(member name seen) (error 'read-mat "duplicate variable\n  name: ~a" name)]
-      [array (loop (cons name seen) (cons (cons name array) found))]
-      [else (loop (cons name seen) found)])))
+    (define element
+      (and (bytes? tag) (= (bytes-length tag) 8) (read-top-element in tag (frame offset big-endian? #f) names)))
+    (match* (tag element)
+      [((? eof-object?) _) (values (reverse seen) found)]
+      [(_ #f) (overrun offset)]
+      [(_ 'skipped) (loop seen found)]
+      [(_ (cons name _)) #:when (member name seen) (error 'read-mat "duplicate variable\n  name: ~a" name)]
+      [(_ (cons name #f)) (loop (cons name seen) found)]
+      [(_ (cons name _)) (loop (cons name seen) (cons element found))])))
 
-(define (read-top-element in type size context names)
+(define (read-top-element in tag context names)
+  (define-values (type size _small?) (tag-type+size tag (frame-big-endian? context)))
   (cond
-    [(= type mi-matrix)
-     (define start (file-position in))
-     (define body (make-limited-input-port in size #f))
-     (define-values (name array) (read-matrix body context names))
-     (drain in body start size context)
-     (values name array)]
-    [(= type mi-compressed)
-     (define inflated (~> (read-exactly in size context) (inflate-zlib compressed-limit)))
-     (define inner (bytes->input-port inflated))
-     (define inner-context
-       (frame (frame-offset context) (frame-big-endian? context)
-              (lambda () (- (bytes-length inflated) (file-position inner)))))
-     (define tag (read-exactly inner 8 inner-context))
-     (define-values (inner-type inner-size _small?) (tag-type+size tag (frame-big-endian? context)))
-     (read-top-element inner inner-type inner-size inner-context names)]
+    [(= type mi-matrix) (read-matrix-element in size context names)]
+    [(= type mi-compressed) (read-compressed in size context names)]
     [else (drain in (make-limited-input-port in size #f) (file-position in) size context)
-          (values #f #f)]))
+          'skipped]))
+
+(define (read-matrix-element in size context names)
+  (define start (file-position in))
+  (define body (make-limited-input-port in size #f))
+  (begin0 (read-matrix body context names)
+          (drain in body start size context)))
+
+(define (read-compressed in size context names)
+  (define inflated (~> (read-exactly in size context) (inflate-zlib compressed-limit)))
+  (define-values (inner _end-seen?) (bytes->input-port inflated))
+  (define inner-context
+    (frame (frame-offset context) (frame-big-endian? context)
+           (lambda () (- (bytes-length inflated) (file-position inner)))))
+  (define-values (type inner-size _small?)
+    (~> (read-exactly inner 8 inner-context) (tag-type+size (frame-big-endian? context))))
+  (cond
+    [(= type mi-matrix) (read-matrix-element inner inner-size inner-context names)]
+    [else (error 'read-mat "compressed element is not a matrix\n  offset: ~a\n  type: ~a"
+                 (frame-offset context) type)]))
 
 (define (tag-type+size tag big-endian?)
   (define word (integer-bytes->integer tag #f big-endian? 0 4))
@@ -137,7 +141,7 @@
   (define flags (read-subelement-data body context))
   (define dims-data (read-subelement-data body context))
   (define name (bytes->string/latin-1 (read-subelement-data body context)))
-  (values name (and (member name names) (read-numeric body name flags dims-data context))))
+  (cons name (and (member name names) (read-numeric body name flags dims-data context))))
 
 (define (read-numeric body name flags dims-data context)
   (define big-endian? (frame-big-endian? context))
@@ -163,7 +167,8 @@
     [(not store) (error 'read-mat "unsupported storage type\n  name: ~a\n  type: ~a" name type)]
     [(and count (= (* count (storage-width store)) size))
      (mat-array class dims count (storage-kind store) (storage-width store)
-                (if small? (small-data tag size context) (read-exactly body size context))
+                (unsafe-bytes->immutable-bytes!
+                 (if small? (small-data tag size context) (read-exactly body size context)))
                 (frame-big-endian? context))]
     [else (error 'read-mat "data size does not match the dimensions\n  name: ~a\n  dimensions: ~a\n  bytes: ~a"
                  name dims size)]))
@@ -175,21 +180,19 @@
 
 (define (read-exactly in n context)
   (define left (frame-memory-left context))
-  (define data
-    (cond
-      [(not left) (read-chunked in n)]
-      [(<= n (left)) (read-bytes n in)]
-      [else #f]))
   (cond
-    [(and (bytes? data) (= (bytes-length data) n)) data]
+    [(and left (> n (left))) (overrun (frame-offset context))]
+    [(read-chunked in n (if left n chunk-size))]
     [else (overrun (frame-offset context))]))
 
-(define (read-chunked in n)
+(define (read-chunked in n chunk)
   (let loop ([left n] [chunks '()])
-    (define chunk (if (zero? left) eof (read-bytes (min left chunk-size) in)))
+    (define piece (read-bytes (min left chunk) in))
     (cond
-      [(eof-object? chunk) (apply bytes-append (reverse chunks))]
-      [else (loop (- left (bytes-length chunk)) (cons chunk chunks))])))
+      [(eof-object? piece) #f]
+      [(< (bytes-length piece) left) (loop (- left (bytes-length piece)) (cons piece chunks))]
+      [(null? chunks) piece]
+      [else (apply bytes-append (reverse (cons piece chunks)))])))
 
 (define (drain in body start size context)
   (copy-port body (open-output-nowhere))
@@ -206,6 +209,3 @@
     ['float (floating-point-bytes->real data big-endian? start (+ start width))]
     ['signed (integer-bytes->integer data #t big-endian? start (+ start width))]
     ['unsigned (integer-bytes->integer data #f big-endian? start (+ start width))]))
-
-(define (mat-array->bytes a)
-  (mat-array-data a))

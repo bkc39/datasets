@@ -12,10 +12,12 @@
   (require (for-syntax racket/base)
            (only-in datasets/core-tests/fixture call-with-memory-limit)
            (only-in datasets/fetch-private/archive inflate-zlib)
+           (only-in datasets/fetch-private/bytes-port bytes->input-port)
            (only-in datasets/fetch-private/mat mat-array->bytes mat-array-class mat-array-dims mat-array-ref
                     read-mat)
            (only-in datasets/fetch-private/png read-png-gray8)
            (only-in datasets/fetch-tests/fixture mat-bytes png-bytes png-chunk zlib-bytes)
+           (only-in racket/contract/base -> any/c contract or/c)
            (only-in racket/contract/combinator exn:fail:contract:blame?)
            (only-in racket/file file->bytes)
            (only-in racket/runtime-path define-runtime-path)
@@ -197,6 +199,9 @@
       (check-equal? (read-mat-summaries input mat-names) mat-expected (format "~a ~a" endianness class-code))))
 
   (define mat-one '(("X" uint8 (2 3) miUINT8 (1 2 3 4 5 6))))
+  (define (compressed-element element)
+    (define z (zlib-bytes element))
+    (bytes-append (bytes 15 0 0 0) (integer->integer-bytes (bytes-length z) 4 #f #f) z))
   (define (mat-reject-input edit)
     (match edit
       [`(patch ,offset ,replacement) (patched (mat-bytes mat-one) offset replacement)]
@@ -209,6 +214,15 @@
        (define body (bytes-append (subbytes input 136 152) dims (subbytes input 168)))
        (bytes-append (subbytes input 0 128) (bytes 14 0 0 0) (integer->integer-bytes (bytes-length body) 4 #f #f)
                      body)]
+      [`(compress ,depth)
+       (define input (mat-bytes mat-one))
+       (bytes-append (subbytes input 0 128)
+                     (for/fold ([element (subbytes input 128)]) ([_ (in-range depth)]) (compressed-element element)))]
+      [`(compress-element ,type ,data)
+       (bytes-append (subbytes (mat-bytes mat-one) 0 128)
+                     (compressed-element (bytes-append (integer->integer-bytes type 4 #f #f)
+                                                       (integer->integer-bytes (length data) 4 #f #f)
+                                                       (apply bytes data))))]
       [`(compressed ,cut ,appended ,flip?)
        (define input (mat-bytes mat-one #:compressed? #t))
        (define body (bytes-append (subbytes input 136 (- (bytes-length input) cut)) (apply bytes appended)))
@@ -224,6 +238,10 @@
                         (no-variables (variables ()) ("X") read-mat "no such variable" "variables: ()")
                         (size-beyond-file (patch 132 (0 1 0 0)) ("X") read-mat
                                           "element overruns its container" "offset: 128")
+                        (compressed-compressed (compress 2) ("X") read-mat "compressed element is not a matrix"
+                                               "offset: 128" "type: 15")
+                        (compressed-uint8 (compress-element 2 (1 2 3 4 5 6 7 8)) ("X") read-mat
+                                          "compressed element is not a matrix" "offset: 128" "type: 2")
                         (zlib-truncated (compressed 3 () #f) ("X") inflate-zlib "truncated zlib stream")
                         (zlib-adler (compressed 0 () #t) ("X") inflate-zlib "adler-32 mismatch")
                         (zlib-trailing (compressed 0 (0) #f) ("X") inflate-zlib
@@ -274,15 +292,33 @@
     (match-define (list labels) (read-mat (open-input-bytes (mat-bytes mat-variables)) '("labels")))
     (check-equal? (mat-array->bytes labels) (bytes 10 1 7)))
 
-  (test-case "mat-array-ref is cheap: the fastest of three runs of 10^6 calls takes under 1 s of CPU time"
+  (test-case "mat-array->bytes is immutable storage: bytes-set! raises and mat-array-ref is unchanged"
+    (for* ([compressed? (in-list '(#f #t))]
+           [variable (in-list '(("X" uint8 (2 3) miUINT8 (1 2 3 4 5 6)) ("t" uint8 (1 3) miUINT8 (4 5 6))))])
+      (match-define (list name _ _ _ (cons first _)) variable)
+      (match-define (list array)
+        (read-mat (open-input-bytes (mat-bytes (list variable) #:compressed? compressed?)) (list name)))
+      (define storage (mat-array->bytes array))
+      (check-exn exn:fail:contract? (lambda () (bytes-set! storage 0 99))
+                 (format "~a ~a" compressed? name))
+      (check-equal? (mat-array-ref array 0) first (format "~a ~a" compressed? name))))
+
+  (test-case "mat-array-ref on a rank-1024 array costs at most 15 contracted bytes-ref calls"
+    (define data (make-bytes 1024 1))
     (match-define (list array)
-      (read-mat (open-input-bytes (mat-bytes `(("X" uint8 (32 32 3 16) miUINT8 ,(make-bytes 49152 1))))) '("X")))
-    (define fastest
+      (read-mat (open-input-bytes (mat-bytes `(("X" uint8 ,(cons 1024 (make-list 1023 1)) miUINT8 ,data))))
+                '("X")))
+    (define baseline
+      (contract (-> any/c exact-nonnegative-integer? (or/c exact-integer? flonum?)) (lambda (_a i) (bytes-ref data i))
+                'baseline 'parsers))
+    (define (fastest-ms ref)
       (for/fold ([fastest +inf.0]) ([_ (in-range 3)])
         (define start (current-process-milliseconds))
-        (for ([i (in-range 1000000)]) (mat-array-ref array (bitwise-and i 1023)))
+        (for ([i (in-range 500000)]) (ref array (bitwise-and i 1023)))
         (min fastest (- (current-process-milliseconds) start))))
-    (check-true (< fastest 1000) (format "~a ms" fastest)))
+    (define baseline-ms (max 1 (fastest-ms baseline)))
+    (define ref-ms (fastest-ms mat-array-ref))
+    (check-true (<= ref-ms (* 15 baseline-ms)) (format "~a ms against a ~a ms baseline" ref-ms baseline-ms)))
 
   (define (read-png-list input)
     (call-with-values (lambda () (read-png-gray8 input)) list))
@@ -364,6 +400,31 @@
       (for ([size (in-list '(0 1 2 100 5552 5553 70000))])
         (define data (apply bytes (for/list ([_ (in-range size)]) (random 256))))
         (check-equal? (inflate-zlib (zlib-bytes data) size) data (format "~a bytes" size)))))
+
+  (test-case "bytes->input-port reads the bytes from start, counts its position, and records reaching the end"
+    (define data (bytes 9 8 1 2 3 4 5))
+    (define-values (in end-seen?) (bytes->input-port data 2))
+    (define buffer (make-bytes 2))
+    (check-equal? (list (peek-bytes-avail! buffer 2 #f in) buffer (file-position in) (end-seen?))
+                  (list 2 (bytes 3 4) 0 #f))
+    (check-equal? (list (read-bytes 2 in) (file-position in) (peek-bytes 1 0 in) (end-seen?))
+                  (list (bytes 1 2) 2 (bytes 3) #f))
+    (check-equal? (list (read-bytes 9 in) (file-position in) (end-seen?)) (list (bytes 3 4 5) 5 #t))
+    (check-equal? (list (read-byte in) (file-position in)) (list eof 5)))
+
+  (define (deflate-block-type z) (bitwise-and (arithmetic-shift (bytes-ref z 2) -1) 3))
+  (test-case "inflate-zlib reports every cut of a fixed, a dynamic and a stored stream as truncated"
+    (for ([c (in-list (list (list 1 #"hello, hello, hello hello")
+                            (list 2 (string->bytes/latin-1
+                                     (apply string-append (for/list ([i (in-range 40)])
+                                                            (format "~a squared is ~a; " i (* i i))))))
+                            (list 0 (apply bytes (for/list ([i (in-range 64)]) (modulo (* i 97) 256))))))])
+      (match-define (list block-type data) c)
+      (define z (zlib-bytes data))
+      (check-eqv? (deflate-block-type z) block-type)
+      (for ([k (in-range 2 (bytes-length z))])
+        (check-exn (error-with? 'inflate-zlib "truncated zlib stream") (lambda () (inflate-zlib (subbytes z 0 k) 10000))
+                   (format "block type ~a cut at ~a of ~a" block-type k (bytes-length z))))))
 
   (define zlib-hello (zlib-bytes #"hello, hello, hello"))
   (test-case "inflate-zlib: malformed streams and the output limit"
