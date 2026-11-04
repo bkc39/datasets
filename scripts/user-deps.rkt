@@ -33,10 +33,8 @@
          (for/fold ([seen (set-add seen name)] [order order]) ([dep (in-list (deps-of name))])
            (visit dep (cons name path) seen order)))
        (values seen* (cons name order*))]))
-  (define-values (_ order)
-    (for/fold ([seen (set)] [order '()]) ([root (in-list roots)])
-      (visit root '() seen order)))
-  (reverse order))
+  (for/fold ([seen (set)] [order '()] #:result (reverse order)) ([root (in-list roots)])
+    (visit root '() seen order)))
 
 (define (user-package? name)
   (and (not (member name repo-packages)) (eq? (find-pkg-installation-scope name) 'user)))
