@@ -4,6 +4,7 @@
 @title[#:tag "datasets-from-r"]{Datasets from R}
 
 @(define catalog '(lib "datasets/r-doc/datasets-r.scrbl"))
+@(define core-manual '(lib "datasets/core-doc/datasets-core.scrbl"))
 
 @(define (r-object-cell x)
    (match x
@@ -14,8 +15,9 @@
 Every object of the @tt{datasets} package of R 4.3.3 is imported by
 @tt{datasets-r}, linked to equivalent data in @tt{datasets-core}, or skipped, as
 the table below records. R's @tt{iris} links to the @tt{datasets-core}
-@tt{iris}: the same measurements, with UCI species labels. Each dataset's entry
-is in the @other-doc[catalog]. Imports are mechanical:
+@tt{iris}: the same measurements, with UCI species labels. An imported
+dataset's entry is in the @other-doc[catalog]; a linked one's is in the
+@other-doc[core-manual]. Imports are mechanical:
 
 @itemlist[
  @item{Names: a hyphen goes between a lowercase letter or digit and a capital,
