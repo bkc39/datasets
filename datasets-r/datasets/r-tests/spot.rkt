@@ -2,16 +2,20 @@
 (module+ test
   (require (only-in datasets/core dataset-info dataset-missing? dataset-table-column
                     dataset-table-columns dataset-table-row-count load-dataset-table)
-           (only-in datasets/r-private/objects r-objects)
+           (only-in datasets/r-private/objects ggplot2-objects r-objects)
            (only-in racket/contract/base -> any contract-out listof)
            (only-in racket/format ~s)
            (only-in racket/list remove-duplicates)
-           (only-in racket/match match)
+           (only-in racket/match match match-lambda)
            (only-in racket/vector vector-count)
            (only-in rackunit check-= check-equal? check-regexp-match))
   (provide (contract-out
             [check-spot (-> list? any)]
+            [ggplot2-ids (listof symbol?)]
             [r-dataset-ids (listof symbol?)]))
+
+  (define ggplot2-ids
+    (map (match-lambda [(list _ (list 'dataset id)) id]) ggplot2-objects))
 
   (define r-dataset-ids
     (remove-duplicates

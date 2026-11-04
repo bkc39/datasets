@@ -2,15 +2,17 @@
 (require (for-syntax racket/base)
          (only-in datasets/core dataset-info dataset-missing dataset-table-names
                   dataset-table-row-count load-dataset-table)
-         (only-in racket/file file->lines)
+         (only-in racket/file file->lines file->value)
+         (only-in racket/hash hash-union)
          (only-in racket/list make-list)
          (only-in racket/match match-define)
          (only-in racket/runtime-path define-runtime-path))
 (define-runtime-path r-data "../r-data")
+(define-runtime-path ggplot2-spots-file "ggplot2-spots.rktd")
 (module+ test
   (require (only-in (submod datasets/core-tests/registry-checks test) check-bundled-registry)
            (only-in rackunit check-equal? check-not-false)
-           (only-in (submod "spot.rkt" test) check-spot r-dataset-ids))
+           (only-in (submod "spot.rkt" test) check-spot ggplot2-ids r-dataset-ids))
   (define penguins-names
     '("species" "island" "bill-length-mm" "bill-depth-mm" "flipper-length-mm" "body-mass-g" "sex"
       "year"))
@@ -40,14 +42,15 @@
                          "culmen-depth-mm" "flipper-length-mm" "body-mass-g" "sex"
                          "delta-15-n" "delta-13-c" "comments"))
       (titanic-passengers 891 ,titanic-names)))
+  (define ggplot2-spots (file->value ggplot2-spots-file))
   (define licenses
-    (hash-set (for/hash ([id (in-list '(gapminder nycflights13-airlines nycflights13-airports
-                                                  nycflights13-planes nycflights13-weather penguins
-                                                  penguins-raw titanic-passengers))])
-                (values id "CC0-1.0"))
-              'datasaurus-dozen
-              "MIT"))
-  (define ids (sort (append (map car shapes) r-dataset-ids) symbol<?))
+    (hash-union (for/hash ([id (in-list '(gapminder nycflights13-airlines nycflights13-airports
+                                                    nycflights13-planes nycflights13-weather penguins
+                                                    penguins-raw titanic-passengers))])
+                  (values id "CC0-1.0"))
+                (for/hash ([id (in-list (cons 'datasaurus-dozen ggplot2-ids))])
+                  (values id "MIT"))))
+  (define ids (sort (append (map car shapes) ggplot2-ids r-dataset-ids) symbol<?))
   (define (key-values lines)
     (for*/hash ([line (in-list lines)]
                 [pair (in-value (regexp-match #px"^([^:]+): (.*)$" line))]
@@ -147,14 +150,16 @@
     (match-define (list id rows names) shape)
     (define t (load-dataset-table id))
     (check-equal? (dataset-table-row-count t) rows)
-    (check-equal? (dataset-table-names t) names)
-    (check-equal? (hash-ref (dataset-info id) "license") (hash-ref licenses id)))
+    (check-equal? (dataset-table-names t) names))
+  (for ([(id license) (in-hash licenses)])
+    (check-equal? (hash-ref (dataset-info id) "license") license (symbol->string id)))
   (check-equal? (key-values '("YEAR: 2022" "" "no separator" "COPYRIGHT HOLDER: someone"))
                 (hash "YEAR" "2022" "COPYRIGHT HOLDER" "someone"))
-  (define datasaurus-copyright
-    (key-values (file->lines (build-path r-data "provenance" "datasauRus-LICENSE"))))
-  (check-not-false (member (format "Copyright (c) ~a ~a" (hash-ref datasaurus-copyright "YEAR")
-                                   (hash-ref datasaurus-copyright "COPYRIGHT HOLDER"))
-                           (file->lines (build-path r-data "licenses" "MIT.txt"))))
+  (for ([upstream (in-list '("datasauRus-LICENSE" "ggplot2-LICENSE"))])
+    (define copyright (key-values (file->lines (build-path r-data "provenance" upstream))))
+    (check-not-false (member (format "Copyright (c) ~a ~a" (hash-ref copyright "YEAR")
+                                     (hash-ref copyright "COPYRIGHT HOLDER"))
+                             (file->lines (build-path r-data "licenses" "MIT.txt")))
+                     upstream))
 
-  (for-each check-spot spot-checks))
+  (for-each check-spot (append spot-checks ggplot2-spots)))
