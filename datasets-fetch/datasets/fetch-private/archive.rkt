@@ -32,34 +32,37 @@
                      (zero? (modulo (+ (* cmf 256) flg) 31))))
   (define dictionary? (and zlib? (bitwise-bit-set? flg 5)))
   (define-values (in end-seen?) (bytes->input-port data (min size 2)))
-  (define outcome
-    (and zlib? (not dictionary?)
-         (let/ec escape
-           (with-handlers ([exn:fail? exn-message])
-             (call-with-collecting-output limit (lambda () (escape 'over)) (lambda (out) (inflate in out)))))))
-  (define trailer (- size 2 (file-position in)))
+  (define (trailer) (- size 2 (file-position in)))
+  (define (truncated?) (or (end-seen?) (< (trailer) 4)))
+  (define (invalid e)
+    (cond
+      [(truncated?) (error 'inflate-zlib "truncated zlib stream")]
+      [else (error 'inflate-zlib "invalid deflate data\n  detail: ~a" (exn-message e))]))
+  (define inflated (and zlib? (not dictionary?) (inflate-limited in limit invalid)))
   (cond
     [(not cmf) (error 'inflate-zlib "truncated zlib stream")]
     [(not zlib?) (error 'inflate-zlib "not a zlib stream")]
     [dictionary? (error 'inflate-zlib "preset dictionary not supported")]
-    [(eq? outcome 'over) (error 'inflate-zlib "inflated data exceeds the limit\n  limit: ~a" limit)]
-    [(or (end-seen?) (< trailer 4)) (error 'inflate-zlib "truncated zlib stream")]
-    [(string? outcome) (error 'inflate-zlib "invalid deflate data\n  detail: ~a" outcome)]
-    [(> trailer 4) (error 'inflate-zlib "trailing data after the zlib stream")]
-    [(= (adler-32 outcome) (integer-bytes->integer data #f #t (- size 4) size)) outcome]
+    [(truncated?) (error 'inflate-zlib "truncated zlib stream")]
+    [(> (trailer) 4) (error 'inflate-zlib "trailing data after the zlib stream")]
+    [(= (adler-32 inflated) (integer-bytes->integer data #f #t (- size 4) size)) inflated]
     [else (error 'inflate-zlib "adler-32 mismatch")]))
 
-(define (call-with-collecting-output limit over proc)
+(define (inflate-limited in limit invalid)
   (define written 0)
   (define chunks '())
-  (proc (make-output-port 'inflate-zlib always-evt
-                          (lambda (buffer start end _non-blocking? _breakable?)
-                            (set! written (+ written (- end start)))
-                            (cond
-                              [(> written limit) (over)]
-                              [else (set! chunks (cons (subbytes buffer start end) chunks))
-                                    (- end start)]))
-                          void))
+  (define out
+    (make-output-port 'inflate-zlib always-evt
+                      (lambda (buffer start end _non-blocking? _breakable?)
+                        (set! written (+ written (- end start)))
+                        (cond
+                          [(> written limit)
+                           (error 'inflate-zlib "inflated data exceeds the limit\n  limit: ~a" limit)]
+                          [else (set! chunks (cons (subbytes buffer start end) chunks))
+                                (- end start)]))
+                      void))
+  (with-handlers ([(lambda (e) (and (exn:fail? e) (<= written limit))) invalid])
+    (inflate in out))
   (apply bytes-append (reverse chunks)))
 
 (define adler-block 5552)
