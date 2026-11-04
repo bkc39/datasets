@@ -7,7 +7,7 @@ datasets-r/datasets/r-private/objects.rkt, or TARGET/r-private/objects.rkt when 
 """
 import argparse, csv, gzip, hashlib, io, json, re, shutil, subprocess, sys, tarfile, tempfile, urllib.request, zipfile
 import xml.etree.ElementTree as ET
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parent))
 from rtable import kebab, read_csv_rows, read_r_levels, read_r_table, read_rktd
@@ -24,6 +24,8 @@ class Config:
     private: Path
     sources: dict
     cache: Path
+    registry: dict = field(default_factory=dict)
+    citations: dict = field(default_factory=lambda: dict(CITATIONS))
 cli = argparse.ArgumentParser(description=__doc__)
 cli.add_argument('--fetch', action='store_true')
 cli.add_argument('--package', default='datasets-core')
@@ -43,7 +45,6 @@ def number(s):
     except ValueError:
         try: return float(s)
         except ValueError: return s
-registry={}
 def column_kind(name,values,kind,levels,identifiers):
     if name in identifiers: return 'identifier'
     if name in levels: return 'categorical'
@@ -63,14 +64,14 @@ def add(cfg,id,original,rows,source,levels={},units={},descriptions={},identifie
     text='(\n'+'\n'.join('  '+sexp(r) for r in rows)+'\n)\n'
     (cfg.out/'data'/f'{id}.rktd.gz').write_bytes(gzip.compress(text.encode(),9,mtime=0))
     s=cfg.sources[source]
-    registry[id]={'name':id,'rows':len(rows),'column-count':len(names),'columns':columns,'identifiers':identifiers,'suggested-targets':targets,'source-url':s['url'],'source-version':s.get('version') or ('R 4.3.3' if source=='R' else 'lars 1.3' if source=='lars' else 'UCI snapshot 2026-09-26 (hash pinned)'),'source-sha256':s['sha256'],'sha256':hashlib.sha256(text.encode()).hexdigest(),'license':s.get('license') or ('GPL-2.0-only OR GPL-3.0-only' if source=='R' else 'GPL-2.0-only' if source=='lars' else 'CC-BY-4.0'),'citation':citations.get(id,'R Core Team (2024). R: A Language and Environment for Statistical Computing. See bundled upstream documentation for original references.'),'notes':notes or 'Source row order and values retained; names normalized to kebab-case.','time-series':series or False,'tier':'bundled','package':cfg.package,'fetch':False}
-citations={'iris':'Fisher, R. (1936). Iris. UCI. doi:10.24432/C56C76','wine':'Aeberhard, S. and Forina, M. (1991). Wine. UCI. doi:10.24432/C5PC7J','breast-cancer':'Wolberg, W., Mangasarian, O., Street, N., and Street, W. (1993). Breast Cancer Wisconsin (Diagnostic). UCI. doi:10.24432/C5DW2B','diabetes':'Efron, Hastie, Johnstone and Tibshirani (2004). Least Angle Regression. Annals of Statistics 32(2), 407-499. doi:10.1214/009053604000000067'}
+    cfg.registry[id]={'name':id,'rows':len(rows),'column-count':len(names),'columns':columns,'identifiers':identifiers,'suggested-targets':targets,'source-url':s['url'],'source-version':s.get('version') or ('R 4.3.3' if source=='R' else 'lars 1.3' if source=='lars' else 'UCI snapshot 2026-09-26 (hash pinned)'),'source-sha256':s['sha256'],'sha256':hashlib.sha256(text.encode()).hexdigest(),'license':s.get('license') or ('GPL-2.0-only OR GPL-3.0-only' if source=='R' else 'GPL-2.0-only' if source=='lars' else 'CC-BY-4.0'),'citation':cfg.citations.get(id,'R Core Team (2024). R: A Language and Environment for Statistical Computing. See bundled upstream documentation for original references.'),'notes':notes or 'Source row order and values retained; names normalized to kebab-case.','time-series':series or False,'tier':'bundled','package':cfg.package,'fetch':False}
+CITATIONS={'iris':'Fisher, R. (1936). Iris. UCI. doi:10.24432/C56C76','wine':'Aeberhard, S. and Forina, M. (1991). Wine. UCI. doi:10.24432/C5PC7J','breast-cancer':'Wolberg, W., Mangasarian, O., Street, N., and Street, W. (1993). Breast Cancer Wisconsin (Diagnostic). UCI. doi:10.24432/C5DW2B','diabetes':'Efron, Hastie, Johnstone and Tibshirani (2004). Least Angle Regression. Annals of Statistics 32(2), 407-499. doi:10.1214/009053604000000067'}
 PENGUIN_SOURCE='Gorman, K. B., Williams, T. D. and Fraser, W. R. (2014). Ecological sexual dimorphism and environmental variability within a community of Antarctic penguins (genus Pygoscelis). PLoS ONE 9(3), e90081. doi:10.1371/journal.pone.0090081'
-citations.update({'penguins':'Horst, A. M., Hill, A. P. and Gorman, K. B. (2020). palmerpenguins: Palmer Archipelago (Antarctica) penguin data. doi:10.5281/zenodo.3960218. Data: '+PENGUIN_SOURCE,
+CITATIONS.update({'penguins':'Horst, A. M., Hill, A. P. and Gorman, K. B. (2020). palmerpenguins: Palmer Archipelago (Antarctica) penguin data. doi:10.5281/zenodo.3960218. Data: '+PENGUIN_SOURCE,
                   'gapminder':'Bryan, J. (2025). gapminder: Data from Gapminder. R package version 1.0.1. Data: Gapminder Foundation, https://www.gapminder.org/data/',
                   'datasaurus-dozen':'Gillespie, C., Locke, S., Davies, R. and D\'Agostino McGowan, L. (2025). datasauRus: Datasets from the Datasaurus Dozen. R package version 0.1.9. Matejka, J. and Fitzmaurice, G. (2017). Same Stats, Different Graphs. CHI 2017. doi:10.1145/3025453.3025912',
                   'titanic-passengers':'Hendricks, P. (2015). titanic: Titanic Passenger Survival Data Set. R package version 0.1.0. Data: Kaggle, Titanic: Machine Learning from Disaster, https://www.kaggle.com/c/titanic/data'})
-citations['penguins-raw']=citations['penguins']
+CITATIONS['penguins-raw']=CITATIONS['penguins']
 PENGUIN_UNITS={'bill-length-mm':'mm','bill-depth-mm':'mm','culmen-length-mm':'mm','culmen-depth-mm':'mm','flipper-length-mm':'mm','body-mass-g':'g','delta-15-n':'per mil (o/oo)','delta-13-c':'per mil (o/oo)'}
 R_DATASETS='R-4.3.3/src/library/datasets/'
 R_RECIPES=[
@@ -128,7 +129,7 @@ NYCFLIGHTS13_RECIPES=[
           notes='Hourly meteorological data for the three New York City airports in 2013; joins nycflights13-flights on origin and time-hour. '
                 'The R POSIXct time_hour (America/New_York) is rendered as an ISO 8601 UTC string, as in nycflights13-flights.')),
 ]
-citations.update({id:NYCFLIGHTS13_CITATION+data for id,data,_ in NYCFLIGHTS13_RECIPES})
+CITATIONS.update({id:NYCFLIGHTS13_CITATION+data for id,data,_ in NYCFLIGHTS13_RECIPES})
 CORE_RECIPES={
     'mtcars':dict(
         identifiers=['model'],
@@ -191,11 +192,11 @@ def import_core(cfg):
                 if name.endswith('.names'): (cfg.provenance/name).write_bytes(a.read(name))
         if id=='iris':
             add(cfg,id,['sepal length','sepal width','petal length','petal width','species'],rows,id,levels={'species':['Iris-setosa','Iris-versicolor','Iris-virginica']},units={n:'cm' for n in ['sepal-length','sepal-width','petal-length','petal-width']},targets=['species'],notes='Corrected UCI bezdekIris.data variant, including corrected observations 35 and 38. Original class label spelling retained. Source class column is named species here.')
-            registry[id]['columns'][-1]['original-name']='class'
+            cfg.registry[id]['columns'][-1]['original-name']='class'
         elif id=='wine':
             names=['Alcohol','Malic acid','Ash','Alcalinity of ash','Magnesium','Total phenols','Flavanoids','Nonflavanoid phenols','Proanthocyanins','Color intensity','Hue','OD280/OD315 of diluted wines','Proline','cultivar']
             add(cfg,id,names,[r[1:]+[str(r[0])] for r in rows],id,levels={'cultivar':['1','2','3']},targets=['cultivar'],notes='Source class moved from first to last column and retained as a string label; measurement order unchanged.')
-            registry[id]['columns'][-1]['original-name']='class'
+            cfg.registry[id]['columns'][-1]['original-name']='class'
         else:
             measures=['radius','texture','perimeter','area','smoothness','compactness','concavity','concave points','symmetry','fractal dimension']
             names=[m+' '+s for s in ['mean','standard error','worst'] for m in measures]+['diagnosis','id']
@@ -270,7 +271,7 @@ ISLR_CHAPTERS=[
     (['nci60'],['boston']),
     (['fund','khan'],['carseats']),
 ]
-citations.update({id:ISLR_CITATION for id,_,_ in ISLR_RECIPES})
+CITATIONS.update({id:ISLR_CITATION for id,_,_ in ISLR_RECIPES})
 def import_islr(cfg):
     if unknown:=sorted({id for used in ISLR_CHAPTERS for ids in used for id in ids}-{id for id,_,_ in ISLR_RECIPES}):
         raise ValueError(f'ISLR_CHAPTERS names no recipe: {unknown}')
@@ -307,7 +308,7 @@ def import_islr(cfg):
             factors='R factors rendered as labels with levels in metadata; ' if levels else ''
             notes=' '.join(filter(None,[summary,kw.get('notes'),factors+'names normalized to kebab-case.']))
             add(cfg,id,[originals.get(n,o) for n,o in zip(names,original)],rows,'ISLR2',names=names,levels=levels,identifiers=identifiers,targets=kw.get('targets',[]),units=kw.get('units',{}),descriptions=descriptions,notes=notes)
-            registry[id]['islr2-chapters']={k:[c+1 for c,used in enumerate(ISLR_CHAPTERS) if id in used[j]] for j,k in enumerate(['text','exercises'])}
+            cfg.registry[id]['islr2-chapters']={k:[c+1 for c,used in enumerate(ISLR_CHAPTERS) if id in used[j]] for j,k in enumerate(['text','exercises'])}
 ESL_CITATION=('Halvorsen, K. B. (2019). ElemStatLearn: Data Sets, Functions and Examples from the Book "The Elements of Statistical Learning, '
               'Data Mining, Inference, and Prediction" by Trevor Hastie, Robert Tibshirani and Jerome Friedman. R package version 2015.6.26.2. '
               'Book: Hastie, T., Tibshirani, R. and Friedman, J. (2009). The Elements of Statistical Learning, Second Edition. Springer. '
@@ -331,7 +332,7 @@ ESL_RECIPES=[
         notes='The 111 complete days of airquality without month and day. Two cells differ: wind on 1973-07-01 (4 vs 4.1) '
               'and ozone on 1973-09-01 (95.9999999999999 vs 96).')),
 ]
-citations.update({id:ESL_CITATION for id,_,_ in ESL_RECIPES})
+CITATIONS.update({id:ESL_CITATION for id,_,_ in ESL_RECIPES})
 SPAMBASE=ROOT/'datasets-uci/datasets/uci-data/data/spambase.rktd.gz'
 def check_esl_spam(tmp):
     _,_,rows=read_r_table(tmp,'esl-spam')
@@ -361,8 +362,17 @@ def import_esl(cfg):
             summary=rd_field(rd,'description').removesuffix('.')+'.'
             add(cfg,id,[originals.get(n,h) for n,h in zip(names,header)],rows,'ElemStatLearn',names=names,kinds=kinds,levels=levels,
                 targets=kw['targets'],units=kw.get('units',{}),descriptions=descriptions,notes=summary+' '+kw['notes'])
+def r_kebab(s): return re.sub('[^a-z0-9]+','-',re.sub('([a-z])([A-Z])',r'\1-\2',s).lower()).strip('-')
+def r_recipe_columns(id,header,rows,r_levels,kw):
+    kw=dict(kw)
+    aliases=kw.pop('aliases',{})
+    names=[aliases.get(r_kebab(o),r_kebab(o)) for o in header]
+    levels=r_levels|kw.pop('levels',{})
+    for j,n in enumerate(names):
+        if n in levels and not {r[j] for r in rows if r[j] is not None}<=set(levels[n]): raise ValueError(f'{id}: {n} value outside levels')
+    return names,levels,kw
 def import_r(cfg):
-    def kebab(s): return re.sub('[^a-z0-9]+','-',re.sub('([a-z])([A-Z])',r'\1-\2',s).lower()).strip('-')
+    kebab=r_kebab
     with tempfile.TemporaryDirectory() as tmp:
         tmp=Path(tmp)
         for k,s in cfg.sources.items():
@@ -375,11 +385,7 @@ def import_r(cfg):
         (cfg.provenance/'datasauRus-LICENSE').write_bytes((tmp/'datasauRus/LICENSE').read_bytes())
         for id,source,kw in R_RECIPES:
             header,kinds,rows=read_r_table(tmp,id)
-            aliases=kw.pop('aliases',{})
-            names=[aliases.get(kebab(o),kebab(o)) for o in header]
-            levels=read_r_levels(tmp,id,kebab)|kw.pop('levels',{})
-            for j,n in enumerate(names):
-                if n in levels and not {r[j] for r in rows if r[j] is not None}<=set(levels[n]): raise ValueError(f'{id}: {n} value outside levels')
+            names,levels,kw=r_recipe_columns(id,header,rows,read_r_levels(tmp,id,kebab),kw)
             add(cfg,id,header,rows,source,names=names,levels=levels,kinds=kinds,**kw)
         for id,_,kw in NYCFLIGHTS13_RECIPES:
             shutil.copyfile(tmp/'nycflights13/man'/f"{id.removeprefix('nycflights13-')}.Rd",cfg.provenance/f'{id}.Rd')
@@ -502,7 +508,7 @@ def import_uci(cfg):
     mushroom_codes={kebab(n):[pair.split('=')[1] for pair in re.split(r',\s*',text) if not pair.endswith('=?')] for n,text in mushroom_attributes(cfg)}
     mushroom_text={kebab(n):text for n,text in mushroom_attributes(cfg)}
     optdigits_cite=uci_cite(cfg,'Alpaydin, E. and Kaynak, C.',1998,'Optical Recognition of Handwritten Digits','uci-optdigits')
-    citations.update({'digits':optdigits_cite,'optdigits':optdigits_cite,
+    cfg.citations.update({'digits':optdigits_cite,'optdigits':optdigits_cite,
         'adult':uci_cite(cfg,'Becker, B. and Kohavi, R.',1996,'Adult','uci-adult'),
         'auto-mpg':uci_cite(cfg,'Quinlan, R.',1993,'Auto MPG','uci-auto-mpg'),
         'abalone':uci_cite(cfg,'Nash, W., Sellers, T., Talbot, S., Cawthorn, A. and Ford, W.',1994,'Abalone','uci-abalone','Nash, W. J., Sellers, T. L., Talbot, S. R., Cawthorn, A. J. and Ford, W. B. (1994). The Population Biology of Abalone (Haliotis species) in Tasmania. I. Blacklip Abalone (H. rubra) from the North Coast and Islands of Bass Strait. Sea Fisheries Division, Technical Report No. 48.'),
@@ -584,6 +590,7 @@ def import_uci(cfg):
     ]
     for id,source,read,kw in recipes:
         original,records=read(cfg)
+        kw=dict(kw)
         names_fn=kw.pop('names_fn',kebab)
         names=kw.pop('names',None) or [names_fn(n) for n in original]
         levels=kw.pop('levels',{})
@@ -611,10 +618,14 @@ def main():
         p=cfg.cache/s['file']
         if args.fetch and not p.exists(): urllib.request.urlretrieve(s['url'],p)
         if hashlib.sha256(p.read_bytes()).hexdigest()!=s['sha256']: raise ValueError('Source checksum mismatch: '+str(p))
-    for step in {'datasets-core':[import_core],'datasets-r':[import_r],'datasets-uci':[import_uci],'datasets-islr':[import_islr,import_esl]}[package]: step(cfg)
-    (cfg.out/'registry.rktd').write_text(sexp(dict(sorted(registry.items())))+'\n')
+    run_import(cfg,{'datasets-core':[import_core],'datasets-r':[import_r],'datasets-uci':[import_uci],'datasets-islr':[import_islr,import_esl]}[package])
+    print('Imported',len(cfg.registry),'datasets')
+def run_import(cfg,steps):
+    (cfg.out/'data').mkdir(parents=True,exist_ok=True)
+    for step in steps: step(cfg)
+    (cfg.out/'registry.rktd').write_text(sexp(dict(sorted(cfg.registry.items())))+'\n')
     for stale in (cfg.out/'data').iterdir():
-        if stale.name not in {f'{id}.rktd.gz' for id in registry}: stale.unlink()
-    print('Imported',len(registry),'datasets')
+        if stale.name not in {f'{id}.rktd.gz' for id in cfg.registry}: stale.unlink()
+    return cfg.registry
 
 if __name__ == '__main__': main()
