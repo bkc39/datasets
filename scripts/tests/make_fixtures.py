@@ -1,4 +1,3 @@
-"""Write the spreadsheet fixtures of test_spreadsheets.py: python3 -I make_fixtures.py DIR."""
 import struct, sys, zipfile
 from pathlib import Path
 
