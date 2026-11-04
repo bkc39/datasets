@@ -3,7 +3,8 @@
   "scikit-learn": "1.8.0",
   "torchvision": "0.27.0",
   "nycflights13": "1.0.2",
-  "ElemStatLearn": "2015.6.26.2"
+  "ElemStatLearn": "2015.6.26.2",
+  "ggplot2": "4.0.3"
  },
  "covtype": {
   "rows": 581012,
@@ -2000,6 +2001,155 @@
    "pixel255": "af788e772f26a316af4acec1229f0df42710f98f1f9442f7166e780db140db8e",
    "pixel256": "b1dbed4e91994e97420b7dd6a36f1bdbdba49c3ff48662f824174358ff947c4a",
    "split": "f12db838fe2d262fd1448eddce8cdef0bd64cad67db4c4cf7508b6be6fa97255"
+  }
+ },
+ "diamonds": {
+  "rows": 53940,
+  "columns": {
+   "carat": "f0e01bfeda07c1339cf9cbf57a1326f1bc1a192e986f01db4fe399d019b4b927",
+   "cut": "94817d020aa9361df68638f914335bfe1047f5e09fb0d232a790b18650e09ae4",
+   "color": "85c95e41f1d484f1ded0be6dd8cb85c7f102ab33f822a1d05d10df88b99a7582",
+   "clarity": "bf6c544f76bc936016f5be75f8cb8367279f984e1e79ef501dcabfc17c8263e7",
+   "depth": "61828e3769a7735cabc8c31cd68c672d4e7137b045cbc7cd7744654cef29f5a3",
+   "table": "940163cf5a2e29d6c9fdff8e5c2db5d0caf58f94110cb7aae26c2d65fcfb640b",
+   "price": "c657b384a8e1707525fb23e1aef7ea821171c711c948cbd58087a99070f8f92b",
+   "x": "908eb74e5ecca2ee4cf91bd2604b175163d2c73cd92c841385dc3dca752e194e",
+   "y": "5b22ad4ee0eb8b13de0b3442aee494c7b9a7a1e0fdd49b71dcca2bc85c51e23c",
+   "z": "556621807d316e5ba831834ae4b3b4cd1c90795550ca0997207a810ced790214"
+  }
+ },
+ "economics": {
+  "rows": 574,
+  "columns": {
+   "date": "f698d0c298c1b42834797c49d8bd279acaefaf279d094de9da7b6ef7850e24d6",
+   "pce": "85350d09e652612011ed4a8e26617bbcc258474f7e7562412da4600837ef11b9",
+   "pop": "44ae05fcef10f0e99b797f5b9bc4287e123d82c1e481600bd8294220e6816ba8",
+   "psavert": "41ad64d005a9900ca1b58ada0d9247be70e9eed302727ffaa2ec0a82e043f12b",
+   "uempmed": "95d210e26aa56e5f1b75c2aeb8f5bcd2d8fde95c7663c2061cc9ed60c38b3271",
+   "unemploy": "db8299621a6c5ae4d9cf75ebdf68e9750a6179603234af417d38f272d1c2a30a"
+  }
+ },
+ "economics-long": {
+  "rows": 2870,
+  "columns": {
+   "date": "0c7453a3bcac59257eef001d82a210b6e325128b2f77711542af8fbeacd15f0f",
+   "variable": "176ba8f00699b18fec6ac983928af54aad83a77a677e552014d938dee7b6f0a9",
+   "value": "784728b9b1ec34bbf53bea434fc5053916249ee51f7e009c18e6958488039240",
+   "value01": "fba4609a9d4beba931ce207fe80da2c93b68b2b612c9cb71589b6c185e86c423"
+  }
+ },
+ "faithfuld": {
+  "rows": 5625,
+  "columns": {
+   "eruptions": "c17f3a8f7d2b46e89b6c7ecd608cd971bff38f4dd4d82a7d88ae753256e7ae27",
+   "waiting": "fed59074b5afd1b06ef27e46ebb02bf6960942fd821b8b8e9e86a1da0009229c",
+   "density": "c00d288f4a22bd0102fb93bf82becdeb93d75d85c5cc522a4f6e401ad81c4f0d"
+  }
+ },
+ "luv-colours": {
+  "rows": 657,
+  "columns": {
+   "l": "584ca538827a770e6acd3092204c28b9a52bb47de8527014b78a2ab490746a71",
+   "u": "80f3e1e87f0c58c663cfbc614fcde5c330e145358e9dfd8be2710dbc1316318a",
+   "v": "39d410fab02ca8ad4a2a88b393eda8e2027431ab4639589bb922a7518c3a313d",
+   "col": "a2a5264c3ad303b4537eddcee49b932557dc54c2fce4a56e8cba8d506260b25d"
+  }
+ },
+ "midwest": {
+  "rows": 437,
+  "columns": {
+   "pid": "02ff5a5492e0121a5e72a3aa4a300ab49e4eb75dbff114d4f58aea09b9120765",
+   "county": "354f0488153aabbef4cf5fa80224d4331ac44d50f30c60b5f50ceb122311d469",
+   "state": "21ba7fab4da15240cd547754b3ed3eb90682103f63ad8db390cc37b0afee3a47",
+   "area": "f692881cdbb563724e90d2cab70c8cbaa4f9b583aa20cd4fc146547e7fa6dd4b",
+   "poptotal": "b82a74c0f6fa96f19b3e6f2564bd22380aa4601ac351cca84878fab0f6726495",
+   "popdensity": "4834a8487c6d4dd7fd95bfab876191f65f0da55f6c15feea83b0624355186f70",
+   "popwhite": "e310891ac1c39545e5a3c74567dba6900c589603daa15c9924a0ba098ffd9ddd",
+   "popblack": "fd100617818444346b717c2f754669878f6f0e274dc3d1bac3f5d82aff5a981f",
+   "popamerindian": "90bbc05a384688c52adbb2266c7e50855613a223cae0a2743d5680b2111570b6",
+   "popasian": "0bfc9bd45cf1c33ff281ee2646b7104d88e2d3e7e515c8876d643cc86e3650c0",
+   "popother": "057e7809455fec5f0419e58446bc1d79edd82bc2c79bc680062d7dee52157154",
+   "percwhite": "1172f7e78cfdbf4c0b992d643d5d5a5561e242b85614342e161f85bdd5cd5066",
+   "percblack": "c326dfbe02c23e0b77b1d04ad10b03329b24288335d890e38dc6cae629e75152",
+   "percamerindan": "78e584ae40e17bc60aa8ff16e5a871868241084ad8ae7029c17d51771279a748",
+   "percasian": "5f894059ca3a8589085913b62e912a4c4d4c3553615bc8229426ad278e1804ba",
+   "percother": "fe92fbfb0510ed73531531f816d7d35c962d07fb30b1d51f7b1b2b9ad09b40f7",
+   "popadults": "2bf25b502adc4b4dde3e99846511e55837995ebf693eb60d201e78b26c01c31f",
+   "perchsd": "883ad24dddea0c24ea0794e7f6faa34721668892e765eb55c8cba12e7b5c1e8e",
+   "percollege": "c73dfa410d357eae773cb49c4f7eba0bc791cd84db98f21a06fd8f61732641d0",
+   "percprof": "fad9a0f34da726f82cb18a3e48aec1117901afe105add368ec3bb7f844825f7a",
+   "poppovertyknown": "0bc18d08bfe0da7c00cf9f87fe72a2eaaf3867aa0503b13051bb8e52cafdd3c0",
+   "percpovertyknown": "d148757d28bb2849fb5e69bc1b50e7bf651298c9d30b609bd4d8d7f61479c088",
+   "percbelowpoverty": "883f3d3e240b2a1d56cbfbc8604690cf3445daef17e6faad7aae242ae373e83f",
+   "percchildbelowpovert": "d1c542a612df2e966c33eb486c5d304128c631a9452651339d0beb0ed1ddf36e",
+   "percadultpoverty": "7553b6d13c05ec16ad16e925007d8e370da2f6f01eeafbba09a2af463c0e9053",
+   "percelderlypoverty": "b3a4892ba7cebe5e11d6210b1206f8ef05a68488e3535fc045bd1b9cc93cefbf",
+   "inmetro": "e0e5dc7e29612aa66585ff1ee2ce82a84b6520ce6fefa88e4ac06bfd9011ca84",
+   "category": "71f68facc253aff2874f8d9f80b8c65075adc4b967931d21964e503b3eeb5de0"
+  }
+ },
+ "mpg": {
+  "rows": 234,
+  "columns": {
+   "manufacturer": "87b5c0f7379a43897c90a852f71e12f5b7120af8beb499296f154e413043ad02",
+   "model": "1862066d810f07f897ebf255a345c52e2c1ba43cbe218e88b3143075e9062a76",
+   "displ": "63eb694bc18e56fe3efa8eb4b7f987395c2fbe07e3ddc8ce99ee49140b2e9d4f",
+   "year": "cab2e9138cd86dbbc0a841abdcf901b022aac0e94ec78af5375b33728ac1b767",
+   "cyl": "8f7b6b96c83de48ecd7276fffd04713e734733be662ce4310733c9886bda213a",
+   "trans": "b7fbbf541c88ea7cd3fb6c83c29558133d5f0a2b9ee1f5b0d9da657fc999f475",
+   "drv": "51a49ebe666d4a6ca43efd64179b989bbecdb29be38c458306dbdf1aa78336f6",
+   "cty": "44ed23e89845b9ac42af384ef14fc15406992bd100a23581c7e0c18c452d67cb",
+   "hwy": "00c153eb0e3a0a8bb49cf7cf8b4e5b244a565209987f9fc9fcc1153c3d1c4426",
+   "fl": "6b364bb8bf6677dac440b577e622857a961b8f3fc7143be9ec2c1571e685ee3a",
+   "class": "5fd9d7af3c9c9ecf1937ecf8bb92fab909a7b99c00d8bb08fdd9f7550a59653d"
+  }
+ },
+ "msleep": {
+  "rows": 83,
+  "columns": {
+   "name": "9040254a5c8a68bfb56451ec212466615a9bf61ad771ea1c87e30b47d80f2cb8",
+   "genus": "3e35dab49d52162b6fa66e645e6b9d5dc67f9eeaeb6d8ae99922b1de87b89c83",
+   "vore": "242a735a5d9acfcde0da88c2aa4668de43ca3babd710a515c3017259cc506cb7",
+   "order": "e6ed1ca227985b2631715ae110689879011be2d4c0db251b6bcd94721f89f33b",
+   "conservation": "5060ce25d028d035d0a1672f9d42b495606716fc8e92acd07455eb87fef7e2af",
+   "sleep-total": "04c4a9bd9ce9e9f4bed3d508d6ef27902db838c752a163a440021c7688af9bb9",
+   "sleep-rem": "708a7b489997c1b2ad2fd4871deb27b7fbf747925d89b5496612f114afb3b788",
+   "sleep-cycle": "a3d64cfd0715ffd7cbc90330091861f04b9c2fba39933adb5cfb026e079166af",
+   "awake": "45eb5a7679b4bee7112c8e5f0c25a040c02fe12a5cf6c0b3a7ca008d2123129f",
+   "brainwt": "f6a824580b41e49ae23c52253b208ed6da8396773a749f5ad6a96ed9052ffb87",
+   "bodywt": "079e4c6022c3bd26eb0e57627351d89d8812c7ccb83ba46b091aa2c14443a4b1"
+  }
+ },
+ "presidential": {
+  "rows": 12,
+  "columns": {
+   "name": "d7dbfa96732456e4ef359656bb0fa43b59bbfad8ebf27b198d54a5b1be172115",
+   "start": "f992f0e8315b26ecab077f63ad7839453578e0435e47e1b8372823a94cf29b0f",
+   "end": "945f39ca5be044507642d17da406e388d51e6c0e585999362ddc1fdbe37c3337",
+   "party": "ddf2d5dca9d55cc0dc6102308f69882a9ec54f7f8d1a42ade75c975307a3012f"
+  }
+ },
+ "seals": {
+  "rows": 1155,
+  "columns": {
+   "lat": "ff74b31abeb6dadda990ccec7d6b8dde2ca979c0d40467f64ac5f6815722f526",
+   "long": "3e2b9ee281a7712776743a3a28d4242fbda830dc082c9c5be9db7dcbedcbd69e",
+   "delta-long": "a8a6051819d4bf33613c5254ff056a5aeb99f8a0eb1d9a1ced417518769b455c",
+   "delta-lat": "12516661f1ceac04645d3dbb4b60231c45b9f44a4a298a3c195c9f8fbbd12f3c"
+  }
+ },
+ "txhousing": {
+  "rows": 8602,
+  "columns": {
+   "city": "c449dda92a871bb8a40e7bb8a401c5b4b34a3d7cc3f88bca4c9625e34ed674fa",
+   "year": "8323cb95a8630c3ee9619bb08534366d61b6e3db89758af7b788ebb651f77129",
+   "month": "87b75f28c1f67f1a9f70480592da80423eddf2d82e47f4a7217c2665091928a6",
+   "sales": "f3862becbb918d40685e6945df7dfbef483a18718be53e2fe5fac180eab58e7c",
+   "volume": "8e74680045bcaa4215aed270f7c38159e6b252d5c3d53a143572a31920b1d58e",
+   "median": "49655455e9a895a9e5b49e1c63b55df52d1df8dca720b0bd3e71eba3e24bcd80",
+   "listings": "4d0e1ee51c7fc669eb281e9005f36b335900b2a8cba0e9af62d979ea39022b8e",
+   "inventory": "78cfbbab55d3046ef2926bd1bc58c666082b778dde54c017a87a056ae09e1e24",
+   "date": "0f3848bcced64f50a7a13c78925930b861cf50a4d0e20269633b46e3c45ffe4b"
   }
  },
  "linnerud": {

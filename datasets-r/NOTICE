@@ -20,6 +20,11 @@ Bundled observations are distributed separately under the upstream terms:
   https://CRAN.R-project.org/package=nycflights13
   nycflights13-airports derives from OpenFlights, published under the Open
   Database License (ODbL).
+- diamonds, economics, economics-long, faithfuld, luv-colours, midwest, mpg,
+  msleep, presidential, seals and txhousing from ggplot2 4.0.3: MIT,
+  Copyright (c) 2025 ggplot2 core developer team. Hadley Wickham et al.; data
+  sources as cited in each registry entry.
+  https://CRAN.R-project.org/package=ggplot2
 - The datasets package of R 4.3.3 (every object not in datasets-core; see
   datasets/r-private/objects.rkt): GPL-2.0-only OR GPL-3.0-only. R Core Team
   and original dataset authors; see datasets/r-data/provenance/*.Rd for
@@ -34,7 +39,9 @@ rendered as the dedicated missing sentinel; penguins-raw Date Egg rendered as
 an ISO 8601 string and its delta columns renamed delta-15-n and delta-13-c;
 datasaurus-dozen kept in long form; titanic-passengers empty cabin and
 embarked strings rendered as missing, test set omitted; nycflights13
-time_hour rendered as an ISO 8601 UTC string, R doubles kept as reals; R
+time_hour rendered as an ISO 8601 UTC string, R doubles kept as reals; ggplot2
+Date columns rendered as ISO 8601 date strings, ordered factors as
+categorical with levels in R order; R
 datasets objects reshaped as described in the catalog (time series with index
 columns from R's time, calendar year and period except eu-stock-markets, whose year and
 business-day follow R's nominal 260-day business year; tables and distance

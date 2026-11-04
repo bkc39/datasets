@@ -7,6 +7,17 @@ nycflights13 <- function(tables) {
     export(get(table,envir=e), paste0('nycflights13-',table))
   }
 }
+ggplot2 <- function() {
+  sets <- c(diamonds='diamonds', economics='economics', 'economics-long'='economics_long', faithfuld='faithfuld',
+            'luv-colours'='luv_colours', midwest='midwest', mpg='mpg', msleep='msleep', presidential='presidential',
+            seals='seals', txhousing='txhousing')
+  e <- load.RData(file.path(root,'ggplot2/data'), paste0(sets,'.rda'))
+  for (id in names(sets)) export(get(sets[[id]], envir=e), id)
+}
+if (package == 'ggplot2') {
+  ggplot2()
+  quit(save='no')
+}
 if (package == 'nycflights13') {
   nycflights13(c('airlines','airports','flights','planes','weather'))
   quit(save='no')
@@ -69,6 +80,7 @@ if (package == 'datasets-r') {
   titanic_train$Embarked[titanic_train$Embarked == ''] <- NA
   export(titanic_train, 'titanic-passengers')
   nycflights13(c('airlines','airports','planes','weather'))
+  ggplot2()
   quit(save='no')
 }
 names <- c(mtcars='mtcars', faithful='faithful', anscombe='anscombe', airquality='airquality', 'us-arrests'='USArrests', 'plant-growth'='PlantGrowth', 'tooth-growth'='ToothGrowth', titanic='Titanic', 'air-passengers'='AirPassengers')
