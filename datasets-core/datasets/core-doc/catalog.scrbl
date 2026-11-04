@@ -5,7 +5,7 @@
 The following catalog is generated from the same registry used by
 @racket[dataset-info]. Column order matches the full table returned by
 @racket[load-dataset-table]; a run of three or more numbered columns of one type
-and description, such as @tt{gene-1} to @tt{gene-2308}, is one row. It lists
+and description, @tt{x-1} to @tt{x-@italic{n}}, is one row. It lists
 the datasets of @tt{datasets-core}. The datasets of @tt{datasets-r},
 @tt{datasets-uci}, @tt{datasets-islr} and @tt{datasets-fetch} are catalogued in
 the same form in each package's own manual.

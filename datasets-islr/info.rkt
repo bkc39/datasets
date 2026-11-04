@@ -1,6 +1,6 @@
 #lang info
 (define collection 'multi)
-(define version "0.1")
+(define version "0.2")
 (define deps '(("base" #:version "9.3") ("datasets-core" #:version "0.4")))
 (define build-deps '("rackunit-lib" "scribble-lib"))
 (define pkg-desc "The datasets of ISLR2 and of The Elements of Statistical Learning")

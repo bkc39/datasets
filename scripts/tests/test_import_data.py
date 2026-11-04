@@ -1,4 +1,4 @@
-import importlib.util, tempfile, unittest
+import copy, importlib.util, tempfile, unittest
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -30,6 +30,37 @@ class SpreadsheetReaders(unittest.TestCase):
             load('make_fixtures', HERE/'make_fixtures.py').write(Path(out))
             for name in ('empty-cell.xls', 'empty-cell.xlsx'):
                 self.assertEqual((Path(out)/name).read_bytes(), (FIXTURES/name).read_bytes(), name)
+
+class ImportState(unittest.TestCase):
+    def test_imports_in_one_process_are_independent(self):
+        def step_x(cfg): importer.add(cfg, 'x', ['a'], [[1]], 's')
+        def step_y(cfg):
+            cfg.citations['x'] = 'changed'
+            importer.add(cfg, 'y', ['a'], [[2]], 's')
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            def run(steps):
+                cfg = importer.Config(package='p', out=tmp, provenance=tmp, private=tmp, cache=tmp,
+                                      sources={'s': {'url': 'u', 'sha256': '0'*64, 'license': 'MIT', 'version': '1'}})
+                registry = copy.deepcopy(importer.run_import(cfg, steps))
+                return registry, (tmp/'registry.rktd').read_text()
+            first = run([step_x])
+            run([step_y])
+            self.assertEqual(run([step_x]), first)
+            self.assertEqual(sorted(first[0]), ['x'])
+
+    def test_r_recipes_survive_repeated_imports(self):
+        before = copy.deepcopy(importer.R_RECIPES)
+        recipes = [(id, kw) for id, _, kw in importer.R_RECIPES if 'aliases' in kw or 'levels' in kw]
+        self.assertTrue(recipes)
+        for id, kw in recipes:
+            header = list(kw.get('aliases', {}))
+            first, second = (importer.r_recipe_columns(id, header, [], {}, kw) for _ in range(2))
+            self.assertEqual(first, second, id)
+            self.assertEqual(first[0], list(kw.get('aliases', {}).values()), id)
+            self.assertNotIn('aliases', first[2], id)
+            self.assertNotIn('levels', first[2], id)
+        self.assertEqual(importer.R_RECIPES, before)
 
 if __name__ == '__main__':
     unittest.main()
