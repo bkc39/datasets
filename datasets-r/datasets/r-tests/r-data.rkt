@@ -4,7 +4,8 @@
                   dataset-packages dataset-table-columns dataset-table-names
                   dataset-table-row-count load-dataset-table)
          (only-in datasets/core-tests/fixture conjuncts gunzip-file hex license-ids)
-         (only-in racket/file file->lines)
+         (only-in racket/file file->lines file->value)
+         (only-in racket/hash hash-union)
          (only-in racket/list append-map check-duplicates make-list remove-duplicates take)
          (only-in racket/match match match-define)
          (only-in racket/runtime-path define-runtime-path)
@@ -12,9 +13,10 @@
          (only-in setup/getinfo get-info/full))
 (define-runtime-path r-data "../r-data")
 (define-runtime-path package-root "../..")
+(define-runtime-path ggplot2-spots-file "ggplot2-spots.rktd")
 (module+ test
   (require (only-in rackunit check-equal? check-false check-not-false check-true)
-           (only-in (submod "spot.rkt" test) check-spot r-dataset-ids))
+           (only-in (submod "spot.rkt" test) check-spot ggplot2-ids r-dataset-ids))
   (define penguins-names
     '("species" "island" "bill-length-mm" "bill-depth-mm" "flipper-length-mm" "body-mass-g" "sex"
       "year"))
@@ -44,14 +46,15 @@
                          "culmen-depth-mm" "flipper-length-mm" "body-mass-g" "sex"
                          "delta-15-n" "delta-13-c" "comments"))
       (titanic-passengers 891 ,titanic-names)))
+  (define ggplot2-spots (file->value ggplot2-spots-file))
   (define licenses
-    (hash-set (for/hash ([id (in-list '(gapminder nycflights13-airlines nycflights13-airports
-                                                  nycflights13-planes nycflights13-weather penguins
-                                                  penguins-raw titanic-passengers))])
-                (values id "CC0-1.0"))
-              'datasaurus-dozen
-              "MIT"))
-  (define ids (sort (append (map car shapes) r-dataset-ids) symbol<?))
+    (hash-union (for/hash ([id (in-list '(gapminder nycflights13-airlines nycflights13-airports
+                                                    nycflights13-planes nycflights13-weather penguins
+                                                    penguins-raw titanic-passengers))])
+                  (values id "CC0-1.0"))
+                (for/hash ([id (in-list (cons 'datasaurus-dozen ggplot2-ids))])
+                  (values id "MIT"))))
+  (define ids (sort (append (map car shapes) ggplot2-ids r-dataset-ids) symbol<?))
   (define (data-file id) (build-path r-data "data" (format "~a.rktd.gz" id)))
   (define (column-type name levels identifiers present)
     (cond
@@ -160,8 +163,9 @@
     (match-define (list id rows names) shape)
     (define t (load-dataset-table id))
     (check-equal? (dataset-table-row-count t) rows)
-    (check-equal? (dataset-table-names t) names)
-    (check-equal? (hash-ref (dataset-info id) "license") (hash-ref licenses id)))
+    (check-equal? (dataset-table-names t) names))
+  (for ([(id license) (in-hash licenses)])
+    (check-equal? (hash-ref (dataset-info id) "license") license (symbol->string id)))
   (for ([id (in-list ids)])
     (define t (load-dataset-table id))
     (define info (dataset-info id))
@@ -228,10 +232,12 @@
                      license))
   (check-equal? (key-values '("YEAR: 2022" "" "no separator" "COPYRIGHT HOLDER: someone"))
                 (hash "YEAR" "2022" "COPYRIGHT HOLDER" "someone"))
-  (define datasaurus-copyright
-    (key-values (file->lines (build-path r-data "provenance" "datasauRus-LICENSE"))))
-  (check-not-false (member (format "Copyright (c) ~a ~a" (hash-ref datasaurus-copyright "YEAR")
-                                   (hash-ref datasaurus-copyright "COPYRIGHT HOLDER"))
-                           (file->lines (build-path r-data "licenses" "MIT-datasauRus.txt"))))
+  (for ([upstream (in-list '("datasauRus-LICENSE" "ggplot2-LICENSE"))]
+        [bundled (in-list '("MIT-datasauRus.txt" "MIT-ggplot2.txt"))])
+    (define copyright (key-values (file->lines (build-path r-data "provenance" upstream))))
+    (check-not-false (member (format "Copyright (c) ~a ~a" (hash-ref copyright "YEAR")
+                                     (hash-ref copyright "COPYRIGHT HOLDER"))
+                             (file->lines (build-path r-data "licenses" bundled)))
+                     bundled))
 
-  (for-each check-spot spot-checks))
+  (for-each check-spot (append spot-checks ggplot2-spots)))
