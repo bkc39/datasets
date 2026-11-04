@@ -1,12 +1,16 @@
 #lang racket/base
-(require (only-in datasets/core dataset-info dataset-names)
-         (only-in racket/contract/base -> contract-out)
+(require (only-in datasets/core dataset-info dataset-names dataset-packages)
+         (only-in racket/contract/base -> and/c contract-out)
          (only-in racket/list add-between remove-duplicates)
          (only-in racket/match match)
          (only-in racket/string string-join)
          (only-in scribble/base hspace hyperlink para secref section subsection tabular tt)
+         (only-in scribble/decode pre-part?)
          (only-in "catalog-rows.rkt" catalog-column-rows))
-(provide (contract-out [package-catalog (-> string? list?)]))
+(provide (contract-out [package-catalog (-> (and/c string? registered-package?) pre-part?)]))
+
+(define (registered-package? package)
+  (and (member package (dataset-packages)) #t))
 
 (define fetch-guide
   (secref "datasets-core-fetch-guide" #:doc '(lib "datasets/core-doc/datasets-core.scrbl")))

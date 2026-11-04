@@ -2,7 +2,8 @@
 (require (for-syntax racket/base)
          (only-in pkg/lib find-pkg-installation-scope pkg-directory with-pkg-lock/read-only)
          (only-in racket/file file->lines)
-         (only-in racket/list splitf-at)
+         (only-in racket/function curry negate)
+         (only-in racket/list takef)
          (only-in racket/match match)
          (only-in racket/runtime-path define-runtime-path)
          (only-in racket/set set set-add set-member?)
@@ -23,10 +24,10 @@
   (define (visit name path seen order)
     (cond
       [(member name path)
-       (define-values (loop _) (splitf-at path (λ (p) (not (equal? p name)))))
+       (define loop (takef path (negate (curry equal? name))))
        (raise-user-error 'user-deps
                          "dependency cycle: ~a"
-                         (string-join (append (list name) (reverse loop) (list name)) " -> "))]
+                         (string-join (cons name (append (reverse loop) (list name))) " -> "))]
       [(set-member? seen name) (values seen order)]
       [else
        (define-values (seen* order*)

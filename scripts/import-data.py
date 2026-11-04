@@ -362,17 +362,15 @@ def import_esl(cfg):
             summary=rd_field(rd,'description').removesuffix('.')+'.'
             add(cfg,id,[originals.get(n,h) for n,h in zip(names,header)],rows,'ElemStatLearn',names=names,kinds=kinds,levels=levels,
                 targets=kw['targets'],units=kw.get('units',{}),descriptions=descriptions,notes=summary+' '+kw['notes'])
-def r_kebab(s): return re.sub('[^a-z0-9]+','-',re.sub('([a-z])([A-Z])',r'\1-\2',s).lower()).strip('-')
 def r_recipe_columns(id,header,rows,r_levels,kw):
     kw=dict(kw)
     aliases=kw.pop('aliases',{})
-    names=[aliases.get(r_kebab(o),r_kebab(o)) for o in header]
+    names=[aliases.get(kebab(o,camel=True),kebab(o,camel=True)) for o in header]
     levels=r_levels|kw.pop('levels',{})
     for j,n in enumerate(names):
         if n in levels and not {r[j] for r in rows if r[j] is not None}<=set(levels[n]): raise ValueError(f'{id}: {n} value outside levels')
     return names,levels,kw
 def import_r(cfg):
-    kebab=r_kebab
     with tempfile.TemporaryDirectory() as tmp:
         tmp=Path(tmp)
         for k,s in cfg.sources.items():
@@ -385,12 +383,12 @@ def import_r(cfg):
         (cfg.provenance/'datasauRus-LICENSE').write_bytes((tmp/'datasauRus/LICENSE').read_bytes())
         for id,source,kw in R_RECIPES:
             header,kinds,rows=read_r_table(tmp,id)
-            names,levels,kw=r_recipe_columns(id,header,rows,read_r_levels(tmp,id,kebab),kw)
+            names,levels,kw=r_recipe_columns(id,header,rows,read_r_levels(tmp,id,lambda c:kebab(c,camel=True)),kw)
             add(cfg,id,header,rows,source,names=names,levels=levels,kinds=kinds,**kw)
         for id,_,kw in NYCFLIGHTS13_RECIPES:
             shutil.copyfile(tmp/'nycflights13/man'/f"{id.removeprefix('nycflights13-')}.Rd",cfg.provenance/f'{id}.Rd')
             header,kinds,rows=read_r_table(tmp,id)
-            add(cfg,id,header,rows,'nycflights13',names=[kebab(h) for h in header],kinds=kinds,**kw|{'notes':kw['notes']+NYCFLIGHTS13_NOTES})
+            add(cfg,id,header,rows,'nycflights13',names=[kebab(h,camel=True) for h in header],kinds=kinds,**kw|{'notes':kw['notes']+NYCFLIGHTS13_NOTES})
         man=tmp/R_DATASETS/'man'
         pages={a:p for p in sorted(man.glob('*.Rd')) for a in re.findall(r'\\alias\{([^}]*)\}',p.read_text())}
         manifest=read_csv_rows(tmp,'r-datasets.csv')
