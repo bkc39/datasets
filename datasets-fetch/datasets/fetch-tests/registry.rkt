@@ -2,7 +2,7 @@
 (require (only-in datasets/core dataset-info dataset-names)
          (only-in datasets/core-doc/catalog-rows catalog-column-rows)
          (only-in datasets/core-tests/fixture call-with-environment call-with-temporary-fixture)
-         (only-in datasets/fetch-private/convert idx-file-names)
+         (only-in datasets/fetch-private/convert idx-file-names linnerud-file-names)
          (only-in file/sha1 bytes->hex-string)
          (only-in racket/list make-list)
          (only-in racket/match match-define match-lambda)
@@ -14,9 +14,11 @@
   (define (indexed prefix n) (for/list ([i (in-range n)]) (format "~a-~a" prefix i)))
   (define image-columns
     (append (for/list ([k (in-range 1 785)]) (format "pixel~a" k)) '("label" "split")))
-  (define (idx-files base shas)
-    (for/list ([name (in-list idx-file-names)] [sha (in-list shas)])
+  (define (pinned-files names base shas)
+    (for/list ([name (in-list names)] [sha (in-list shas)])
       (list name (string-append base name) sha)))
+  (define (idx-files base shas)
+    (pinned-files idx-file-names base shas))
   (define sets
     `((california-housing
        20640 ("med-inc" "house-age" "ave-rooms" "ave-bedrms" "population" "ave-occup" "latitude" "longitude"
@@ -43,13 +45,11 @@
        "idx-image-rows" "MIT")
       (linnerud
        20 ("chins" "situps" "jumps" "weight" "waist" "pulse")
-       ,(for/list ([name (in-list '("linnerud_exercise.csv" "linnerud_physiological.csv"))]
-                   [sha (in-list '("cb8d8c24937643fa2459682efb86c5e667bcd6dd93109eef81964d9e9f11bf8c"
-                                   "2bf7e05c1cd7d0adf0eca1e456941f624bed0a4fc96694d60d0ff7853ec5fcf7"))])
-          (list name
-                (string-append "https://raw.githubusercontent.com/scikit-learn/scikit-learn/"
-                               "646da0f072a8afef6a980aa427a710311e67eb9d/sklearn/datasets/data/" name)
-                sha))
+       ,(pinned-files linnerud-file-names
+                      (string-append "https://raw.githubusercontent.com/scikit-learn/scikit-learn/"
+                                     "646da0f072a8afef6a980aa427a710311e67eb9d/sklearn/datasets/data/")
+                      '("cb8d8c24937643fa2459682efb86c5e667bcd6dd93109eef81964d9e9f11bf8c"
+                        "2bf7e05c1cd7d0adf0eca1e456941f624bed0a4fc96694d60d0ff7853ec5fcf7"))
        "linnerud-rows" "NOASSERTION")
       (mnist
        70000 ,image-columns

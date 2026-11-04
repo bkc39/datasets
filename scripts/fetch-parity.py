@@ -88,7 +88,6 @@ def linnerud_references():
 
 
 def loader_references():
-    import sklearn
     import torchvision
     from sklearn import datasets
     from torchvision.datasets import MNIST, FashionMNIST
@@ -97,8 +96,8 @@ def loader_references():
     names = [n.lower().replace("_", "-") for n in bunch.feature_names + bunch.target_names]
     columns = [bunch.data[:, k] for k in range(bunch.data.shape[1])] + [bunch.target]
     frame = datasets.fetch_california_housing(as_frame=True).frame
-    _, linnerud = linnerud_references()
-    return {"scikit-learn": sklearn.__version__, "torchvision": torchvision.__version__}, linnerud | {
+    versions, linnerud = linnerud_references()
+    return versions | {"torchvision": torchvision.__version__}, linnerud | {
         "covtype": (len(bunch.target), {n: integers(c) for n, c in zip(names, columns)}),
         "california-housing": (len(frame), {CALIFORNIA[n]: reals(frame[n].to_numpy()) for n in frame.columns}),
         "mnist": images(MNIST, root),

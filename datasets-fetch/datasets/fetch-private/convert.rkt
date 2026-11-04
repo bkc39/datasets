@@ -125,7 +125,10 @@
 
 (define (linnerud-rows files info)
   (match-define (list exercise physiological) linnerud-file-names)
-  (define-values (exercise-specs physiological-specs) (split-at (info->column-specs info) 3))
+  (define exercise-width
+    (~> (hash-ref files exercise) (call-with-input-file read-line) string-split length))
+  (define-values (exercise-specs physiological-specs)
+    (split-at (info->column-specs info) exercise-width))
   (define (file-rows name specs)
     (~> (hash-ref files name) file->bytes open-input-bytes (csv-rows specs #:separator #\space)
         sequence->list))
