@@ -34,6 +34,12 @@ for family in "${families[@]}"; do
   grep -rqF "datasets-package-$family" "$(manual "$family")" ||
     fail "$family's manual has no catalog section"
 done
+rm -rf -- "$core_manual"
+raco setup -j 2 --pkgs "$core"
+for family in "${families[@]}"; do
+  ! grep -rqF "datasets-package-$family" "$core_manual" ||
+    fail "the $core manual catalogues $family"
+done
 for package in "$core" "${families[@]}"; do
   ! grep -rlF 'class="badlink"' "$(manual "$package")" ||
     fail "broken links in the $package manual"

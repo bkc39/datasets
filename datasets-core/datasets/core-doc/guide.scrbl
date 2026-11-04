@@ -1,6 +1,6 @@
 #lang scribble/manual
 @(require scribble/eval
-          (for-label racket/base datasets/core))
+          (for-label racket/base datasets/core (lib "datasets/core-doc/package-catalog.scrbl")))
 @(define ev (make-base-eval))
 
 @title[#:tag "datasets-core-guide"]{Guide}
@@ -133,7 +133,7 @@ or comparing a dataset with another library's version.
 
 @section[#:tag "datasets-core-other-packages"]{Datasets from other packages}
 
-Other packages add datasets to the same registry. Such a package contributes a
+Other packages can register datasets of their own. Such a package contributes a
 directory to the @tt{datasets} collection, conventionally
 @tt{datasets/@italic{suffix}-data} for a package named
 @tt{datasets-@italic{suffix}}, containing an @tt{info.rkt}, a registry file, and
@@ -153,9 +153,9 @@ importer writes this layout with
 
 Such a package catalogues its datasets in its own manual, in the form of the
 @secref["datasets-catalog"], with its license texts and provenance files in
-@tt{licenses} and @tt{provenance} beside its registry. @tt{package-catalog}, from
-@tt{datasets/core-doc/package-catalog}, takes a package name and renders one
-section with an entry per dataset that package registers:
+@tt{licenses} and @tt{provenance} beside its registry.
+@racket[package-catalog] takes a package name and renders one section with an
+entry per dataset that package registers:
 
 @verbatim|{#lang scribble/manual
 @(require (only-in (lib "datasets/core-doc/package-catalog.scrbl") package-catalog))
