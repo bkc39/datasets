@@ -138,10 +138,17 @@
                                         ,(dataset-info 'linnerud) csv-rows "wrong number of fields")
                         (,linnerud-rows ,(linnerud-upstream "" "Weight Waist Pulse\n191 36 50\n")
                                         ,(dataset-info 'linnerud) linnerud-rows "missing header")
+                        (,linnerud-rows ,(linnerud-upstream "\n5 162 60\n"
+                                                            "Weight Waist Pulse\n191 36 50\n")
+                                        ,(dataset-info 'linnerud) linnerud-rows "missing header")
+                        (,linnerud-rows ,(linnerud-upstream "A B C D E F\n1 2 3 4 5 6\n"
+                                                            "Weight Waist Pulse\n191 36 50\n")
+                                        ,(dataset-info 'linnerud) linnerud-rows
+                                        "header too wide for the dataset")
                         (,linnerud-rows ,(linnerud-upstream "A B C D E F G\n1 2 3 4 5 6 7\n"
                                                             "Weight Waist Pulse\n191 36 50\n")
                                         ,(dataset-info 'linnerud) linnerud-rows
-                                        "header wider than the dataset")))])
+                                        "header too wide for the dataset")))])
       (match-define (list converter upstream info who needle) c)
       (call-with-upstream-files upstream
         (lambda (files)
