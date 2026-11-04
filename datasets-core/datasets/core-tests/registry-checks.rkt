@@ -3,13 +3,11 @@
   (require (only-in datasets/core dataset-info dataset-missing dataset-missing? dataset-names
                     dataset-packages dataset-table-columns dataset-table-names
                     dataset-table-row-count load-dataset-table)
-           (only-in racket/async-channel async-channel-put async-channel-try-get make-async-channel)
            (only-in racket/contract/base -> ->* and/c contract-out listof or/c)
            (only-in racket/list append-map check-duplicates remove-duplicates take)
            (only-in racket/match match match-define)
            (only-in racket/vector vector-count)
-           (only-in rackunit check-equal? check-false check-not-false check-true
-                    current-check-around exn:test:check?)
+           (only-in rackunit check-equal? check-false check-not-false check-true)
            (only-in setup/getinfo get-info/full)
            (only-in "fixture.rkt" conjuncts gunzip-file hex license-ids))
   (provide (contract-out
@@ -36,11 +34,14 @@
       ["categorical" (lambda (v) (and (member v levels) #t))]
       [_ string?]))
 
+  (define (present-values column)
+    (for/list ([v (in-vector column)] #:unless (dataset-missing? v)) v))
+
   (define (check-column info column meta types label)
     (define name (hash-ref meta "name"))
     (define type (hash-ref meta "type"))
     (define levels (hash-ref meta "levels"))
-    (define present (for/list ([v (in-vector column)] #:unless (dataset-missing? v)) v))
+    (define present (present-values column))
     (define missing (vector-count dataset-missing? column))
     (define where (format "~a ~a" label name))
     (check-true (immutable? column) where)
@@ -59,20 +60,24 @@
                    where)]
       [else (check-true (andmap (declared-value? type levels) present) where)]))
 
-  (define (check-identifier-column info column meta label)
-    (define name (hash-ref meta "name"))
-    (define present (for/list ([v (in-vector column)] #:unless (dataset-missing? v)) v))
-    (check-false (and (or (equal? (hash-ref meta "type") "identifier")
-                          (member name (hash-ref info "identifiers")))
-                      (or (< (length present) (vector-length column)) (check-duplicates present)))
-                 (format "~a ~a" label name)))
+  (define (incomplete-identifier? info column meta)
+    (and (or (equal? (hash-ref meta "type") "identifier")
+             (member (hash-ref meta "name") (hash-ref info "identifiers")))
+         (or (positive? (vector-count dataset-missing? column))
+             (check-duplicates (present-values column)))
+         #t))
+
+  (define (identifier-failures info names columns)
+    (append (for/list ([identifier (in-list (hash-ref info "identifiers"))]
+                       #:unless (member identifier names))
+              (format "identifier ~a is not a column" identifier))
+            (for/list ([column (in-vector columns)]
+                       [meta (in-list (hash-ref info "columns"))]
+                       #:when (incomplete-identifier? info column meta))
+              (format "identifier column ~a has missing or duplicate values" (hash-ref meta "name")))))
 
   (define (check-identifiers info names columns label)
-    (for ([identifier (in-list (hash-ref info "identifiers"))])
-      (check-not-false (member identifier names) (format "~a identifier ~a" label identifier)))
-    (for ([column (in-vector columns)]
-          [meta (in-list (hash-ref info "columns"))])
-      (check-identifier-column info column meta label)))
+    (check-equal? (identifier-failures info names columns) '() label))
 
   (define (check-dataset-identifiers id)
     (define table (load-dataset-table id))
@@ -119,21 +124,13 @@
                          registry-licenses
                          (path->string licenses-dir)))
 
-  (define (check-license-files files licenses where)
-    (check-equal? (sort files string<?)
-                  (sort (for/list ([id (in-list (remove-duplicates (append-map license-ids licenses)))])
-                          (string-append id ".txt"))
-                        string<?)
-                  where))
+  (define (license-files licenses)
+    (sort (for/list ([id (in-list (remove-duplicates (append-map license-ids licenses)))])
+            (string-append id ".txt"))
+          string<?))
 
-  (define (failures thunk)
-    (define failed (make-async-channel))
-    (define (record-failure check)
-      (with-handlers ([exn:test:check? (lambda (e) (async-channel-put failed e))])
-        (check)))
-    (parameterize ([current-check-around record-failure])
-      (thunk))
-    (length (for/list ([e (in-producer async-channel-try-get #f failed)]) e)))
+  (define (check-license-files files licenses where)
+    (check-equal? (sort files string<?) (license-files licenses) where))
 
   (define (check-bundled-registry package data-dir ids #:types [types 'inferred])
     (check-equal? (dataset-names #:package package) ids)
@@ -151,7 +148,8 @@
   (define (id-column-failures cells identifiers type)
     (define meta (hash "name" "id" "type" type))
     (define info (hash "identifiers" identifiers "columns" (list meta)))
-    (failures (lambda () (check-identifiers info '("id") (vector-immutable (apply vector-immutable cells)) "fixture"))))
+    (define columns (vector-immutable (apply vector-immutable cells)))
+    (length (identifier-failures info '("id") columns)))
   (for ([row (in-list `([(1 2 3) ("id") "identifier" 0]
                         [(1 ,dataset-missing ,dataset-missing) ("id") "identifier" 1]
                         [(1 1 2) ("id") "identifier" 1]
@@ -162,12 +160,12 @@
                         [(1 2 3) ("passenger_id") "integer" 1]))])
     (match-define (list cells identifiers type expected) row)
     (check-equal? (id-column-failures cells identifiers type) expected (format "~s" row)))
-  (for ([row (in-list '([("MIT.txt" "CC-BY-4.0.txt") ("CC-BY-4.0" "MIT AND CC-BY-4.0") 0]
-                        [("CC-BY-4.0.txt" "CC-BY-4.0-draft.txt") ("CC-BY-4.0") 1]
-                        [("MIT-datasauRus.txt") ("MIT") 1]
-                        [("CC-BY-4.0.txt") ("CC-BY-4.0" "MIT") 1]))])
+  (for ([row (in-list '([("MIT.txt" "CC-BY-4.0.txt") ("CC-BY-4.0" "MIT AND CC-BY-4.0") #t]
+                        [("CC-BY-4.0.txt" "CC-BY-4.0-draft.txt") ("CC-BY-4.0") #f]
+                        [("MIT-datasauRus.txt") ("MIT") #f]
+                        [("CC-BY-4.0.txt") ("CC-BY-4.0" "MIT") #f]))])
     (match-define (list files licenses expected) row)
-    (check-equal? (failures (lambda () (check-license-files files licenses "fixture"))) expected
+    (check-equal? (equal? (sort files string<?) (license-files licenses)) expected
                   (format "~s" row)))
   (check-equal? (license-ids "CC0-1.0 AND (MIT OR GPL-2.0-only)") '("CC0-1.0" "MIT" "GPL-2.0-only"))
   (check-equal? (license-ids "MIT") '("MIT"))

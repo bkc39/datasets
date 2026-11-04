@@ -84,7 +84,8 @@
     (call-with-registry-fixtures (list (registry-fixture "sibling")) check-core-storage))
 
   (test-case "S5 identifiers name distinct, complete columns"
-    (for-each check-dataset-identifiers (dataset-names #:package "datasets-core")))
+    (for ([id (in-list (dataset-names #:package "datasets-core"))])
+      (check-dataset-identifiers id)))
 
   (test-case "S5b one license file per registry license id"
     (check-licenses (simplify-path core-package) (simplify-path core-licenses)
