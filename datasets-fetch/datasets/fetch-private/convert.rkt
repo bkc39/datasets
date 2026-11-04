@@ -125,10 +125,17 @@
 
 (define (linnerud-rows files info)
   (match-define (list exercise physiological) linnerud-file-names)
+  (define specs (info->column-specs info))
   (define exercise-width
-    (~> (hash-ref files exercise) (call-with-input-file read-line) string-split length))
+    (match (call-with-input-file (hash-ref files exercise) read-line)
+      [(? eof-object?) (error 'linnerud-rows "missing header\n  file: ~a" exercise)]
+      [header (length (string-split header))]))
   (define-values (exercise-specs physiological-specs)
-    (split-at (info->column-specs info) exercise-width))
+    (cond
+      [(<= exercise-width (length specs)) (split-at specs exercise-width)]
+      [else
+       (error 'linnerud-rows "header wider than the dataset\n  file: ~a\n  fields: ~a\n  columns: ~a"
+              exercise exercise-width (length specs))]))
   (define (file-rows name specs)
     (~> (hash-ref files name) file->bytes open-input-bytes (csv-rows specs #:separator #\space)
         sequence->list))
