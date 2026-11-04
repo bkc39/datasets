@@ -155,6 +155,6 @@
     (key-values (file->lines (build-path r-data "provenance" "datasauRus-LICENSE"))))
   (check-not-false (member (format "Copyright (c) ~a ~a" (hash-ref datasaurus-copyright "YEAR")
                                    (hash-ref datasaurus-copyright "COPYRIGHT HOLDER"))
-                           (file->lines (build-path r-data "licenses" "MIT-datasauRus.txt"))))
+                           (file->lines (build-path r-data "licenses" "MIT.txt"))))
 
   (for-each check-spot spot-checks))

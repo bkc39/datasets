@@ -13,8 +13,9 @@ analysis library, or need data for another package's examples.
 
 The @secref["datasets-core-guide"] introduces tables, missing observations,
 and metadata through examples. The @secref["datasets-core-reference"] specifies
-each exported binding. The @secref["datasets-catalog"] describes every dataset,
-its variables, and its provenance.
+each exported binding. The @secref["datasets-catalog"] describes each dataset
+of @tt{datasets-core}, its variables, and its provenance; every other package
+catalogues its datasets in its own manual.
 
 This manual and package work without Polars, @tt{math-lib}, or @tt{data-frame}.
 For general Racket programming, see

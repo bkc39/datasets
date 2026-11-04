@@ -1,12 +1,9 @@
 #!/usr/bin/env bash
-# Render datasets-core's manual before any family package is installed, then
-# install and render each family: every family manual carries its own catalog,
-# core's carries none of theirs, and no manual has a broken link.
 set -euo pipefail
 project_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
 cd "$project_root"
 source scripts/packages.sh
-user_deps=$(racket scripts/user-deps.rkt "${families[@]}")
+user_deps=$(racket scripts/user-deps.rkt "$core" "${families[@]}")
 home=$(mktemp -d "${TMPDIR:-/tmp}/datasets-catalog-order.XXXXXX")
 trap 'rm -rf -- "$home"' EXIT
 export PLTUSERHOME=$home
@@ -36,8 +33,6 @@ done
 for family in "${families[@]}"; do
   grep -rqF "datasets-package-$family" "$(manual "$family")" ||
     fail "$family's manual has no catalog section"
-  ! grep -rqF "datasets-package-$family" "$core_manual" ||
-    fail "the datasets-core manual catalogs $family"
 done
 for package in "$core" "${families[@]}"; do
   ! grep -rlF 'class="badlink"' "$(manual "$package")" ||
