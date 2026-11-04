@@ -6,8 +6,8 @@
          (only-in racket/contract/base -> ->* any any/c contract-out hash/c list/c listof non-empty-listof
                   or/c)
          (only-in racket/file file->bytes make-directory*)
-         (only-in racket/list append* append-map)
-         (only-in racket/match == match match-define match-lambda)
+         (only-in racket/list append* append-map first second)
+         (only-in racket/match match match-define match-lambda)
          (only-in racket/path path-only)
          (only-in racket/port call-with-output-bytes open-output-nowhere)
          (only-in racket/string string-contains? string-prefix?))
@@ -15,15 +15,16 @@
           [call-with-upstream-files (-> (listof (list/c string? upstream/c))
                                         (-> (hash/c string? complete-path? #:immutable #t) any)
                                         any)]
+          [cifar-10-member-names (listof string?)]
+          [cifar-10-member-splits (listof string?)]
+          [cifar-10-upstream (-> (listof member/c) list?)]
+          [cifar-100-member-names (listof string?)]
+          [cifar-100-upstream (-> (listof member/c) list?)]
+          [cifar-record-bytes (-> (listof (listof byte?)) bytes?)]
+          [emnist-members (-> string? (list/c idx/c idx/c idx/c idx/c) (listof (list/c string? bytes?)))]
           [error-with? (-> symbol? string? ... (-> any/c boolean?))]
           [idx-bytes (->* ((listof exact-nonnegative-integer?) bytes?) (#:magic bytes?) bytes?)]
-          [tar-bytes (-> (listof member/c) bytes?)]
-          [cifar-10-member-names (listof string?)]
-          [cifar-100-member-names (listof string?)]
-          [cifar-record-bytes (-> (listof (listof byte?)) bytes?)]
-          [cifar-10-upstream (-> (listof member/c) list?)]
-          [cifar-100-upstream (-> (listof member/c) list?)]
-          [emnist-members (-> string? (list/c idx/c idx/c idx/c idx/c) (listof (list/c string? bytes?)))]))
+          [tar-bytes (-> (listof member/c) bytes?)]))
 
 (define member/c (list/c string? (or/c string? bytes?)))
 (define idx/c (list/c (listof exact-nonnegative-integer?) bytes?))
@@ -99,16 +100,18 @@
                 (call-with-output-file path (lambda (out) (write-bytes (upstream-bytes content) out)))
                 (values name path)]))))))
 
-(define cifar-10-member-names
-  (append (for/list ([k (in-range 1 6)]) (format "cifar-10-batches-bin/data_batch_~a.bin" k))
-          '("cifar-10-batches-bin/test_batch.bin")))
+(define cifar-10-batches
+  (append (for/list ([k (in-range 1 6)]) (list (format "cifar-10-batches-bin/data_batch_~a.bin" k) "train"))
+          '(("cifar-10-batches-bin/test_batch.bin" "test"))))
+(define cifar-10-member-names (map first cifar-10-batches))
+(define cifar-10-member-splits (map second cifar-10-batches))
 (define cifar-100-member-names '("cifar-100-binary/train.bin" "cifar-100-binary/test.bin"))
 
 (define (cifar-record-bytes records)
   (apply bytes (append* records)))
 
 (define (in-tar-order names members)
-  (append-map (lambda (name) (filter (match-lambda [(list (== name) _) #t] [_ #f]) members)) names))
+  (append-map (lambda (name) (filter (lambda (member) (equal? (first member) name)) members)) names))
 
 (define (cifar-10-upstream members)
   (match-define (list batch-1 batch-2 batch-3 batch-4 batch-5 test) cifar-10-member-names)

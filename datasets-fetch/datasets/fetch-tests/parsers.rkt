@@ -161,6 +161,10 @@
                      (for/list ([name (in-list '("Dir/one.txt" "Dir/two.data" "empty"))])
                        (tar-gz-member (hash-ref files "a.tgz") name)))
        (check-equal? (sort (local-header-methods (file->bytes (hash-ref files "a.zip"))) <) '(0 0 0 0 8))
+       (for ([c (in-list `((,tar-gz-members tar-gz-member "a.tgz") (,zip-members zip-members "a.zip")))])
+         (match-define (list read-members who archive) c)
+         (check-equal? (with-handlers ([exn:fail? exn-message]) (read-members (hash-ref files archive) '("Dir")))
+                       (format "~a: no such member\n  archive: ~a\n  member: Dir" who (hash-ref files archive))))
        (for* ([c (in-list '(("a.tgz" tar-gz-member) ("a.zip" zip-members)))]
               [member (in-list '("Dir" "Dir/three" "two.data" "dir/one.txt"))])
          (match-define (list archive who) c)
@@ -174,7 +178,7 @@
     (call-with-upstream-files
      '(("bad.tgz" (bytes #"\37\213\10\0\0\0\0\0\0\3\377\377\377\377")))
      (lambda (files)
-       (check-exn (lambda (e) (and (exn:fail? e) (regexp-match? #rx"^inflate: " (exn-message e))))
+       (check-exn #rx"^inflate: "
                   (lambda () (tar-gz-members (hash-ref files "bad.tgz") '("x")))))))
 
   (define member-a (make-bytes 200000 65))
@@ -192,7 +196,7 @@
        (for ([read-member (in-list (list (lambda () (tar-gz-member archive "b"))
                                          (lambda () (tar-gz-members archive '("a" "b")))
                                          (lambda () (tar-gz-members archive '("b" "c")))))])
-         (check-exn (lambda (e) (and (exn:fail? e) (regexp-match? #rx"^inflate: " (exn-message e))))
+         (check-exn #rx"^inflate: "
                     read-member)))))
 
   (test-case "a tar that ends inside a member raises truncated member"
@@ -202,6 +206,56 @@
        (define archive (hash-ref files "cut.tgz"))
        (check-exn (error-with? 'tar-gz-member "truncated member" (format "archive: ~a" archive) "member: b")
                   (lambda () (tar-gz-member archive "b"))))))
+
+  (define (tar-entries members)
+    (define tar (tar-bytes members))
+    (subbytes tar 0 (- (bytes-length tar) 1024)))
+  (define (gzip-prefix tar size) (gzip-bytes (subbytes tar 0 size)))
+
+  (test-case "a tar that ends at or inside a header or padding raises truncated archive, not untar's error"
+    (define tars
+      (hash 'ab (tar-bytes `(("a" ,(make-bytes 1000 97)) ("b" ,(make-bytes 3000 98))))
+            'azb (tar-bytes `(("a" ,(make-bytes 1000 97)) ("z" #"") ("b" ,(make-bytes 3000 98))))))
+    (check-equal? (bytes-length (hash-ref tars 'ab)) 6144)
+    (for ([c (in-list '((ab 1536 ("b")) (ab 1536 ("a" "b")) (ab 1520 ("b")) (ab 1520 ("a" "b"))
+                        (ab 1636 ("b")) (azb 2048 ("z" "b"))))])
+      (match-define (list tar size names) c)
+      (call-with-upstream-files
+       `(("cut.tgz" (bytes ,(gzip-prefix (hash-ref tars tar) size))))
+       (lambda (files)
+         (define archive (hash-ref files "cut.tgz"))
+         (check-exn (error-with? 'tar-gz-member "truncated archive" (format "archive: ~a" archive) "member: b")
+                    (lambda () (tar-gz-members archive names))
+                    (format "~a" c))))))
+
+  (test-case "tar-gz-members takes the first of duplicate names and skips the others unread"
+    (define n (* 40 1024 1024))
+    (define cut (bytes-append (tar-entries '(("a" #"first") ("b" #"b"))) (tar-bytes `(("a" ,(make-bytes 4096 50))))))
+    (call-with-upstream-files
+     `(("dup.tgz" (bytes ,(gzip-bytes (bytes-append (tar-entries `(("a" ,(make-bytes n 1))))
+                                                    (tar-bytes `(("a" ,(make-bytes n 2)) ("b" #"b")))))))
+       ("dup-cut.tgz" (bytes ,(gzip-prefix cut (- (bytes-length cut) 3000)))))
+     (lambda (files)
+       (check-equal? (call-with-memory-limit (* 64 1024 1024) 120
+                                             (lambda () (tar-gz-members (hash-ref files "dup.tgz") '("a" "b"))))
+                     (list (make-bytes n 1) #"b"))
+       (for ([names (in-list '(("a" "b") ("b" "a") ("a")))])
+         (check-equal? (tar-gz-members (hash-ref files "dup-cut.tgz") names)
+                       (for/list ([name (in-list names)]) (if (equal? name "a") #"first" #"b"))
+                       (format "~a" names))))))
+
+  (test-case "a gzip that fails inside the closing zero blocks raises the inflate error, not no such member"
+    (define tar (tar-bytes `(("a" ,(make-bytes 31744 97)))))
+    (define size (bytes-length tar))
+    (define stored-then-corrupt
+      (bytes-append #"\37\213\10\0\0\0\0\0\0\3\0" (integer->integer-bytes size 2 #f #f)
+                    (integer->integer-bytes (bitwise-xor #xffff size) 2 #f #f) tar #"\377"))
+    (check-equal? size 33280)
+    (call-with-upstream-files
+     `(("corrupt.tgz" (bytes ,stored-then-corrupt)))
+     (lambda (files)
+       (check-equal? (tar-gz-members (hash-ref files "corrupt.tgz") '("a")) (list (make-bytes 31744 97)))
+       (check-exn #rx"^inflate: " (lambda () (tar-gz-members (hash-ref files "corrupt.tgz") '("a" "missing")))))))
 
   (test-case "tar-gz-members streams: skipping a 96 MB member stays under a 32 MB memory limit"
     (define tail #"the last member")

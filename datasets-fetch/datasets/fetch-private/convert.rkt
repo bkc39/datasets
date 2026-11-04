@@ -6,6 +6,7 @@
          (only-in racket/contract/base -> and/c contract-out flat-named-contract hash/c integer-in listof)
          (only-in racket/file file->bytes)
          (only-in racket/flonum fl/)
+         (only-in racket/function curry)
          (only-in racket/match match match* match-define)
          (only-in racket/sequence sequence-append sequence-map)
          (only-in racket/stream for/stream)
@@ -58,7 +59,7 @@
     "t10k-labels-idx1-ubyte.gz"))
 
 (define (idx-image-rows files info)
-  (idx-rows (lambda (name) (idx-file files name)) idx-file-names (- (hash-ref info "column-count") 2)))
+  (idx-rows (curry idx-file files) idx-file-names (- (hash-ref info "column-count") 2)))
 
 (define (idx-rows read-part parts width)
   (match-define (list train-images train-labels test-images test-labels) parts)

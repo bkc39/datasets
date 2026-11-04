@@ -7,8 +7,9 @@
          (only-in datasets/fetch-private/convert california-housing-rows cifar-10-rows cifar-100-rows
                   covtype-rows csv-header-rows emnist-balanced-rows emnist-digits-rows emnist-letters-rows
                   esl-zip-file-names esl-zip-rows idx-file-names idx-image-rows)
-         (only-in datasets/fetch-tests/fixture call-with-upstream-files cifar-10-member-names cifar-10-upstream
-                  cifar-100-member-names cifar-100-upstream cifar-record-bytes emnist-members error-with?)
+         (only-in datasets/fetch-tests/fixture call-with-upstream-files cifar-10-member-names cifar-10-member-splits
+                  cifar-10-upstream cifar-100-member-names cifar-100-upstream cifar-record-bytes emnist-members
+                  error-with?)
          (only-in file/sha1 bytes->hex-string)
          (only-in net/url path->url url->string)
          (only-in racket/file file->string)
@@ -84,7 +85,6 @@
     (hash-set* info "image-shape" shape "column-count" (length columns) "columns" columns))
   (define (cifar-pixels g) (for/list ([k (in-range 6)]) (+ (* 40 g) k)))
   (match-define (list cifar-100-train cifar-100-test) cifar-100-member-names)
-  (define cifar-10-splits '("train" "train" "train" "train" "train" "test"))
   (define cifar-10-groups '((0) (1) (2 3) (4) (5) (6)))
   (define (cifar-10-label g) (modulo (+ 3 (* 7 g)) 10))
   (define (cifar-10-record g) (cons (cifar-10-label g) (cifar-pixels g)))
@@ -92,7 +92,7 @@
     (for/list ([name (in-list cifar-10-member-names)] [group (in-list groups)])
       (list name (cifar-record-bytes (map record group)))))
   (define cifar-10-expected
-    (for*/list ([(group split) (in-parallel cifar-10-groups cifar-10-splits)] [g (in-list group)])
+    (for*/list ([(group split) (in-parallel cifar-10-groups cifar-10-member-splits)] [g (in-list group)])
       (append (cifar-pixels g) (list (cifar-10-label g) split))))
   (define (cifar-100-record g) (list* (+ 2 g) (+ 90 g) (cifar-pixels g)))
   (define (cifar-100-members [record cifar-100-record])
