@@ -6,7 +6,8 @@
          (only-in racket/contract/base -> ->* any any/c contract-out hash/c list/c listof non-empty-listof
                   or/c)
          (only-in racket/file file->bytes make-directory*)
-         (only-in racket/match match match-define match-lambda)
+         (only-in racket/list append* append-map)
+         (only-in racket/match == match match-define match-lambda)
          (only-in racket/path path-only)
          (only-in racket/port call-with-output-bytes open-output-nowhere)
          (only-in racket/string string-contains? string-prefix?))
@@ -15,7 +16,17 @@
                                         (-> (hash/c string? complete-path? #:immutable #t) any)
                                         any)]
           [error-with? (-> symbol? string? ... (-> any/c boolean?))]
-          [idx-bytes (->* ((listof exact-nonnegative-integer?) bytes?) (#:magic bytes?) bytes?)]))
+          [idx-bytes (->* ((listof exact-nonnegative-integer?) bytes?) (#:magic bytes?) bytes?)]
+          [tar-bytes (-> (listof member/c) bytes?)]
+          [cifar-10-member-names (listof string?)]
+          [cifar-100-member-names (listof string?)]
+          [cifar-record-bytes (-> (listof (listof byte?)) bytes?)]
+          [cifar-10-upstream (-> (listof member/c) list?)]
+          [cifar-100-upstream (-> (listof member/c) list?)]
+          [emnist-members (-> string? (list/c idx/c idx/c idx/c idx/c) (listof (list/c string? bytes?)))]))
+
+(define member/c (list/c string? (or/c string? bytes?)))
+(define idx/c (list/c (listof exact-nonnegative-integer?) bytes?))
 
 (define upstream/c
   (or/c (list/c 'gz string?) (list/c 'tgz (listof (list/c string? (or/c string? bytes?)))) (list/c 'plain string?)
@@ -87,3 +98,27 @@
                 (define path (build-path dir name))
                 (call-with-output-file path (lambda (out) (write-bytes (upstream-bytes content) out)))
                 (values name path)]))))))
+
+(define cifar-10-member-names
+  (append (for/list ([k (in-range 1 6)]) (format "cifar-10-batches-bin/data_batch_~a.bin" k))
+          '("cifar-10-batches-bin/test_batch.bin")))
+(define cifar-100-member-names '("cifar-100-binary/train.bin" "cifar-100-binary/test.bin"))
+
+(define (cifar-record-bytes records)
+  (apply bytes (append* records)))
+
+(define (in-tar-order names members)
+  (append-map (lambda (name) (filter (match-lambda [(list (== name) _) #t] [_ #f]) members)) names))
+
+(define (cifar-10-upstream members)
+  (match-define (list batch-1 batch-2 batch-3 batch-4 batch-5 test) cifar-10-member-names)
+  `(("cifar-10-binary.tar.gz" (tgz ,(in-tar-order (list batch-3 batch-1 test batch-5 batch-2 batch-4) members)))))
+
+(define (cifar-100-upstream members)
+  `(("cifar-100-binary.tar.gz" (tgz ,members))))
+
+(define (emnist-members split contents)
+  (for/list ([part (in-list '("train-images-idx3" "train-labels-idx1" "test-images-idx3" "test-labels-idx1"))]
+             [content (in-list contents)])
+    (match-define (list dims data) content)
+    (list (format "gzip/emnist-~a-~a-ubyte.gz" split part) (gzip-bytes (idx-bytes dims data)))))

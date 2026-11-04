@@ -1,12 +1,12 @@
 #lang racket/base
-(require (only-in datasets/core dataset-missing)
-         (only-in datasets/core-tests/fixture gzip-bytes)
+(require (only-in datasets/core dataset-missing dataset-table)
+         (only-in datasets/core-tests/fixture call-with-memory-limit gzip-bytes)
          (only-in datasets/fetch-private/archive gunzip-bytes gunzip-file tar-gz-member tar-gz-members
                   zip-members)
          (only-in datasets/fetch-private/csv csv-rows info->column-specs)
          (only-in datasets/fetch-private/idx read-idx)
-         (only-in datasets/fetch-tests/digest column-digest)
-         (only-in datasets/fetch-tests/fixture call-with-upstream-files error-with? idx-bytes)
+         (only-in datasets/fetch-tests/digest column-digest parity-problems)
+         (only-in datasets/fetch-tests/fixture call-with-upstream-files error-with? idx-bytes tar-bytes)
          (only-in racket/list make-list range)
          (only-in racket/random crypto-random-bytes)
          (only-in racket/file file->bytes)
@@ -174,8 +174,53 @@
     (call-with-upstream-files
      '(("bad.tgz" (bytes #"\37\213\10\0\0\0\0\0\0\3\377\377\377\377")))
      (lambda (files)
-       (check-exn (lambda (e) (and (exn:fail? e) (not (regexp-match? #rx"^untar" (exn-message e)))))
+       (check-exn (lambda (e) (and (exn:fail? e) (regexp-match? #rx"^inflate: " (exn-message e))))
                   (lambda () (tar-gz-members (hash-ref files "bad.tgz") '("x")))))))
+
+  (define member-a (make-bytes 200000 65))
+  (define member-b
+    (apply bytes-append (for/list ([i (in-range 50000)]) (string->bytes/utf-8 (number->string (* i 7919))))))
+  (define truncation-tar (tar-bytes `(("a" ,member-a) ("b" ,member-b))))
+
+  (test-case "a gzip stream that ends inside a member raises the inflate error, never a short member"
+    (define gz (gzip-bytes truncation-tar))
+    (call-with-upstream-files
+     `(("cut.tgz" (bytes ,(subbytes gz 0 (quotient (bytes-length gz) 2)))))
+     (lambda (files)
+       (define archive (hash-ref files "cut.tgz"))
+       (check-equal? (tar-gz-members archive '("a")) (list member-a))
+       (for ([read-member (in-list (list (lambda () (tar-gz-member archive "b"))
+                                         (lambda () (tar-gz-members archive '("a" "b")))
+                                         (lambda () (tar-gz-members archive '("b" "c")))))])
+         (check-exn (lambda (e) (and (exn:fail? e) (regexp-match? #rx"^inflate: " (exn-message e))))
+                    read-member)))))
+
+  (test-case "a tar that ends inside a member raises truncated member"
+    (call-with-upstream-files
+     `(("cut.tgz" (bytes ,(gzip-bytes (subbytes truncation-tar 0 (- (bytes-length truncation-tar) 100000))))))
+     (lambda (files)
+       (define archive (hash-ref files "cut.tgz"))
+       (check-exn (error-with? 'tar-gz-member "truncated member" (format "archive: ~a" archive) "member: b")
+                  (lambda () (tar-gz-member archive "b"))))))
+
+  (test-case "tar-gz-members streams: skipping a 96 MB member stays under a 32 MB memory limit"
+    (define tail #"the last member")
+    (call-with-upstream-files
+     `(("zeros.tgz" (bytes ,(gzip-bytes (tar-bytes `(("zeros" ,(make-bytes (* 96 1024 1024) 0)) ("tail" ,tail)))))))
+     (lambda (files)
+       (check-equal? (call-with-memory-limit (* 32 1024 1024) 120
+                                             (lambda () (tar-gz-members (hash-ref files "zeros.tgz") '("tail"))))
+                     (list tail)))))
+
+  (test-case "parity-problems on a canonical-sha256 reference: the row count, then the registry sha256"
+    (define table (dataset-table '("x") '((1 2))))
+    (define (problems rows sha)
+      (parity-problems 'tiny table #:info (hash "sha256" "aa")
+                       #:reference (hash 'rows rows 'canonical-sha256 sha)))
+    (check-equal? (problems 2 "aa") '())
+    (check-equal? (problems 3 "aa") '("(tiny parity rows): expected 3, actual 2"))
+    (check-equal? (problems 2 "bb") '("(tiny parity canonical-sha256): expected \"bb\", actual \"aa\""))
+    (check-equal? (length (problems 3 "bb")) 2))
 
   (test-case "digest encodes tagged values"
     (check-equal? (column-digest (vector -7 2.5 "é" dataset-missing))

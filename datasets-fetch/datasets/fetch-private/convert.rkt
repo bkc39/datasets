@@ -58,10 +58,12 @@
     "t10k-labels-idx1-ubyte.gz"))
 
 (define (idx-image-rows files info)
-  (idx-rows (lambda (k) (idx-file files (list-ref idx-file-names k))) (- (hash-ref info "column-count") 2)))
+  (idx-rows (lambda (name) (idx-file files name)) idx-file-names (- (hash-ref info "column-count") 2)))
 
-(define (idx-rows read-part width)
-  (sequence-append (idx-split-rows read-part 0 1 "train" width) (idx-split-rows read-part 2 3 "test" width)))
+(define (idx-rows read-part parts width)
+  (match-define (list train-images train-labels test-images test-labels) parts)
+  (sequence-append (idx-split-rows read-part train-images train-labels "train" width)
+                   (idx-split-rows read-part test-images test-labels "test" width)))
 
 (define (idx-split-rows read-part images-part labels-part split width)
   (define-values (image-dims images) (read-part images-part))
@@ -104,36 +106,46 @@
   (define width (image-width 'idx-image-rows info 2))
   (define members
     (zip-members (hash-ref files "gzip.zip")
-                 (for/list ([part (in-list '("train-images-idx3" "train-labels-idx1" "test-images-idx3"
-                                             "test-labels-idx1"))])
-                   (format "gzip/emnist-~a-~a-ubyte.gz" split part))))
-  (idx-rows (lambda (k) (~> (list-ref members k) gunzip-bytes open-input-bytes read-idx)) width))
+                 (map (lambda (part) (format "gzip/emnist-~a-~a-ubyte.gz" split part))
+                      '("train-images-idx3" "train-labels-idx1" "test-images-idx3" "test-labels-idx1"))))
+  (idx-rows (lambda (data) (~> data gunzip-bytes open-input-bytes read-idx)) members width))
 
 (define emnist-balanced-rows (emnist-rows "balanced"))
 (define emnist-letters-rows (emnist-rows "letters"))
 (define emnist-digits-rows (emnist-rows "digits"))
 
+(struct cifar-member (name split))
+(struct cifar-label (offset classes name))
+
 (define cifar-10-members
-  (append (for/list ([k (in-range 1 6)]) (format "cifar-10-batches-bin/data_batch_~a.bin" k))
-          '("cifar-10-batches-bin/test_batch.bin")))
-(define cifar-100-members '("cifar-100-binary/train.bin" "cifar-100-binary/test.bin"))
+  (append (for/list ([k (in-range 1 6)])
+            (cifar-member (format "cifar-10-batches-bin/data_batch_~a.bin" k) "train"))
+          (list (cifar-member "cifar-10-batches-bin/test_batch.bin" "test"))))
+(define cifar-100-members
+  (list (cifar-member "cifar-100-binary/train.bin" "train") (cifar-member "cifar-100-binary/test.bin" "test")))
 
 (define (cifar-10-rows files info)
-  (cifar-rows 'cifar-10-rows (hash-ref files "cifar-10-binary.tar.gz") info cifar-10-members
-              '("train" "train" "train" "train" "train" "test") '((0 10 "label"))))
+  (cifar-rows 'cifar-10-rows (hash-ref files "cifar-10-binary.tar.gz") info
+              #:members cifar-10-members
+              #:labels (list (cifar-label 0 10 "label"))))
 
 (define (cifar-100-rows files info)
-  (cifar-rows 'cifar-100-rows (hash-ref files "cifar-100-binary.tar.gz") info cifar-100-members
-              '("train" "test") '((1 100 "label") (0 20 "coarse label"))))
+  (cifar-rows 'cifar-100-rows (hash-ref files "cifar-100-binary.tar.gz") info
+              #:members cifar-100-members
+              #:labels (list (cifar-label 1 100 "label") (cifar-label 0 20 "coarse label"))))
 
-(define (cifar-rows who archive info members splits labels)
+(define (cifar-rows who archive info #:members members #:labels labels)
   (define width (image-width who info (add1 (length labels))))
   (define record-bytes (+ (length labels) width))
-  (~> (for/list ([member (in-list members)] [data (in-list (tar-gz-members archive members))]
-                 [split (in-list splits)])
-        (sequence-map (lambda (record) (cifar-row who member data record record-bytes labels split))
-                      (in-range (cifar-record-count who member data record-bytes))))
-      (apply sequence-append _)))
+  (apply sequence-append
+         (map (lambda (member data) (cifar-member-rows who member data record-bytes labels))
+              members
+              (tar-gz-members archive (map cifar-member-name members)))))
+
+(define (cifar-member-rows who member data record-bytes labels)
+  (match-define (cifar-member name split) member)
+  (sequence-map (lambda (record) (cifar-row who name data record record-bytes labels split))
+                (in-range (cifar-record-count who name data record-bytes))))
 
 (define (cifar-record-count who member data record-bytes)
   (define size (bytes-length data))
@@ -146,7 +158,7 @@
   (define start (* record record-bytes))
   (define label-values
     (for/list ([label (in-list labels)])
-      (match-define (list offset classes name) label)
+      (match-define (cifar-label offset classes name) label)
       (define value (bytes-ref data (+ start offset)))
       (cond
         [(< value classes) value]

@@ -2,7 +2,7 @@
 @(require scribble/eval "islr-chapters.rkt"
           (for-label racket/base datasets datasets/data-frame
                      math/matrix (prefix-in pl: (except-in polars head series-ref ~>)) (prefix-in df: data-frame)))
-@(define ev (make-base-eval))
+@(define ev (make-base-eval '(require (only-in racket/list take))))
 
 @title[#:tag "datasets-guide"]{Guide}
 
@@ -189,7 +189,6 @@ An image entry's @tt{image-shape} is (channels height width); the pixel columns 
 order reshape row-major to it, as torch's per-image CHW.
 
 @examples[#:eval ev
- (require (only-in racket/list take))
  (hash-ref (dataset-info 'cifar-10) "image-shape")
  (take (map (lambda (c) (hash-ref c "name")) (hash-ref (dataset-info 'cifar-10) "columns")) 2)
  (hash-ref (dataset-info 'cifar-10) "tier")]
