@@ -15,7 +15,6 @@
          (only-in racket/sequence sequence->list))
 (module+ test
   (require (for-syntax racket/base)
-           (only-in datasets/core-tests/fixture call-with-memory-limit)
            (only-in datasets/fetch-private/archive inflate-zlib)
            (only-in datasets/fetch-private/bytes-port bytes->input-port)
            (only-in datasets/fetch-private/mat mat-array->bytes mat-array-class mat-array-dims mat-array-ref
@@ -23,7 +22,6 @@
            (only-in datasets/fetch-private/png read-png-gray8)
            (only-in datasets/fetch-tests/fixture mat-bytes png-bytes png-chunk zlib-bytes)
            (only-in racket/contract/combinator exn:fail:contract:blame?)
-           (only-in racket/file file->bytes)
            (only-in racket/runtime-path define-runtime-path)
            (only-in rackunit check-eqv? check-equal? check-exn check-not-false check-regexp-match check-true
                     test-case)
