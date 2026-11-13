@@ -1,5 +1,7 @@
 #lang scribble/manual
-@(require (only-in datasets/r-private/objects r-objects) (only-in racket/match match))
+@(require (only-in datasets/core dataset-info)
+          (only-in datasets/r-private/objects ggplot2-objects r-objects)
+          (only-in racket/match match match-lambda))
 
 @title[#:tag "datasets-from-r"]{Datasets from R}
 
@@ -55,3 +57,21 @@ is in the @secref["datasets-catalog" #:doc catalog]. Imports are mechanical:
          (cons (list "R object" "Class" "Dataset")
                (for/list ([row (in-list r-objects)])
                  (map r-object-cell row)))]
+
+@section[#:tag "datasets-from-ggplot2"]{ggplot2}
+
+@tt{datasets-r} also bundles the eleven data sets of ggplot2 4.0.3 (MIT) under
+the rules above. Ordered factors are categorical with levels in R order:
+@tt{diamonds} @tt{cut} runs from @tt{Fair} to @tt{Ideal}, @tt{color} from
+@tt{D} to @tt{J} and @tt{clarity} from @tt{I1} to @tt{IF}. @tt{faithfuld} is a
+density estimate on a grid, not R's @tt{faithful}; @tt{mpg} is EPA fuel economy for
+1999 and 2008 models, not the UCI @tt{auto-mpg}.
+
+@tabular[#:sep (hspace 2)
+         (cons (list "R object" "Dataset" "Rows" "Columns")
+               (map (match-lambda
+                      [(list object (and dataset (list 'dataset id)))
+                       (list* (r-object-cell object) (r-object-cell dataset)
+                              (map (lambda (key) (number->string (hash-ref (dataset-info id) key)))
+                                   '("rows" "column-count")))])
+                    ggplot2-objects))]
