@@ -1,10 +1,10 @@
 #lang racket/base
 (require (for-syntax racket/base)
-         (only-in datasets/core dataset-missing? dataset-table-column dataset-table-names
+         (only-in datasets/core dataset-info dataset-missing? dataset-table-column dataset-table-names
                   dataset-table-row-count dataset-table?)
          (only-in file/sha1 bytes->hex-string)
          (only-in json read-json)
-         (only-in racket/contract/base -> >=/c any/c contract-out listof)
+         (only-in racket/contract/base -> ->* >=/c any/c contract-out listof)
          (only-in racket/list append*)
          (only-in racket/match match)
          (only-in racket/port call-with-output-bytes)
@@ -13,7 +13,8 @@
 (provide (contract-out [column-digest (-> vector? string?)]
                        [expect (-> any/c any/c any/c (listof string?))]
                        [expect-= (-> any/c real? real? (>=/c 0) (listof string?))]
-                       [parity-problems (-> symbol? dataset-table? (listof string?))]
+                       [parity-problems (->* (symbol? dataset-table?) (#:info hash? #:reference hash?)
+                                             (listof string?))]
                        [parity-reference (-> symbol? hash?)]))
 (define-runtime-path parity-file "fixtures/parity.json")
 (define parity (call-with-input-file parity-file read-json))
@@ -45,14 +46,19 @@
 (define (parity-reference name)
   (hash-ref parity name))
 
-(define (parity-problems name table)
-  (define reference (parity-reference name))
-  (define digests (hash-ref reference 'columns))
-  (define names (dataset-table-names table))
-  (append (expect (list name "parity rows") (dataset-table-row-count table) (hash-ref reference 'rows))
-          (expect (list name "parity names") (sort (map string->symbol names) symbol<?)
-                  (sort (hash-keys digests) symbol<?))
-          (append* (for/list ([column (in-list names)])
-                     (expect (list name column "parity digest")
-                             (column-digest (dataset-table-column table column))
-                             (hash-ref digests (string->symbol column) #f))))))
+(define (parity-problems name table
+                         #:info [info (dataset-info name)]
+                         #:reference [reference (parity-reference name)])
+  (define rows (expect (list name "parity rows") (dataset-table-row-count table) (hash-ref reference 'rows)))
+  (match reference
+    [(hash-table ('canonical-sha256 sha))
+     (append rows (expect (list name "parity canonical-sha256") (hash-ref info "sha256") sha))]
+    [(hash-table ('columns digests))
+     (define names (dataset-table-names table))
+     (append rows
+             (expect (list name "parity names") (sort (map string->symbol names) symbol<?)
+                     (sort (hash-keys digests) symbol<?))
+             (append* (for/list ([column (in-list names)])
+                        (expect (list name column "parity digest")
+                                (column-digest (dataset-table-column table column))
+                                (hash-ref digests (string->symbol column) #f)))))]))

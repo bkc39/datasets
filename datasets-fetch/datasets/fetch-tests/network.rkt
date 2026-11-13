@@ -1,12 +1,13 @@
 #lang racket/base
 (require (for-syntax racket/base)
-         (only-in datasets/core dataset-cache-directory dataset-info dataset-missing? dataset-names
-                  dataset-table-column dataset-table-names dataset-table-row-count fetch-dataset
+         (only-in datasets/core clear-dataset-cache dataset-cache-directory dataset-info dataset-missing?
+                  dataset-names dataset-table-column dataset-table-names dataset-table-row-count fetch-dataset
                   load-dataset-table)
          (only-in datasets/fetch-tests/digest expect expect-= parity-problems)
          (only-in file/sha1 bytes->hex-string)
          (only-in net/url call/input-url get-pure-port string->url)
-         (only-in racket/list append* append-map remove-duplicates)
+         (only-in racket/list append* append-map make-list remove-duplicates)
+         (only-in racket/match match-define)
          (only-in racket/string string-join)
          (only-in racket/vector vector-count)
          (only-in threading ~>))
@@ -61,13 +62,20 @@
     (call/input-url (string->url url) (lambda (u) (get-pure-port u #:redirections 10))
                     (lambda (in) (bytes->hex-string (sha256-bytes in)))))
 
-  (define (pinned-bytes-problems name)
+  (define (pinned-bytes-problems names)
+    (define pins
+      (remove-duplicates
+       (for*/list ([name (in-list names)]
+                   [file (in-list (~> name dataset-info (hash-ref "fetch") (hash-ref "files")))]
+                   [url (in-list (hash-ref file "urls"))])
+         (list name url (hash-ref file "sha256")))
+       #:key cdr))
     (append*
-     (for*/list ([file (in-list (~> name dataset-info (hash-ref "fetch") (hash-ref "files")))]
-                 [url (in-list (hash-ref file "urls"))])
+     (for/list ([pin (in-list pins)])
+       (match-define (list name url pinned) pin)
        (define-values (sha elapsed) (seconds (lambda () (url-sha256 url))))
        (printf "pinned bytes ~a ~a ~as\n" name url elapsed)
-       (expect (list url "sha256") sha (hash-ref file "sha256")))))
+       (expect (list url "sha256") sha pinned))))
 
   (define (value-ok? c v)
     (or (dataset-missing? v)
@@ -141,6 +149,54 @@
                     (remove-duplicates (for/list ([i (in-list negative-zero-rows)]) (vector-ref split i)))
                     '("train"))))
 
+  (define (counts column values)
+    (for/list ([v (in-list values)]) (vector-count (lambda (x) (equal? x v)) column)))
+  (define (range-list from to) (for/list ([k (in-range from (add1 to))]) k))
+
+  (define (image-problems name row-checks label-counts)
+    (define table (load-dataset-table name #:download? #f))
+    (define (column c) (dataset-table-column table c))
+    (append (append* (for/list ([check (in-list row-checks)])
+                       (match-define (list row names expected) check)
+                       (expect (list name "row" row) (for/list ([c (in-list names)]) (vector-ref (column c) row))
+                               expected)))
+            (append* (for/list ([c (in-list label-counts)])
+                       (match-define (list label values expected) c)
+                       (expect (list name label "counts") (counts (column label) values) expected)))))
+
+  (define (cifar-10-train-problems)
+    (define table (load-dataset-table 'cifar-10 #:download? #f))
+    (define labels (dataset-table-column table "label"))
+    (define split (dataset-table-column table "split"))
+    (expect '(cifar-10 "train label counts")
+            (for/list ([v (in-range 10)])
+              (for/sum ([l (in-vector labels)] [s (in-vector split)]) (if (and (= l v) (equal? s "train")) 1 0)))
+            (make-list 10 5000)))
+
+  (define (convert-memory-problems name)
+    (define info (dataset-info name))
+    (define limit (+ (* 2 (hash-ref info "rows") (sub1 (hash-ref info "column-count"))) (* 256 1000 1000)))
+    (clear-dataset-cache name)
+    (define-values (result elapsed)
+      (seconds (lambda () (call-with-memory-limit limit (lambda () (fetch-dataset name))))))
+    (printf "~a convert under a ~a MB limit ~as: ~a\n" name (quotient limit 1000000) elapsed result)
+    (expect (list name "converted under a memory limit" limit) (path? result) #t))
+
+  (define red-8 (for/list ([k (in-range 1 9)]) (format "red~a" k)))
+  (define (image-set-problems)
+    (append (image-problems 'cifar-10
+                            `((0 ("label" ,@red-8) (6 59 43 50 68 98 119 139 145))
+                              (50000 ("label" ,@red-8) (3 158 159 165 166 160 156 162 159)))
+                            `(("label" ,(range-list 0 9) ,(make-list 10 6000))))
+            (cifar-10-train-problems)
+            (image-problems 'cifar-100 '()
+                            `(("label" ,(range-list 0 99) ,(make-list 100 600))
+                              ("coarse-label" ,(range-list 0 19) ,(make-list 20 3000))))
+            (image-problems 'kmnist '() `(("label" ,(range-list 0 9) ,(make-list 10 7000))))
+            (image-problems 'emnist-balanced '() `(("label" ,(range-list 0 46) ,(make-list 47 2800))))
+            (image-problems 'emnist-letters '() `(("label" ,(range-list 1 26) ,(make-list 26 5600))))
+            (image-problems 'emnist-digits '() `(("label" ,(range-list 0 9) ,(make-list 10 28000))))))
+
   (define (linnerud-problems)
     (define table (load-dataset-table 'linnerud #:download? #f))
     (define names (dataset-table-names table))
@@ -155,8 +211,9 @@
   (printf "DATASETS_HOME ~a\n" (dataset-cache-directory))
   (define names (dataset-names #:package "datasets-fetch"))
   (define problems
-    (append (append-map pinned-bytes-problems names) (append-map table-problems names)
-            (bounded-load-problems 'fashion-mnist) (zip-problems) (linnerud-problems)))
+    (append (pinned-bytes-problems names) (append-map table-problems names)
+            (bounded-load-problems 'fashion-mnist) (bounded-load-problems 'cifar-10) (zip-problems)
+            (linnerud-problems) (image-set-problems) (convert-memory-problems 'cifar-10)))
   (if (null? problems)
       (printf "network checks hold for ~a\n" names)
       (error (string-join problems "\n" #:before-first "network checks failed:\n"))))

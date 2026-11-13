@@ -2,7 +2,7 @@
 @(require scribble/eval "islr-chapters.rkt"
           (for-label racket/base datasets datasets/data-frame
                      math/matrix (prefix-in pl: (except-in polars head series-ref ~>)) (prefix-in df: data-frame)))
-@(define ev (make-base-eval))
+@(define ev (make-base-eval '(require (only-in racket/list take))))
 
 @title[#:tag "datasets-guide"]{Guide}
 
@@ -29,8 +29,8 @@ supplies its native library. With Nix, @tt{nix develop} prepares an isolated
 environment containing the packages and that library.
 @tt{datasets-islr} adds the datasets of ISLR2 and four of ESL; see
 @secref["datasets-islr-guide"] and @secref["datasets-esl-guide"].
-@tt{datasets-fetch} adds sets such as @tt{covtype} and @tt{mnist} that are
-downloaded and converted on first load.
+@tt{datasets-fetch} adds sets such as @tt{covtype}, @tt{mnist} and @tt{cifar-10}
+that are downloaded and converted on first load.
 
 @examples[#:eval ev
  (require datasets (prefix-in pl: polars))
@@ -176,6 +176,22 @@ downloaded on first load. A train/test partition is a final @tt{split} column:
  (hash-ref (dataset-info 'zip) "tier")]
 
 ESL's spam data is @racket['spambase] in @tt{datasets-uci}.
+
+@section[#:tag "datasets-images-guide"]{Image datasets}
+
+@tt{datasets-fetch} lists @racket['cifar-10], @racket['cifar-100], @racket['kmnist],
+@racket['emnist-balanced], @racket['emnist-letters] and @racket['emnist-digits]
+beside @racket['mnist] and @racket['fashion-mnist]. They are fetch tier: each is
+downloaded and converted on first load. A row is one image: its pixel columns, then
+its label column or columns, then @tt{split}.
+
+An image entry's @tt{image-shape} is (channels height width); the pixel columns in
+order reshape row-major to it, as torch's per-image CHW.
+
+@examples[#:eval ev
+ (hash-ref (dataset-info 'cifar-10) "image-shape")
+ (take (map (lambda (c) (hash-ref c "name")) (hash-ref (dataset-info 'cifar-10) "columns")) 2)
+ (hash-ref (dataset-info 'cifar-10) "tier")]
 
 @section[#:tag "datasets-matrices-guide"]{Preparing a numeric matrix}
 
