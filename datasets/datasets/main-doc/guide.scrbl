@@ -155,7 +155,7 @@ text and labs, and whose exercises, use it:
 
 The table below is built from those keys. Chapter 12 also uses
 @racket['us-arrests], from @tt{datasets-core}. The
-@secref["datasets-catalog" #:doc '(lib "datasets/core-doc/datasets-core.scrbl")]
+@other-doc['(lib "datasets/islr-doc/datasets-islr.scrbl")]
 describes the columns and provenance of each dataset.
 
 @(tabular #:sep (hspace 2)

@@ -55,7 +55,8 @@ nonmissing values: categories are not encoded, nor missing values imputed.
 package directories in dependency order: `datasets-core` first, the umbrella `datasets`
 last. The flake, scripts and gates read it; `scripts/check-package-list.rkt` checks that
 it names every package directory, that each package's deps and build-deps on listed
-packages are listed before it, and that the umbrella depends on all the others. Each package declares
+packages are listed before it, that the umbrella depends on all the others, and that every
+dependency on a listed package states that package's current version. Each package declares
 `collection 'multi` and contributes distinct directories to the shared `datasets` collection.
 `datasets-r` contributes `datasets/r-data`, found through its registry, and its
 tests; it depends on `datasets-core`, and `datasets` depends on it. Its sets have
@@ -63,7 +64,7 @@ no named loader: use `(load-dataset 'penguins)`. `datasets-uci` contributes
 `datasets/uci-data` the same way; `(load-dataset 'digits)`. `datasets-islr`
 contributes `datasets/islr-data` the same way. `datasets-fetch` contributes
 `datasets/fetch-data`, a registry of converted fetch-tier sets, and their
-private converters; it requires `datasets-core` 0.3.
+private converters. Every sibling requires `datasets-core` 0.4.
 
 `datasets-core` contributes `datasets/core` and depends only on `base` at runtime.
 It provides `load-dataset-table`, `dataset-names`, `dataset-info`, the
@@ -159,13 +160,15 @@ bash scripts/install-check.sh /tmp/datasets-dependencies/sources full
 
 The full checks require Polars' native library, either its packaged binary or
 `RKT_POLARS_COMPAT_LIB_PATH` pointing to the native derivation. Both manuals have a narrative guide and a separate API reference, with evaluated
-examples and cross-references. The core manual also includes the generated catalog.
-Their entry points are [datasets-core.scrbl](datasets-core/datasets/core-doc/datasets-core.scrbl)
+examples and cross-references. The core manual also includes the generated catalog
+of `datasets-core`; `datasets-r`, `datasets-uci`, `datasets-islr` and `datasets-fetch`
+each render their own catalog manual, so a family installed after core is documented
+without re-rendering core's manual. Their entry points are [datasets-core.scrbl](datasets-core/datasets/core-doc/datasets-core.scrbl)
 and [datasets.scrbl](datasets/datasets/main-doc/datasets.scrbl).
 
 ## Reading the guide and reference locally
 
-In the development shell, render both manuals and serve the ignored HTML output:
+In the development shell, render the manuals and serve the ignored HTML output:
 
 ```sh
 bash scripts/build-docs.sh
@@ -174,7 +177,8 @@ python3 -m http.server 8765 --bind 127.0.0.1 --directory doc
 
 Open <http://127.0.0.1:8765/datasets/datasets-guide.html> for the guide or
 <http://127.0.0.1:8765/datasets/datasets-reference.html> for the reference.
-The lightweight core manual is at <http://127.0.0.1:8765/datasets-core/index.html>.
+The lightweight core manual is at <http://127.0.0.1:8765/datasets-core/index.html>,
+and each family catalog beside it, such as <http://127.0.0.1:8765/datasets-r/index.html>.
 The preview uses Scribble's standard manual CSS, fonts, navigation, and API
 boxes. It rebuilds into a clean staging directory and checks local links and
 anchors before replacing `doc/`. Links between our manuals stay local; links to

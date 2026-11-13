@@ -1,64 +1,23 @@
 #lang scribble/manual
-@(require datasets/core "catalog-rows.rkt" racket/list racket/match racket/string
-          (for-label racket/base datasets/core))
+@(require "package-catalog.scrbl" (for-label racket/base datasets/core))
 @title[#:tag "datasets-catalog"]{Dataset Catalog and Provenance}
 
 The following catalog is generated from the same registry used by
 @racket[dataset-info]. Column order matches the full table returned by
 @racket[load-dataset-table]; a run of three or more numbered columns of one type
-and description, such as @tt{gene-1} to @tt{gene-2308}, is one row. It lists
-every registry installed when this manual was built, one section per package.
+and description, @tt{x-1} to @tt{x-@italic{n}}, is one row. It lists
+the datasets of @tt{datasets-core}. The datasets of @tt{datasets-r},
+@tt{datasets-uci}, @tt{datasets-islr} and @tt{datasets-fetch} are catalogued in
+the same form in each package's own manual.
 
-Redistribution follows upstream distribution terms. Each package section lists
-its data licenses and each entry names its own: in @tt{datasets-core}, R data
-under GPL-2 or GPL-3, @tt{lars} diabetes under GPL-2, and UCI data under CC BY
-4.0. This records the redistribution basis, without asserting independent
-original-owner permission. Code is Apache-2.0 OR MIT. Full license texts and
-upstream variable descriptions and citations are bundled in
-@tt{datasets/licenses} and @tt{datasets/provenance} for @tt{datasets-core}, and
-in @tt{licenses} and @tt{provenance} beside the registry of any other package.
-@tt{datasets-fetch} ships no data, so its entries name upstream terms of use.
+Redistribution follows upstream distribution terms. Each entry names its data
+license: R data under GPL-2 or GPL-3, @tt{lars} diabetes under GPL-2, and UCI
+data under CC BY 4.0. This records the redistribution basis, without asserting
+independent original-owner permission. Code is Apache-2.0 OR MIT. Full license
+texts and upstream variable descriptions and citations are bundled in
+@tt{datasets/licenses} and @tt{datasets/provenance}.
 The maintainer importer pins source archives by SHA-256. Normalized checksums cover
 the exact UTF-8 bytes of each dataset's uncompressed @tt{.rktd} content. Historical observations are not
 silently corrected except for choosing the documented corrected UCI Iris variant.
 
-@(define (fetch-line info)
-   (match (hash-ref info "fetch")
-     [#f '()]
-     [(hash-table ("format" "convert") ("files" files)
-                  ("converter" (hash-table ("module" module) ("binding" binding))))
-      (define n (length files))
-      (para (format "Fetch tier: converted on first use from ~a upstream ~a by " n (if (= n 1) "file" "files"))
-            (tt binding) " in " (tt module) ": "
-            (add-between (for/list ([f (in-list files)])
-                           (list (tt (hash-ref f "name")) " (SHA-256 " (tt (hash-ref f "sha256")) ")"))
-                         ", ")
-            "; see " (secref "datasets-core-fetch-guide") ".")]
-     [fetch (para "Fetch tier: download SHA-256 " (tt (hash-ref fetch "sha256"))
-                  ", fetched on first use; see " (secref "datasets-core-fetch-guide") ".")]))
-
-@(define (dataset-entry name)
-   (define info (dataset-info name))
-   (list (subsection #:tag (format "dataset-~a" name) (symbol->string name))
-         (para (format "~a rows × ~a columns~a. ~a" (hash-ref info "rows")
-                       (hash-ref info "column-count")
-                       (if (equal? (hash-ref info "tier") "fetch") ", fetch tier" "")
-                       (hash-ref info "notes")))
-         (para (hash-ref info "citation"))
-         (para (hyperlink (hash-ref info "source-url") (hash-ref info "source-version"))
-               "; " (hash-ref info "license"))
-         (fetch-line info)
-         (tabular #:sep (hspace 2)
-                  (cons (list "Column" "Original" "Type" "Description / unit / levels")
-                        (catalog-column-rows (hash-ref info "columns"))))))
-
-@(for/list ([package (in-list (dataset-packages))])
-   (define names (dataset-names #:package package))
-   (define licenses
-     (sort (remove-duplicates
-            (map (lambda (name) (hash-ref (dataset-info name) "license")) names))
-           string<?))
-   (list (section #:tag (format "datasets-package-~a" package) package)
-         (para (format "~a datasets. Licenses: ~a." (length names)
-                       (string-join licenses "; ")))
-         (map dataset-entry names)))
+@(package-catalog "datasets-core")
