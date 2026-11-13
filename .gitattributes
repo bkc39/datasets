@@ -10,3 +10,4 @@ datasets-islr/datasets/islr-data/licenses/* -whitespace
 *.rktd.gz binary
 datasets-fetch/datasets/fetch-tests/fixtures/zip-mini.* -whitespace
 scripts/packages.txt text eol=lf
+scripts/tests/fixtures/* binary
