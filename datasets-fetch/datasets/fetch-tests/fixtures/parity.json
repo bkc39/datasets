@@ -2151,5 +2151,16 @@
    "inventory": "78cfbbab55d3046ef2926bd1bc58c666082b778dde54c017a87a056ae09e1e24",
    "date": "0f3848bcced64f50a7a13c78925930b861cf50a4d0e20269633b46e3c45ffe4b"
   }
+ },
+ "linnerud": {
+  "rows": 20,
+  "columns": {
+   "chins": "46fa4bc5b3bebb9e943e46154e114b09000f97c95dd7939c3a0951ac8c877e66",
+   "situps": "25042fd5fae2e860cafd4c338a8707d3931ce24b8b87b8b17bf8ff6f91207b22",
+   "jumps": "daaf442299bf35fdf43c6e556f0db16affcba5bf7ddeb92b3237e258467f3078",
+   "weight": "545cbe3daf218a700486951037fbf867658e68356bea4f629d1bb07fa876a736",
+   "waist": "91fb23928ec0d2b66294700c906c46b31bf1c50e5f7f0a97e6d5bf10ae78e9ba",
+   "pulse": "4c4d42711139b868fe67de136418a8f4881a47f3ac80a2ffb97f3974d947aea7"
+  }
  }
 }

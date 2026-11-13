@@ -25,8 +25,8 @@ raco pkg install --auto datasets
 
 The 20 datasets of ISLR2 (auto, boston, hitters, smarket, wage, ...) and four of
 ESL (prostate, sa-heart, vowel, ozone) are in `datasets-islr`. `datasets-fetch` lists larger sets such as covtype and mnist
-that are downloaded from upstream and converted on first load; it ships no
-data. For the lightweight table API alone, install `datasets-core` instead.
+that are downloaded from upstream and converted on first load, and linnerud,
+which is small but has no stated redistribution terms; it ships no data. For the lightweight table API alone, install `datasets-core` instead.
 From a checkout, install the packages listed in `scripts/packages.txt` from the
 repository root with:
 
