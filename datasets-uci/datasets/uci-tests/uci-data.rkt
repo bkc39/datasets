@@ -1,22 +1,18 @@
 #lang racket/base
 (require (for-syntax racket/base)
-         (only-in datasets/core dataset-info dataset-missing dataset-missing? dataset-names
-                  dataset-packages dataset-table-column dataset-table-columns dataset-table-names
-                  dataset-table-row-count load-dataset-table)
-         (only-in datasets/core-tests/fixture gunzip-file hex)
+         (only-in datasets/core dataset-info dataset-missing dataset-missing? dataset-table-column
+                  dataset-table-names dataset-table-row-count load-dataset-table)
          (only-in racket/file file->string)
-         (only-in racket/list check-duplicates drop filter-map filter-not first remove-duplicates
-                  take)
+         (only-in racket/list drop filter-map first take)
          (only-in racket/match match match-define)
          (only-in racket/runtime-path define-runtime-path)
          (only-in racket/string string-contains? string-prefix?)
-         (only-in racket/vector vector-count vector-map)
-         (only-in setup/getinfo get-info/full))
+         (only-in racket/vector vector-count vector-map))
 (define-runtime-path uci-data "../uci-data")
 (define-runtime-path package-root "../..")
 (module+ test
-  (require (only-in rackunit check-= check-equal? check-false check-not-false check-regexp-match
-                    check-true)
+  (require (only-in (submod datasets/core-tests/registry-checks test) check-bundled-registry)
+           (only-in rackunit check-= check-equal? check-regexp-match check-true)
            (only-in threading ~>))
   (define pixels (for*/list ([i 8] [j 8]) (format "pixel-~a-~a" i j)))
   (define spam-words
@@ -88,20 +84,12 @@
     (for/hash ([id (in-list ids)])
       (values id (for/hash ([meta (in-list (hash-ref (dataset-info id) "columns"))])
                    (values (hash-ref meta "name") meta)))))
-  (define (data-file id) (build-path uci-data "data" (format "~a.rktd.gz" id)))
   (define tables (for/hash ([id (in-list ids)]) (values id (load-dataset-table id))))
   (define (column id name) (dataset-table-column (hash-ref tables id) name))
   (define (column-meta id name key) (~> column-metas (hash-ref id) (hash-ref name) (hash-ref key)))
   (define (column-count id name keep?) (vector-count keep? (column id name)))
   (define (column-sum id name)
     (for/sum ([v (in-vector (column id name))] #:unless (dataset-missing? v)) v))
-  (define (column-type name levels identifiers present)
-    (cond
-      [(member name identifiers) "identifier"]
-      [(pair? levels) "categorical"]
-      [(andmap exact-integer? present) "integer"]
-      [(andmap real? present) "real"]
-      [else "string"]))
   (define (typed-columns id type)
     (filter-map (lambda (meta) (and (equal? (hash-ref meta "type") type) (hash-ref meta "name")))
                 (hash-ref (dataset-info id) "columns")))
@@ -253,8 +241,7 @@
       (citation wine-quality "Cortez, P., Cerdeira, A., Almeida, F., Matos, T. and Reis, J. (2009). "
                 "C56S3T")))
 
-  (check-equal? (dataset-names #:package "datasets-uci") ids)
-  (check-not-false (member "datasets-uci" (dataset-packages)))
+  (check-bundled-registry "datasets-uci" uci-data ids)
   (for ([shape (in-list shapes)])
     (match-define (list id rows names) shape)
     (define label (symbol->string id))
@@ -262,50 +249,10 @@
     (define info (dataset-info id))
     (check-equal? (dataset-table-row-count t) rows label)
     (check-equal? (dataset-table-names t) names label)
-    (check-equal? (hash-ref info "rows") rows)
     (check-equal? (hash-ref info "column-count") (length names))
-    (check-equal? (hash-ref info "tier") "bundled")
-    (check-equal? (hash-ref info "package") "datasets-uci")
-    (check-false (hash-ref info "fetch"))
     (check-equal? (hash-ref info "license") "CC-BY-4.0")
     (check-true (regexp-match? citation-pattern (hash-ref info "citation")) label)
-    (check-equal? (~> id data-file gunzip-file sha256-bytes hex) (hash-ref info "sha256"))
-    (define header (call-with-input-file (data-file id) (lambda (in) (read-bytes 8 in))))
-    (check-equal? (subbytes header 0 4) (bytes #x1f #x8b 8 0))
-    (check-equal? (subbytes header 4 8) (bytes 0 0 0 0))
-    (check-true (immutable? info))
-    (check-true (pair? (hash-ref info "suggested-targets")) label)
-    (for ([name (in-list (hash-ref info "identifiers"))])
-      (check-false (~> (column id name) vector->list check-duplicates) (format "~a ~a" label name)))
-    (for ([target (in-list (hash-ref info "suggested-targets"))])
-      (check-not-false (member target names) label))
-    (for ([c (in-vector (dataset-table-columns t))] [meta (in-list (hash-ref info "columns"))])
-      (define name (hash-ref meta "name"))
-      (define present (filter-not dataset-missing? (vector->list c)))
-      (check-true (immutable? c))
-      (check-equal? (vector-length c) rows)
-      (check-equal? (vector-count dataset-missing? c) (hash-ref meta "missing-count"))
-      (check-equal? (hash-ref meta "type")
-                    (column-type name (hash-ref meta "levels") (hash-ref info "identifiers") present)
-                    name)
-      (check-true (or (andmap string? present)
-                      (not (member (hash-ref meta "type") '("categorical" "string"))))
-                  name)
-      (check-true (or (andmap exact-integer? present) (andmap flonum? present)
-                      (not (member (hash-ref meta "type") '("integer" "real"))))
-                  name))
-    (for ([c (in-vector (dataset-table-columns t))] [meta (in-list (hash-ref info "columns"))]
-          #:when (pair? (hash-ref meta "levels")))
-      (check-equal? (~> c vector->list (filter-not dataset-missing? _) remove-duplicates
-                        (sort string<?))
-                    (sort (hash-ref meta "levels") string<?)
-                    (hash-ref meta "name"))))
-  (check-equal? (~> (build-path uci-data "data") directory-list (map path->string _) (sort string<?))
-                (~> ids (map (lambda (id) (format "~a.rktd.gz" id)) _) (sort string<?)))
-  (match-define (list _ 'AND data-license) ((get-info/full package-root) 'license))
-  (check-equal? data-license 'CC-BY-4.0)
-  (check-equal? (~> (build-path uci-data "licenses") directory-list (map path->string _))
-                '("CC-BY-4.0.txt"))
+    (check-true (pair? (hash-ref info "suggested-targets")) label))
   (check-regexp-match #rx"- mushroom: Mushroom \\(1981\\), doi:10\\.24432/C5959T, no creator named"
                       (file->string (build-path package-root "NOTICE")))
 

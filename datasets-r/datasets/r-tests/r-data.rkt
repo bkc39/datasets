@@ -1,21 +1,17 @@
 #lang racket/base
 (require (for-syntax racket/base)
-         (only-in datasets/core dataset-info dataset-missing dataset-missing? dataset-names
-                  dataset-packages dataset-table-columns dataset-table-names
+         (only-in datasets/core dataset-info dataset-missing dataset-table-names
                   dataset-table-row-count load-dataset-table)
-         (only-in datasets/core-tests/fixture conjuncts gunzip-file hex license-ids)
          (only-in racket/file file->lines file->value)
          (only-in racket/hash hash-union)
-         (only-in racket/list append-map check-duplicates make-list remove-duplicates take)
-         (only-in racket/match match match-define)
-         (only-in racket/runtime-path define-runtime-path)
-         (only-in racket/vector vector-count)
-         (only-in setup/getinfo get-info/full))
+         (only-in racket/list make-list)
+         (only-in racket/match match-define)
+         (only-in racket/runtime-path define-runtime-path))
 (define-runtime-path r-data "../r-data")
-(define-runtime-path package-root "../..")
 (define-runtime-path ggplot2-spots-file "ggplot2-spots.rktd")
 (module+ test
-  (require (only-in rackunit check-equal? check-false check-not-false check-true)
+  (require (only-in (submod datasets/core-tests/registry-checks test) check-bundled-registry)
+           (only-in rackunit check-equal? check-not-false)
            (only-in (submod "spot.rkt" test) check-spot ggplot2-ids r-dataset-ids))
   (define penguins-names
     '("species" "island" "bill-length-mm" "bill-depth-mm" "flipper-length-mm" "body-mass-g" "sex"
@@ -55,14 +51,6 @@
                 (for/hash ([id (in-list (cons 'datasaurus-dozen ggplot2-ids))])
                   (values id "MIT"))))
   (define ids (sort (append (map car shapes) ggplot2-ids r-dataset-ids) symbol<?))
-  (define (data-file id) (build-path r-data "data" (format "~a.rktd.gz" id)))
-  (define (column-type name levels identifiers present)
-    (cond
-      [(member name identifiers) "identifier"]
-      [(pair? levels) "categorical"]
-      [(andmap exact-integer? present) "integer"]
-      [(andmap flonum? present) "real"]
-      [else "string"]))
   (define (key-values lines)
     (for*/hash ([line (in-list lines)]
                 [pair (in-value (regexp-match #px"^([^:]+): (.*)$" line))]
@@ -157,8 +145,7 @@
       (meta nycflights13-weather "time-hour" "original-name" "time_hour")
       (info nycflights13-weather "source-version" "nycflights13 1.0.2")))
 
-  (check-equal? (dataset-names #:package "datasets-r") ids)
-  (check-not-false (member "datasets-r" (dataset-packages)))
+  (check-bundled-registry "datasets-r" r-data ids)
   (for ([shape (in-list shapes)])
     (match-define (list id rows names) shape)
     (define t (load-dataset-table id))
@@ -166,78 +153,13 @@
     (check-equal? (dataset-table-names t) names))
   (for ([(id license) (in-hash licenses)])
     (check-equal? (hash-ref (dataset-info id) "license") license (symbol->string id)))
-  (for ([id (in-list ids)])
-    (define t (load-dataset-table id))
-    (define info (dataset-info id))
-    (define rows (hash-ref info "rows"))
-    (check-equal? (dataset-table-row-count t) rows)
-    (check-equal? (dataset-table-names t)
-                  (for/list ([meta (in-list (hash-ref info "columns"))]) (hash-ref meta "name")))
-    (check-equal? (hash-ref info "column-count") (vector-length (dataset-table-columns t)))
-    (check-equal? (hash-ref info "tier") "bundled")
-    (check-equal? (hash-ref info "package") "datasets-r")
-    (check-false (hash-ref info "fetch"))
-    (check-equal? (hex (sha256-bytes (gunzip-file (data-file id)))) (hash-ref info "sha256"))
-    (define header (call-with-input-file (data-file id) (lambda (in) (read-bytes 8 in))))
-    (check-equal? (subbytes header 0 4) (bytes #x1f #x8b 8 0))
-    (check-equal? (subbytes header 4 8) (bytes 0 0 0 0))
-    (check-true (immutable? info))
-    (for ([c (in-vector (dataset-table-columns t))] [meta (in-list (hash-ref info "columns"))])
-      (check-true (immutable? c))
-      (check-equal? (vector-length c) rows)
-      (check-equal? (vector-count dataset-missing? c) (hash-ref meta "missing-count"))
-      (define present (for/list ([v (in-vector c)] #:unless (dataset-missing? v)) v))
-      (define type (hash-ref meta "type"))
-      (check-equal? type
-                    (column-type (hash-ref meta "name") (hash-ref meta "levels")
-                                 (hash-ref info "identifiers") present)
-                    (hash-ref meta "name"))
-      (check-true (or (andmap string? present) (not (member type '("categorical" "string"))))
-                  (hash-ref meta "name"))
-      (check-false (and (equal? type "identifier") (check-duplicates present))
-                   (format "~a ~a" id (hash-ref meta "name"))))
-    (match (hash-ref info "time-series")
-      [#f (void)]
-      [(hash-table ("start" start) ("end" end) ("index" index))
-       (define message (symbol->string id))
-       (check-equal? (length start) (length index) message)
-       (check-equal? (length end) (length index) message)
-       (check-equal? (take (dataset-table-names t) (length index)) index message)])
-    (for ([c (in-vector (dataset-table-columns t))] [meta (in-list (hash-ref info "columns"))]
-          #:when (pair? (hash-ref meta "levels")))
-      (check-equal? (sort (remove-duplicates
-                           (for/list ([v (in-vector c)] #:unless (dataset-missing? v)) v))
-                          string<?)
-                    (sort (hash-ref meta "levels") string<?))))
-  (check-equal? (sort (map path->string (directory-list (build-path r-data "data"))) string<?)
-                (sort (for/list ([id (in-list ids)]) (format "~a.rktd.gz" id)) string<?))
-  (check-equal? (for/list ([p (in-list (directory-list r-data))]
-                           #:when (regexp-match? #rx"[.]rkt$" (path->string p)))
-                  (path->string p))
-                '("info.rkt"))
-
-  (define license-files (directory-list (build-path r-data "licenses")))
-  (match-define (list _ 'AND data-license) ((get-info/full package-root) 'license))
-  (define registry-licenses
-    (remove-duplicates (for/list ([id (in-list ids)]) (hash-ref (dataset-info id) "license"))))
-  (check-equal? (license-ids "CC0-1.0 AND (MIT OR GPL-2.0-only)") '("CC0-1.0" "MIT" "GPL-2.0-only"))
-  (check-equal? (license-ids "MIT") '("MIT"))
-  (check-equal? (conjuncts '(CC0-1.0 AND (MIT AND (A OR (B AND C)))))
-                '("CC0-1.0" "MIT" "A OR (B AND C)"))
-  (check-equal? (sort registry-licenses string<?) (sort (conjuncts data-license) string<?))
-  (for ([license (in-list (remove-duplicates (append-map license-ids registry-licenses)))])
-    (define file-name (pregexp (string-append "^" (regexp-quote license) "[-.]")))
-    (check-not-false (for/or ([file (in-list license-files)])
-                       (regexp-match? file-name (path->string file)))
-                     license))
   (check-equal? (key-values '("YEAR: 2022" "" "no separator" "COPYRIGHT HOLDER: someone"))
                 (hash "YEAR" "2022" "COPYRIGHT HOLDER" "someone"))
-  (for ([upstream (in-list '("datasauRus-LICENSE" "ggplot2-LICENSE"))]
-        [bundled (in-list '("MIT-datasauRus.txt" "MIT-ggplot2.txt"))])
+  (for ([upstream (in-list '("datasauRus-LICENSE" "ggplot2-LICENSE"))])
     (define copyright (key-values (file->lines (build-path r-data "provenance" upstream))))
     (check-not-false (member (format "Copyright (c) ~a ~a" (hash-ref copyright "YEAR")
                                      (hash-ref copyright "COPYRIGHT HOLDER"))
-                             (file->lines (build-path r-data "licenses" bundled)))
-                     bundled))
+                             (file->lines (build-path r-data "licenses" "MIT.txt")))
+                     upstream))
 
   (for-each check-spot (append spot-checks ggplot2-spots)))
