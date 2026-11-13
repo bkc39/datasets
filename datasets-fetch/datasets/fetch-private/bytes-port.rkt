@@ -1,0 +1,25 @@
+#lang racket/base
+(require (only-in racket/contract/base -> ->* contract-out))
+(provide (contract-out
+          [bytes->input-port (->* (bytes?) (exact-nonnegative-integer?) (values input-port? (-> boolean?)))]))
+
+(define (bytes->input-port data [start 0])
+  (define size (bytes-length data))
+  (define position start)
+  (define end-seen? #f)
+  (define (copy! buffer skip)
+    (define from (min size (+ position skip)))
+    (define n (min (bytes-length buffer) (- size from)))
+    (bytes-copy! buffer 0 data from (+ from n))
+    n)
+  (define (result n)
+    (when (zero? n) (set! end-seen? #t))
+    (if (zero? n) eof n))
+  (values (make-input-port 'bytes
+                           (lambda (buffer)
+                             (define n (copy! buffer 0))
+                             (set! position (+ position n))
+                             (result n))
+                           (lambda (buffer skip _progress) (result (copy! buffer skip)))
+                           void)
+          (lambda () end-seen?)))
